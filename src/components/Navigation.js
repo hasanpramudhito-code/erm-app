@@ -1,5 +1,5 @@
 // File: src/components/Navigation.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   List,
   ListItem,
@@ -7,7 +7,8 @@ import {
   ListItemText,
   Collapse,
   Typography,
-  Divider
+  Divider,
+  Box
 } from '@mui/material';
 import {
   ExpandLess,
@@ -16,7 +17,6 @@ import {
   Assessment,
   Warning,
   People,
-  BarChart,
   Business,
   Settings,
   TrackChanges,
@@ -25,21 +25,48 @@ import {
   Report,
   AccountTree,
   Logout,
-  Security, // ✅ ICON BARU UNTUK CONTROL TESTING
-  Schedule, // ✅ ICON BARU
-  BugReport, // ✅ ICON BARU
-  CheckCircle // ✅ ICON BARU
+  Security,
+  Schedule,
+  BugReport,
+  CheckCircle
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 const Navigation = () => {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, userData, loading } = useAuth();
   const location = useLocation();
   const [openMenus, setOpenMenus] = useState({
     organization: false,
-    controltesting: false // ✅ MENU BARU
+    controltesting: false
   });
+
+  const getEffectiveUserData = () => {
+    if (userData) return userData;
+    
+    if (currentUser) {
+      const adminEmails = [
+        'hasan.pramudhito@gmail.com',
+        'admin@erm.com',
+        'superadmin@erm.com'
+      ];
+      
+      const isAdmin = adminEmails.includes(currentUser.email);
+      
+      return {
+        uid: currentUser.uid,
+        email: currentUser.email,
+        role: isAdmin ? 'ADMIN' : 'STAFF',
+        name: currentUser.email.split('@')[0],
+        permissions: isAdmin ? ['full_access'] : ['basic_access']
+      };
+    }
+    
+    return null;
+  };
+
+  const effectiveUserData = getEffectiveUserData();
+  const userRole = effectiveUserData?.role || 'STAFF';
 
   const handleMenuClick = (menu) => {
     setOpenMenus(prev => ({
@@ -56,7 +83,7 @@ const Navigation = () => {
     }
   };
 
-  // Navigation structure dengan CONTROL TESTING - TAMBAH DI SETIAP ROLE
+  // Navigation structure
   const navigationStructure = {
     ADMIN: [
       {
@@ -79,7 +106,6 @@ const Navigation = () => {
         icon: <Assignment />,
         path: '/treatment-plans'
       },
-      // ✅ CONTROL TESTING MODULE - TAMBAH DI SINI
       {
         text: 'Control Testing',
         icon: <Security />,
@@ -183,7 +209,6 @@ const Navigation = () => {
         icon: <Assignment />,
         path: '/treatment-plans'
       },
-      // ✅ CONTROL TESTING MODULE - TAMBAH DI SINI
       {
         text: 'Control Testing',
         icon: <Security />,
@@ -282,7 +307,6 @@ const Navigation = () => {
         icon: <Assignment />,
         path: '/treatment-plans'
       },
-      // ✅ CONTROL TESTING MODULE - TAMBAH DI SINI
       {
         text: 'Control Testing',
         icon: <Security />,
@@ -376,7 +400,72 @@ const Navigation = () => {
         icon: <Assignment />,
         path: '/treatment-plans'
       },
-      // ✅ CONTROL TESTING MODULE - TAMBAH DI SINI (READ-ONLY ACCESS)
+      {
+        text: 'Control Testing',
+        icon: <Security />,
+        hasChildren: true,
+        children: [
+          {
+            text: 'Control Register',
+            icon: <Security />,
+            path: '/control-register'
+          },
+          {
+            text: 'Test Results',
+            icon: <CheckCircle />,
+            path: '/test-results'
+          },
+          {
+            text: 'Deficiency Tracking',
+            icon: <BugReport />,
+            path: '/deficiency-tracking'
+          }
+        ]
+      },
+      {
+        text: 'Lapor Kejadian',
+        icon: <Report />,
+        path: '/incident-reporting'
+      },
+      {
+        text: 'Settings',
+        icon: <Settings />,
+        hasChildren: true,
+        children: [
+          {
+            text: 'Dashboard',
+            icon: <Dashboard />,
+            path: '/dashboard'
+          },
+          {
+            text: 'System Settings',
+            icon: <Settings />,
+            path: '/settings'
+          },
+        ]
+      }
+    ],
+    RISK_OFFICER: [
+      {
+        text: 'Executive Dashboard',
+        icon: <Dashboard />,
+        path: '/executive-dashboard'
+      },
+      {
+        text: 'Risk Register',
+        icon: <Warning />,
+        path: '/risk-register'
+      },
+      {
+        text: 'Risk Assessment',
+        icon: <Assessment />,
+        path: '/risk-assessment'
+      },
+      {
+        text: 'Treatment Plans',
+        icon: <Assignment />,
+        path: '/treatment-plans'
+      },
       {
         text: 'Control Testing',
         icon: <Security />,
@@ -433,7 +522,6 @@ const Navigation = () => {
         icon: <Warning />,
         path: '/risk-register'
       },
-      // ✅ CONTROL TESTING MODULE - TAMBAH DI SINI (VIEW ONLY)
       {
         text: 'Control Testing',
         icon: <Security />,
@@ -459,10 +547,6 @@ const Navigation = () => {
     ]
   };
 
-  const { userData } = useAuth();
-
-  const rawRole = userData?.role || 'STAFF';
-  const userRole = rawRole.toUpperCase();
   const menuItems = navigationStructure[userRole] || navigationStructure.STAFF;
 
   const renderMenuItem = (item, level = 0) => {
@@ -482,6 +566,10 @@ const Navigation = () => {
               '&:hover': {
                 backgroundColor: 'action.hover',
               },
+              width: '100%',
+              border: 'none',
+              cursor: 'pointer',
+              textAlign: 'left'
             }}
           >
             <ListItemIcon sx={{ color: isActive ? 'primary.main' : 'text.secondary' }}>
@@ -490,7 +578,7 @@ const Navigation = () => {
             <ListItemText 
               primary={
                 <Typography 
-                  variant="body2" 
+                  variant="body1" 
                   fontWeight={isActive ? 'bold' : 'normal'}
                 >
                   {item.text}
@@ -523,6 +611,7 @@ const Navigation = () => {
             backgroundColor: 'action.hover',
           },
           textDecoration: 'none',
+          display: 'block'
         }}
       >
         <ListItemIcon 
@@ -536,7 +625,7 @@ const Navigation = () => {
         <ListItemText 
           primary={
             <Typography 
-              variant="body2" 
+              variant="body1" 
               fontWeight={isActive ? 'bold' : 'normal'}
             >
               {item.text}
@@ -547,13 +636,24 @@ const Navigation = () => {
     );
   };
 
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" p={3}>
+        <Typography>Loading navigation...</Typography>
+      </Box>
+    );
+  }
+
+  if (!currentUser) {
+    return null;
+  }
+
   return (
     <>
       <List component="nav" sx={{ width: '100%' }}>
         {menuItems.map(item => renderMenuItem(item))}
       </List>
       
-      {/* LOGOUT MENU */}
       <Divider sx={{ my: 1 }} />
       <List>
         <ListItem
@@ -566,6 +666,10 @@ const Navigation = () => {
               backgroundColor: 'error.light',
               color: 'white',
             },
+            width: '100%',
+            border: 'none',
+            cursor: 'pointer',
+            textAlign: 'left'
           }}
         >
           <ListItemIcon sx={{ color: 'inherit' }}>
@@ -573,8 +677,8 @@ const Navigation = () => {
           </ListItemIcon>
           <ListItemText 
             primary={
-              <Typography variant="body2" fontWeight="medium">
-                Logout
+              <Typography variant="body1" fontWeight="medium">
+                Logout {userData ? `(${userData.name})` : `(${currentUser.email})`}
               </Typography>
             } 
           />

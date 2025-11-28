@@ -37,17 +37,31 @@ const Login = () => {
   };
 
   return (
-    <Container component="main" maxWidth="xs">
-      <Box
-        sx={{
-          marginTop: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <Paper elevation={3} sx={{ padding: 4, width: '100%' }}>
-          <Typography component="h1" variant="h4" align="center" gutterBottom>
+    <Box
+      sx={{
+        minHeight: '100vh',
+        backgroundImage: 'url(/assets/login-bg.jpg)', // Ganti dengan path gambar Anda
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 2
+      }}
+    >
+      <Container component="main" maxWidth="xs">
+        <Paper 
+          elevation={8} 
+          sx={{ 
+            padding: 4, 
+            width: '100%',
+            backgroundColor: 'rgba(255, 255, 255, 0.95)', // Sedikit transparan
+            backdropFilter: 'blur(10px)', // Efek blur modern
+            borderRadius: 2
+          }}
+        >
+          <Typography component="h1" variant="h4" align="center" gutterBottom color="primary">
             ERM System
           </Typography>
           <Typography component="h2" variant="h6" align="center" color="textSecondary" gutterBottom>
@@ -64,6 +78,11 @@ const Login = () => {
               label="Email Address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  backgroundColor: 'white'
+                }
+              }}
             />
             <TextField
               margin="normal"
@@ -73,24 +92,34 @@ const Login = () => {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  backgroundColor: 'white'
+                }
+              }}
             />
             <Button
               type="submit"
               fullWidth
               variant="contained"
-              sx={{ mt: 3, mb: 2 }}
+              sx={{ 
+                mt: 3, 
+                mb: 2,
+                py: 1.5,
+                fontSize: '1.1rem'
+              }}
               disabled={loading}
             >
-              Sign In
+              {loading ? 'Signing In...' : 'Sign In'}
             </Button>
           </Box>
           
           <Typography variant="body2" color="textSecondary" align="center">
-            Demo: Gunakan email/password apa saja
+            Gunakan email/password terdaftar
           </Typography>
         </Paper>
-      </Box>
-    </Container>
+      </Container>
+    </Box>
   );
 };
 

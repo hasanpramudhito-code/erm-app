@@ -10,54 +10,24 @@ import { auth, db } from '../config/firebase';
 
 const AuthContext = createContext();
 
-/* -----------------------------------------------------------
-   🔥 ROLE NORMALIZER — FINAL VERSION
-   Membersihkan spasi, newline, tab, karakter tersembunyi
-   dan menormalkan role ke: ADMIN, DIRECTOR, RISK_MANAGER,
-   RISK_OWNER, STAFF
------------------------------------------------------------ */
 const normalizeRole = (role) => {
   if (!role) return "STAFF";
 
-  // Convert to string always
-  let clean = role.toString();
+  let clean = role.toString()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[\n\r\t]/g, "")
+    .trim()
+    .toUpperCase();
 
-  // Remove ALL invisible characters
-  clean = clean
-    .replace(/[\n\r\t]/g, "")     // newline, tab
-    .replace(/\s+/g, " ")         // multiple spaces → single space
-    .trim();                      // trim front & back
-
-  // Lowercase for detection
-  const r = clean.toLowerCase();
-
-  // Matching flexible, covers all variations:
-  if (r === "admin") return "ADMIN";
-  if (r.includes("admin")) return "ADMIN";          // admin / administrator
-  if (r.includes("administrator")) return "ADMIN";
-
-  if (r.includes("director")) return "DIRECTOR";
-  if (r.includes("risk manager") || r.includes("risk_manager"))
-    return "RISK_MANAGER";
-
-  if (r.includes("risk owner") || r.includes("risk_owner"))
-    return "RISK_OWNER";
-
-  return "STAFF";
+  return clean;
 };
 
-/* -----------------------------------------------------------
-   HOOK
------------------------------------------------------------ */
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 };
 
-/* -----------------------------------------------------------
-   PROVIDER
------------------------------------------------------------ */
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userData, setUserData] = useState(null);
@@ -70,9 +40,8 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-
       if (!user) {
+        setCurrentUser(null);
         setUserData(null);
         setLoading(false);
         return;
@@ -83,25 +52,31 @@ export const AuthProvider = ({ children }) => {
 
         if (!snap.exists()) {
           setUserData(null);
-          setLoading(false);
-          return;
+        } else {
+          const data = snap.data();
+          const fixedRole = normalizeRole(data.role);
+          
+          const normalizedUserData = {
+            uid: user.uid,
+            email: data.email,
+            name: data.name,
+            role: fixedRole,
+            department: data.department,
+            position: data.position,
+            phone: data.phone,
+            status: data.status,
+            permissions: data.permissions || []
+          };
+          
+          setUserData(normalizedUserData);
         }
-
-        const data = snap.data();
-
-        // FINAL FIX → Normalize role fully
-        const fixedRole = normalizeRole(data.role);
-
-        setUserData({
-          ...data,
-          role: fixedRole
-        });
 
       } catch (err) {
         console.error("AuthContext Firestore error:", err);
         setUserData(null);
       }
 
+      setCurrentUser(user);
       setLoading(false);
     });
 

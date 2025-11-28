@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -77,6 +77,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { hasPermission, canAssessRisks, ROLES } from '../config/roles';
 import { useNavigate } from 'react-router-dom';
+import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
 
 // Konfigurasi default risk level ranges berdasarkan tabel koordinat
 const DEFAULT_RISK_LEVELS = [
@@ -492,7 +493,7 @@ const ProfessionalRiskMatrix = ({
   );
 };
 
-// Configuration Dialog untuk Risk Assessment Settings (tetap sama)
+// Configuration Dialog untuk Risk Assessment Settings
 const RiskAssessmentConfigDialog = ({ open, onClose, config, onSave }) => {
   const [localConfig, setLocalConfig] = useState(config);
   const [newLevel, setNewLevel] = useState({ min: 1, max: 5, label: '', color: '#4caf50' });
@@ -733,7 +734,7 @@ const RiskAssessmentConfigDialog = ({ open, onClose, config, onSave }) => {
   );
 };
 
-// Custom Export Menu (tetap sama)
+// Custom Export Menu
 const CustomExportMenu = ({ anchorEl, open, onClose, onExportPDF, onExportCSV, onExportText, loading }) => {
   return (
     <Popover
@@ -798,11 +799,12 @@ const CustomExportMenu = ({ anchorEl, open, onClose, onExportPDF, onExportCSV, o
   );
 };
 
-// Enhanced Risk Assessment Component - DIPERBAIKI: focus pada visualisasi saja
+// Enhanced Risk Assessment Component
 const RiskAssessment = () => {
   const { currentUser, userData } = useAuth();
   const { settings } = useSettings();
   const navigate = useNavigate();
+  const { assessmentConfig, calculateScore, calculateRiskLevel } = useAssessmentConfig();
   
   const [risks, setRisks] = useState([]);
   const [organizationUnits, setOrganizationUnits] = useState([]);
@@ -815,12 +817,6 @@ const RiskAssessment = () => {
   const [exportLoading, setExportLoading] = useState(false);
   const [exportMenuAnchor, setExportMenuAnchor] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-  
-  // ✅ STATE BARU UNTUK KONFIGURASI
-  const [assessmentConfig, setAssessmentConfig] = useState({
-    assessmentMethod: 'multiplication', // 'multiplication' or 'coordinate'
-    riskLevels: DEFAULT_RISK_LEVELS
-  });
 
   // Risk categories
   const riskCategories = [
@@ -844,10 +840,6 @@ const RiskAssessment = () => {
     { value: 'closed', label: 'Ditutup', color: 'success' }
   ];
 
-  // ===============================
-  // FUNGSI UTAMA
-  // ===============================
-
   // Snackbar handler
   const showSnackbar = (message, severity) => {
     setSnackbar({ open: true, message, severity });
@@ -857,26 +849,34 @@ const RiskAssessment = () => {
     setSnackbar({ ...snackbar, open: false });
   };
 
-  // Load data
+  // Load data function
   const loadData = async () => {
     try {
       setLoading(true);
+      
       // Load risks
       const risksSnapshot = await getDocs(collection(db, 'risks'));
-      const risksList = [];
-      risksSnapshot.forEach((doc) => {
-        risksList.push({ id: doc.id, ...doc.data() });
-      });
-      setRisks(risksList);
-      setFilteredRisks(risksList);
-
+      const risksList = risksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
       // Load organization units
       const unitsSnapshot = await getDocs(collection(db, 'organization_units'));
-      const unitsList = [];
-      unitsSnapshot.forEach((doc) => {
-        unitsList.push({ id: doc.id, ...doc.data() });
-      });
+      const unitsList = unitsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setOrganizationUnits(unitsList);
+      
+      // STANDARDISASI data
+      const standardizedRisks = risksList.map(risk => ({
+        ...risk,
+        likelihood: risk.likelihood || risk.initialProbability || 1,
+        impact: risk.impact || risk.initialImpact || 1,
+        inherentScore: risk.inherentScore || calculateScore(
+          risk.likelihood || risk.initialProbability || 1, 
+          risk.impact || risk.initialImpact || 1
+        )
+      }));
+      
+      setRisks(standardizedRisks);
+      setFilteredRisks(standardizedRisks);
+      
     } catch (error) {
       console.error('Error loading data:', error);
       showSnackbar('Error memuat data: ' + error.message, 'error');
@@ -885,39 +885,10 @@ const RiskAssessment = () => {
     }
   };
 
-  // Load configuration from Firestore
-  const loadConfig = async () => {
-    try {
-      const configDoc = await getDoc(doc(db, 'risk_assessment_config', 'default'));
-      if (configDoc.exists()) {
-        setAssessmentConfig(configDoc.data());
-      } else {
-        // Jika dokumen belum ada, buat dengan konfigurasi default
-        await setDoc(doc(db, 'risk_assessment_config', 'default'), {
-          assessmentMethod: 'multiplication',
-          riskLevels: DEFAULT_RISK_LEVELS
-        });
-        setAssessmentConfig({
-          assessmentMethod: 'multiplication',
-          riskLevels: DEFAULT_RISK_LEVELS
-        });
-      }
-    } catch (error) {
-      console.error('Error loading config:', error);
-      // Fallback ke default config jika error
-      setAssessmentConfig({
-        assessmentMethod: 'multiplication',
-        riskLevels: DEFAULT_RISK_LEVELS
-      });
-    }
-  };
-
   // Save configuration to Firestore
   const saveConfig = async (newConfig) => {
     try {
-      // Gunakan setDoc dengan merge: true untuk create atau update
       await setDoc(doc(db, 'risk_assessment_config', 'default'), newConfig, { merge: true });
-      setAssessmentConfig(newConfig);
       showSnackbar('Konfigurasi berhasil disimpan!', 'success');
     } catch (error) {
       console.error('Error saving config:', error);
@@ -942,39 +913,6 @@ const RiskAssessment = () => {
     setExportMenuAnchor(null);
   };
 
-  // Calculate risk level berdasarkan konfigurasi
-  const calculateRiskLevel = (risk) => {
-    let score;
-    
-    if (assessmentConfig.assessmentMethod === 'coordinate') {
-      // Risk level berdasarkan matriks koordinat
-      score = getCoordinateScore(risk.likelihood || 1, risk.impact || 1);
-    } else {
-      // Risk level berdasarkan perkalian
-      score = (risk.likelihood || 1) * (risk.impact || 1);
-    }
-    
-    const riskLevel = assessmentConfig.riskLevels.find(level => 
-      score >= level.min && score <= level.max
-    );
-    
-    if (riskLevel) {
-      return { 
-        level: riskLevel.label, 
-        color: 'primary',
-        customColor: riskLevel.color,
-        score: score
-      };
-    }
-    
-    // Fallback untuk score di luar range
-    if (score >= 20) return { level: 'Extreme', color: 'error', score };
-    if (score >= 16) return { level: 'High', color: 'warning', score };
-    if (score >= 10) return { level: 'Medium', color: 'info', score };
-    if (score >= 5) return { level: 'Low', color: 'success', score };
-    return { level: 'Very Low', color: 'success', score };
-  };
-
   // Handle heatmap click - navigasi ke risk register dengan filter
   const handleHeatmapClick = (riskLevel, likelihood, impact) => {
     const queryParams = new URLSearchParams({
@@ -988,10 +926,9 @@ const RiskAssessment = () => {
     showSnackbar(`Membuka Risk Register dengan filter: ${riskLevel}`, 'info');
   };
 
-  // Load data dan config saat component mount
+  // Load data saat component mount
   useEffect(() => {
     loadData();
-    loadConfig();
   }, []);
 
   // Filter risks

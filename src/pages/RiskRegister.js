@@ -77,6 +77,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
 
 const RiskRegister = () => {
   const [risks, setRisks] = useState([]);
@@ -96,6 +97,7 @@ const RiskRegister = () => {
   const [codeError, setCodeError] = useState('');
   const [expandedRows, setExpandedRows] = useState({});
   const { userData } = useAuth();
+  const { config: assessmentConfig, calculateScore, calculateRiskLevel } = useAssessmentConfig();
 
   // Form data structure - DIPERBAIKI dengan tambahan department
   const [formData, setFormData] = useState({
@@ -171,11 +173,11 @@ const RiskRegister = () => {
   ];
 
   const treatmentPriorities = [
-    { value: 'critical', label: 'Critical - Kritis (Penanganan Segera)' },
-    { value: 'high', label: 'High - Tinggi (Penanganan < 1 Minggu)' },
-    { value: 'medium', label: 'Medium - Sedang (Penanganan < 1 Bulan)' },
-    { value: 'low', label: 'Low - Rendah (Penanganan < 3 Bulan)' },
-    { value: 'monitor', label: 'Monitor - Pantau Saja' }
+    'Critical - Kritis (Penanganan Segera)',
+    'High - Tinggi (Penanganan < 1 Minggu)',
+    'Medium - Sedang (Penanganan < 1 Bulan)',
+    'Low - Rendah (Penanganan < 3 Bulan)',
+    'Monitor - Pantau Saja'
   ];
 
   const departmentsList = [
@@ -206,18 +208,31 @@ const RiskRegister = () => {
     'Rejected - Ditolak'
   ];
 
-
-
   const ratingOptions = [1, 2, 3, 4, 5];
 
   // Calculate risk level
-  const calculateRiskLevel = (impact, probability) => {
-    const score = impact * probability;
-    if (score >= 20) return { level: 'Extreme', color: 'error', score };
-    if (score >= 16) return { level: 'High', color: 'warning', score };
-    if (score >= 10) return { level: 'Medium', color: 'info', score };
-    if (score >= 5) return { level: 'Low', color: 'success', score };
-    return { level: 'Very Low', color: 'success', score };
+  const getRiskLevelInfo = (risk) => {
+    let score;
+    
+    if (assessmentConfig.assessmentMethod === 'coordinate') {
+      score = calculateScore(risk.likelihood || 1, risk.impact || 1);
+    } else {
+      score = (risk.likelihood || 1) * (risk.impact || 1);
+    }
+    
+    return calculateRiskLevel(score);
+  };
+
+  // Render risk level in table
+  const renderRiskLevel = (risk) => {
+    const riskLevelInfo = getRiskLevelInfo(risk);
+    return (
+      <Chip 
+        label={`${riskLevelInfo.level} (${riskLevelInfo.score})`}
+        size="small" 
+        color={riskLevelInfo.color}
+      />
+    );
   };
 
   // Load data
@@ -263,6 +278,44 @@ const RiskRegister = () => {
     }
   }, [formData.riskCode, risks, editingRisk]);
 
+  // Get changed fields for audit trail
+  const getChangedFields = (oldData, newData) => {
+    const changes = [];
+    Object.keys(newData).forEach(key => {
+      // Skip metadata fields dan calculated fields
+      const skipFields = ['createdAt', 'updatedAt', 'createdBy', 'updatedBy', 'auditTrail', 'initialRiskLevel', 'residualRiskLevel'];
+      if (skipFields.includes(key)) return;
+
+      const oldValue = oldData[key];
+      const newValue = newData[key];
+      
+      // Handle perbandingan yang aman untuk berbagai tipe data
+      const oldVal = oldValue === null || oldValue === undefined ? '' : oldValue;
+      const newVal = newValue === null || newValue === undefined ? '' : newValue;
+      
+      if (oldVal.toString() !== newVal.toString()) {
+        changes.push({
+          field: key,
+          oldValue: oldVal,
+          newValue: newVal
+        });
+      }
+    });
+    return changes;
+  };
+
+  // Clean data for Firestore
+  const cleanDataForFirestore = (data) => {
+    const cleaned = {};
+    Object.keys(data).forEach(key => {
+      // Simpan semua nilai termasuk empty string, tapi hapus undefined dan null
+      if (data[key] !== undefined && data[key] !== null) {
+        cleaned[key] = data[key];
+      }
+    });
+    return cleaned;
+  };
+
   // Handle form submit
   const handleSubmit = async () => {
     try {
@@ -282,55 +335,101 @@ const RiskRegister = () => {
           return;
         }
       }
-    // Handle custom inputs sebelum save
+
+      // Handle custom inputs sebelum save
       const finalDepartment = formData.department === 'Lainnya (Input Manual)' 
-        ? formData.customDepartment 
-        : formData.department;
+        ? formData.customDepartment || ''
+        : formData.department || '';
 
       const finalRiskType = formData.riskType === 'Lainnya (Input Manual)'
-        ? formData.customRiskType
-        : formData.riskType;
+        ? formData.customRiskType || ''
+        : formData.riskType || '';
 
-      const riskData = {
-        ...formData,
-        department: finalDepartment, // ✅ Gunakan value final
-        riskType: finalRiskType, // ✅ Gunakan value final
+      // Data utama yang akan disimpan
+      const riskDataToSave = {
+        // Copy semua form data
         riskCode: formData.riskCode.toUpperCase(),
-        riskCode: formData.riskCode.toUpperCase(),
-        initialRiskLevel: formData.initialProbability && formData.initialImpact ? 
-          calculateRiskLevel(parseInt(formData.initialProbability), parseInt(formData.initialImpact)) : null,
-        residualRiskLevel: formData.residualProbability && formData.residualImpact ? 
-          calculateRiskLevel(parseInt(formData.residualProbability), parseInt(formData.residualImpact)) : null,
+        riskType: finalRiskType,
+        classification: formData.classification || '',
+        riskSource: formData.riskSource || '',
+        riskDescription: formData.riskDescription || '',
+        cause: formData.cause || '',
+        impactText: formData.impactText || '',
+        riskOwner: formData.riskOwner || '',
+        department: finalDepartment,
+        initialProbability: formData.initialProbability || '',
+        initialImpact: formData.initialImpact || '',
+        inherentRiskQuantification: formData.inherentRiskQuantification || '',
+        existingControls: formData.existingControls || '',
+        controlEffectiveness: formData.controlEffectiveness || '',
+        residualProbability: formData.residualProbability || '',
+        residualImpact: formData.residualImpact || '',
+        residualRiskQuantification: formData.residualRiskQuantification || '',
+        additionalControls: formData.additionalControls || '',
+        controlCost: formData.controlCost || '',
+        responsiblePerson: formData.responsiblePerson || '',
+        targetCompletion: formData.targetCompletion || '',
+        status: formData.status || 'open',
+        
+        // Metadata
         createdAt: editingRisk ? editingRisk.createdAt : new Date(),
-        createdBy: editingRisk ? editingRisk.createdBy : userData?.name,
+        createdBy: editingRisk ? editingRisk.createdBy : userData?.name || 'System',
         updatedAt: new Date(),
-        updatedBy: userData?.name,
-        auditTrail: [
-          {
-            action: editingRisk ? 'updated' : 'created',
-            timestamp: new Date(),
-            user: userData?.name,
-            changes: editingRisk ? getChangedFields(editingRisk, formData) : []
-          }
-        ]
+        updatedBy: userData?.name || 'System'
       };
 
+      // Hitung score jika ada probability dan impact
+      if (formData.initialProbability && formData.initialImpact) {
+        const likelihood = parseInt(formData.initialProbability) || 1;
+        const impact = parseInt(formData.initialImpact) || 1;
+        const inherentScore = calculateScore(likelihood, impact);
+        
+        riskDataToSave.likelihood = likelihood;
+        riskDataToSave.impact = impact;
+        riskDataToSave.inherentScore = inherentScore;
+        riskDataToSave.initialRiskLevel = calculateRiskLevel(inherentScore);
+      }
+
+      if (formData.residualProbability && formData.residualImpact) {
+        const residualLikelihood = parseInt(formData.residualProbability) || 1;
+        const residualImpact = parseInt(formData.residualImpact) || 1;
+        const residualScore = calculateScore(residualLikelihood, residualImpact);
+        
+        riskDataToSave.residualLikelihood = residualLikelihood;
+        riskDataToSave.residualImpact = residualImpact;
+        riskDataToSave.residualScore = residualScore;
+        riskDataToSave.residualRiskLevel = calculateRiskLevel(residualScore);
+      }
+
+      // Bersihkan data sebelum simpan ke Firestore
+      const cleanedRiskData = cleanDataForFirestore(riskDataToSave);
+
+      // Handle audit trail
       if (editingRisk) {
         const existingAuditTrail = editingRisk.auditTrail || [];
-        riskData.auditTrail = [
+        cleanedRiskData.auditTrail = [
           ...existingAuditTrail,
           {
             action: 'updated',
             timestamp: new Date(),
-            user: userData?.name,
-            changes: getChangedFields(editingRisk, formData)
+            user: userData?.name || 'System',
+            changes: getChangedFields(editingRisk, riskDataToSave)
           }
         ];
         
-        await updateDoc(doc(db, 'risks', editingRisk.id), riskData);
+        await updateDoc(doc(db, "risks", editingRisk.id), cleanedRiskData);
         showSnackbar('Risiko berhasil diupdate!', 'success');
       } else {
-        await addDoc(collection(db, 'risks'), riskData);
+        cleanedRiskData.auditTrail = [
+          {
+            action: 'created',
+            timestamp: new Date(),
+            user: userData?.name || 'System',
+            changes: []
+          }
+        ];
+        
+        await addDoc(collection(db, "risks"), cleanedRiskData);
         showSnackbar('Risiko berhasil ditambahkan!', 'success');
       }
 
@@ -343,72 +442,6 @@ const RiskRegister = () => {
       console.error('Error saving risk:', error);
       showSnackbar('Error menyimpan risiko: ' + error.message, 'error');
     }
-  };
-
-  // Handle assessment submit
-  const handleAssessmentSubmit = async () => {
-    if (!assessingRisk) return;
-
-    try {
-      setLoading(true);
-      
-      const residualScore = assessmentData.residualLikelihood * assessmentData.residualImpact;
-      const inherentScore = assessmentData.likelihood * assessmentData.impact;
-      
-      const assessmentUpdate = {
-        likelihood: assessmentData.likelihood,
-        impact: assessmentData.impact,
-        controlEffectiveness: assessmentData.controlEffectiveness,
-        residualLikelihood: assessmentData.residualLikelihood,
-        residualImpact: assessmentData.residualImpact,
-        residualScore: residualScore,
-        inherentScore: inherentScore,
-        treatmentPriority: assessmentData.treatmentPriority,
-        assessmentNotes: assessmentData.assessmentNotes,
-        assessedAt: new Date(),
-        assessedBy: userData?.name,
-        status: 'Assessed - Telah Dinilai',
-        updatedAt: new Date(),
-        updatedBy: userData?.name
-      };
-
-      await updateDoc(doc(db, 'risks', assessingRisk.id), assessmentUpdate);
-      
-      showSnackbar('Assessment risiko berhasil disimpan!', 'success');
-      setAssessmentDialog(false);
-      setAssessingRisk(null);
-      setAssessmentData({
-        likelihood: 1,
-        impact: 1,
-        controlEffectiveness: 3,
-        residualLikelihood: 1,
-        residualImpact: 1,
-        treatmentPriority: 'Medium - Sedang (Penanganan < 1 Bulan)',
-        assessmentNotes: ''
-      });
-      loadData();
-      
-    } catch (error) {
-      console.error('Error saving assessment:', error);
-      showSnackbar('Error menyimpan assessment: ' + error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Get changed fields for audit trail
-  const getChangedFields = (oldData, newData) => {
-    const changes = [];
-    Object.keys(newData).forEach(key => {
-      if (oldData[key] !== newData[key]) {
-        changes.push({
-          field: key,
-          oldValue: oldData[key],
-          newValue: newData[key]
-        });
-      }
-    });
-    return changes;
   };
 
   // Reset form
@@ -489,6 +522,66 @@ const RiskRegister = () => {
   const handleViewDetail = (risk) => {
     setSelectedRisk(risk);
     setDetailDialog(true);
+  };
+
+  // Handle assessment submit
+  const handleAssessmentSubmit = async () => {
+    if (!assessingRisk) return;
+
+    try {
+      setLoading(true);
+      
+      const residualScore = assessmentData.residualLikelihood * assessmentData.residualImpact;
+      const inherentScore = assessmentData.likelihood * assessmentData.impact;
+      
+      // Data assessment
+      const assessmentUpdate = {
+        likelihood: assessmentData.likelihood || 1,
+        impact: assessmentData.impact || 1,
+        controlEffectiveness: assessmentData.controlEffectiveness || 3,
+        residualLikelihood: assessmentData.residualLikelihood || 1,
+        residualImpact: assessmentData.residualImpact || 1,
+        residualScore: residualScore || 0,
+        inherentScore: inherentScore || 0,
+        treatmentPriority: assessmentData.treatmentPriority || 'Medium - Sedang (Penanganan < 1 Bulan)',
+        assessmentNotes: assessmentData.assessmentNotes || '',
+        assessedAt: new Date(),
+        assessedBy: userData?.name || 'System',
+        status: 'Assessed - Telah Dinilai',
+        updatedAt: new Date(),
+        updatedBy: userData?.name || 'System'
+      };
+
+      // Clean undefined values
+      const cleanAssessmentData = {};
+      Object.keys(assessmentUpdate).forEach(key => {
+        if (assessmentUpdate[key] !== undefined && assessmentUpdate[key] !== null) {
+          cleanAssessmentData[key] = assessmentUpdate[key];
+        }
+      });
+
+      await updateDoc(doc(db, "risks", assessingRisk.id), cleanAssessmentData);
+      
+      showSnackbar('Assessment risiko berhasil disimpan!', 'success');
+      setAssessmentDialog(false);
+      setAssessingRisk(null);
+      setAssessmentData({
+        likelihood: 1,
+        impact: 1,
+        controlEffectiveness: 3,
+        residualLikelihood: 1,
+        residualImpact: 1,
+        treatmentPriority: 'Medium - Sedang (Penanganan < 1 Bulan)',
+        assessmentNotes: ''
+      });
+      loadData();
+      
+    } catch (error) {
+      console.error('Error saving assessment:', error);
+      showSnackbar('Error menyimpan assessment: ' + error.message, 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle delete
@@ -608,7 +701,7 @@ const RiskRegister = () => {
         </CardContent>
       </Card>
 
-      {/* Risks Table - DIPERBAIKI: Tampilan Lebih Lengkap */}
+      {/* Risks Table */}
       <Card sx={{ boxShadow: 3 }}>
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -935,24 +1028,6 @@ const RiskRegister = () => {
                                       </Typography>
                                     </Box>
                                   </Grid>
-
-                                  {/* Treatment Priority */}
-                                  <Grid item xs={12}>
-                                    <FormControl fullWidth>
-                                      <InputLabel>Treatment Priority</InputLabel>
-                                      <Select
-                                        value={assessmentData.treatmentPriority}
-                                        label="Treatment Priority"
-                                        onChange={(e) => setAssessmentData({...assessmentData, treatmentPriority: e.target.value})}
-                                      >
-                                        {treatmentPriorities.map((priority) => (
-                                          <MenuItem key={priority} value={priority}>
-                                            {priority}
-                                          </MenuItem>
-                                        ))}
-                                      </Select>
-                                    </FormControl>
-                                  </Grid>
                                 </Grid>
                               </TableCell>
                             </TableRow>
@@ -983,7 +1058,7 @@ const RiskRegister = () => {
         </CardContent>
       </Card>
 
-      {/* Create/Edit Dialog - DIPERBAIKI dengan tambahan department */}
+      {/* Create/Edit Dialog */}
       <Dialog 
         open={openDialog} 
         onClose={() => {
@@ -1105,7 +1180,7 @@ const RiskRegister = () => {
                   </FormControl>
                 </Grid>
 
-                {/* ✅ DITAMBAHKAN: Departemen */}
+                {/* Departemen */}
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
                     <InputLabel>Departemen</InputLabel>
@@ -1129,6 +1204,7 @@ const RiskRegister = () => {
                     </Select>
                   </FormControl>
                 </Grid>
+
                 {/* Custom Department Input - Tampilkan hanya jika pilih Lainnya */}
                 {formData.department === 'Lainnya (Input Manual)' && (
                   <Grid item xs={12} sm={6}>
@@ -1291,7 +1367,7 @@ const RiskRegister = () => {
                   <Grid item xs={12}>
                     <Alert severity="info">
                       Risk Score: {formData.initialProbability * formData.initialImpact} - 
-                      Level: {calculateRiskLevel(parseInt(formData.initialProbability), parseInt(formData.initialImpact)).level}
+                      Level: {calculateRiskLevel(parseInt(formData.initialProbability) * parseInt(formData.initialImpact)).level}
                     </Alert>
                   </Grid>
                 )}
@@ -1387,7 +1463,7 @@ const RiskRegister = () => {
                   <Grid item xs={12}>
                     <Alert severity="info">
                       Risk Score: {formData.residualProbability * formData.residualImpact} - 
-                      Level: {calculateRiskLevel(parseInt(formData.residualProbability), parseInt(formData.residualImpact)).level}
+                      Level: {calculateRiskLevel(parseInt(formData.residualProbability) * parseInt(formData.residualImpact)).level}
                     </Alert>
                   </Grid>
                 )}
@@ -1636,8 +1712,8 @@ const RiskRegister = () => {
                           {assessmentData.likelihood * assessmentData.impact}
                         </Typography>
                         <Chip 
-                          label={calculateRiskLevel(assessmentData.impact, assessmentData.likelihood).level}
-                          color={calculateRiskLevel(assessmentData.impact, assessmentData.likelihood).color}
+                          label={calculateRiskLevel(assessmentData.likelihood * assessmentData.impact).level}
+                          color={calculateRiskLevel(assessmentData.likelihood * assessmentData.impact).color}
                         />
                       </Grid>
                       <Grid item xs={6}>
@@ -1648,8 +1724,8 @@ const RiskRegister = () => {
                           {assessmentData.residualLikelihood * assessmentData.residualImpact}
                         </Typography>
                         <Chip 
-                          label={calculateRiskLevel(assessmentData.residualImpact, assessmentData.residualLikelihood).level}
-                          color={calculateRiskLevel(assessmentData.residualImpact, assessmentData.residualLikelihood).color}
+                          label={calculateRiskLevel(assessmentData.residualLikelihood * assessmentData.residualImpact).level}
+                          color={calculateRiskLevel(assessmentData.residualLikelihood * assessmentData.residualImpact).color}
                           variant="outlined"
                         />
                       </Grid>

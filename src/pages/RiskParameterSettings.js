@@ -69,7 +69,9 @@ const RiskParameterSettings = () => {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [activeTab, setActiveTab] = useState(0);
   const [editDialog, setEditDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
   const [editingParam, setEditingParam] = useState(null);
+  const [deletingParam, setDeletingParam] = useState(null);
   const { userData } = useAuth();
 
   // State untuk semua parameter
@@ -93,60 +95,54 @@ const RiskParameterSettings = () => {
     actions: ''
   });
 
-// Di file src/pages/RiskParameterSettings.js - bagian loadParameters
+  // Load parameters
+  const loadParameters = async () => {
+    try {
+      setLoading(true);
+      
+      // Load semua risk parameters sekaligus
+      const paramsQuery = query(collection(db, 'risk_parameters'));
+      const paramsSnapshot = await getDocs(paramsQuery);
+      const allParams = paramsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-// ❌ QUERY YANG BERMASALAH:
-// const likelihoodQuery = query(collection(db, 'risk_parameters'), 
-//   where('type', '==', 'likelihood'), orderBy('level'));
+      // Filter di client side
+      const likelihoodData = allParams
+        .filter(param => param.type === 'likelihood')
+        .sort((a, b) => (a.level || 0) - (b.level || 0));
 
-// ✅ PERBAIKAN: Load semua data lalu filter di client side
-const loadParameters = async () => {
-  try {
-    setLoading(true);
-    
-    // Load semua risk parameters sekaligus
-    const paramsQuery = query(collection(db, 'risk_parameters'));
-    const paramsSnapshot = await getDocs(paramsQuery);
-    const allParams = paramsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-    // Filter di client side
-    const likelihoodData = allParams
-      .filter(param => param.type === 'likelihood')
-      .sort((a, b) => (a.level || 0) - (b.level || 0));
-
-    const impactData = allParams.reduce((acc, param) => {
-      if (param.type === 'impact') {
-        if (!acc[param.category]) acc[param.category] = [];
-        acc[param.category].push(param);
-      }
-      return acc;
-    }, {});
-
-    // Sort each impact category by level
-    Object.keys(impactData).forEach(category => {
-      impactData[category] = impactData[category].sort((a, b) => (a.level || 0) - (b.level || 0));
-    });
-
-    const appetiteData = allParams.filter(param => param.type === 'appetite');
-    const matrixData = allParams.filter(param => param.type === 'tolerance');
-
-    setParameters({
-      likelihoodScale: likelihoodData,
-      impactScales: impactData,
-      riskAppetite: appetiteData.reduce((acc, item) => {
-        acc[item.level] = item;
+      const impactData = allParams.reduce((acc, param) => {
+        if (param.type === 'impact') {
+          if (!acc[param.category]) acc[param.category] = [];
+          acc[param.category].push(param);
+        }
         return acc;
-      }, {}),
-      toleranceMatrix: matrixData
-    });
+      }, {});
 
-  } catch (error) {
-    console.error('Error loading parameters:', error);
-    showSnackbar('Error memuat parameter: ' + error.message, 'error');
-  } finally {
-    setLoading(false);
-  }
-};
+      // Sort each impact category by level
+      Object.keys(impactData).forEach(category => {
+        impactData[category] = impactData[category].sort((a, b) => (a.level || 0) - (b.level || 0));
+      });
+
+      const appetiteData = allParams.filter(param => param.type === 'appetite');
+      const matrixData = allParams.filter(param => param.type === 'tolerance');
+
+      setParameters({
+        likelihoodScale: likelihoodData,
+        impactScales: impactData,
+        riskAppetite: appetiteData.reduce((acc, item) => {
+          acc[item.level] = item;
+          return acc;
+        }, {}),
+        toleranceMatrix: matrixData
+      });
+
+    } catch (error) {
+      console.error('Error loading parameters:', error);
+      showSnackbar('Error memuat parameter: ' + error.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Default parameters jika belum ada data
   const initializeDefaultParameters = async () => {
@@ -240,6 +236,32 @@ const loadParameters = async () => {
     setEditDialog(true);
   };
 
+  // Handle delete parameter
+  const handleDelete = (param, type, category = null) => {
+    setDeletingParam({ ...param, _type: type, _category: category });
+    setDeleteDialog(true);
+  };
+
+  // Confirm delete
+  const confirmDelete = async () => {
+    try {
+      setLoading(true);
+      
+      await deleteDoc(doc(db, 'risk_parameters', deletingParam.id));
+      
+      showSnackbar('Parameter berhasil dihapus!', 'success');
+      setDeleteDialog(false);
+      setDeletingParam(null);
+      loadParameters();
+      
+    } catch (error) {
+      console.error('Error deleting parameter:', error);
+      showSnackbar('Error menghapus parameter: ' + error.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Handle save parameter
   const handleSave = async () => {
     try {
@@ -297,6 +319,21 @@ const loadParameters = async () => {
     };
     return icons[category] || <Warning />;
   };
+
+  // Get parameter type label
+  const getParameterTypeLabel = (type) => {
+    const labels = {
+      'likelihood': 'Likelihood Scale',
+      'impact': 'Impact Scale',
+      'appetite': 'Risk Appetite',
+      'tolerance': 'Tolerance Matrix'
+    };
+    return labels[type] || 'Parameter';
+  };
+
+  useEffect(() => {
+    loadParameters();
+  }, []);
 
   return (
     <Box sx={{ p: 3, backgroundColor: 'grey.50', minHeight: '100vh' }}>
@@ -390,12 +427,20 @@ const loadParameters = async () => {
                         <Typography variant="body2">{item.probability}</Typography>
                       </TableCell>
                       <TableCell>
-                        <IconButton 
-                          color="primary"
-                          onClick={() => handleEdit(item, 'likelihood')}
-                        >
-                          <Edit />
-                        </IconButton>
+                        <Box display="flex" gap={1}>
+                          <IconButton 
+                            color="primary"
+                            onClick={() => handleEdit(item, 'likelihood')}
+                          >
+                            <Edit />
+                          </IconButton>
+                          <IconButton 
+                            color="error"
+                            onClick={() => handleDelete(item, 'likelihood')}
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -458,12 +503,21 @@ const loadParameters = async () => {
                               </Typography>
                             </TableCell>
                             <TableCell>
-                              <IconButton 
-                                size="small"
-                                onClick={() => handleEdit(item, 'impact', category)}
-                              >
-                                <Edit />
-                              </IconButton>
+                              <Box display="flex" gap={1}>
+                                <IconButton 
+                                  size="small"
+                                  onClick={() => handleEdit(item, 'impact', category)}
+                                >
+                                  <Edit />
+                                </IconButton>
+                                <IconButton 
+                                  size="small"
+                                  color="error"
+                                  onClick={() => handleDelete(item, 'impact', category)}
+                                >
+                                  <Delete />
+                                </IconButton>
+                              </Box>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -522,13 +576,21 @@ const loadParameters = async () => {
                           Tindakan: {item.actions}
                         </Typography>
                       )}
-                      <Box mt={2}>
+                      <Box mt={2} display="flex" gap={1}>
                         <Button
                           size="small"
                           startIcon={<Edit />}
                           onClick={() => handleEdit(item, 'appetite')}
                         >
                           Edit
+                        </Button>
+                        <Button
+                          size="small"
+                          color="error"
+                          startIcon={<Delete />}
+                          onClick={() => handleDelete(item, 'appetite')}
+                        >
+                          Hapus
                         </Button>
                       </Box>
                     </CardContent>
@@ -700,6 +762,59 @@ const loadParameters = async () => {
             disabled={!formData.name || !formData.level || !formData.description}
           >
             Simpan
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog 
+        open={deleteDialog} 
+        onClose={() => setDeleteDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Konfirmasi Hapus Parameter
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box display="flex" alignItems="center" gap={2} mb={2}>
+            <Warning color="error" />
+            <Typography variant="h6" color="error">
+              Hapus Parameter?
+            </Typography>
+          </Box>
+          <Typography variant="body1" paragraph>
+            Anda akan menghapus parameter:
+          </Typography>
+          <Box sx={{ p: 2, backgroundColor: 'grey.50', borderRadius: 1 }}>
+            <Typography variant="subtitle1" fontWeight="bold">
+              {deletingParam?.name}
+            </Typography>
+            <Typography variant="body2" color="textSecondary">
+              {getParameterTypeLabel(deletingParam?._type)} - Level {deletingParam?.level}
+            </Typography>
+            {deletingParam?._category && (
+              <Typography variant="body2" color="textSecondary">
+                Kategori: {deletingParam?._category}
+              </Typography>
+            )}
+          </Box>
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            Tindakan ini tidak dapat dibatalkan. Parameter yang dihapus akan hilang permanen.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialog(false)}>
+            Batal
+          </Button>
+          <Button 
+            variant="contained" 
+            color="error"
+            onClick={confirmDelete}
+            disabled={loading}
+            startIcon={<Delete />}
+          >
+            {loading ? 'Menghapus...' : 'Ya, Hapus'}
           </Button>
         </DialogActions>
       </Dialog>

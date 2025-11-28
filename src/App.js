@@ -5,6 +5,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CssBaseline, Box, Typography, Button } from '@mui/material';
 import { AuthProvider } from './contexts/AuthContext';
 import { SettingsProvider } from './contexts/SettingsContext';
+import { AssessmentConfigProvider } from './contexts/AssessmentConfigContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 
@@ -69,6 +70,7 @@ function App() {
       <Router>
         <AuthProvider>
           <SettingsProvider>
+            <AssessmentConfigProvider> 
             <Routes>
 
               {/* Public Routes */}
@@ -332,6 +334,7 @@ function App() {
               />
 
             </Routes>
+            </AssessmentConfigProvider>
           </SettingsProvider>
         </AuthProvider>
       </Router>

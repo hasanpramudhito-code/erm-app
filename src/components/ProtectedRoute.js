@@ -7,11 +7,6 @@ import { Box, Typography, CircularProgress } from '@mui/material';
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const { currentUser, userData, loading } = useAuth();
 
-  console.log("🔐 PROTECTED ROUTE DEBUG:");
-  console.log("Current User:", currentUser);
-  console.log("User Data:", userData);
-  console.log("Allowed Roles:", allowedRoles);
-
   if (loading) {
     return (
       <Box
@@ -29,20 +24,20 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
     return <Navigate to="/login" replace />;
   }
 
-  // ================================================
-  // 🔥 NOW: role already normalized by AuthContext
-  // Example outputs:
-  // "ADMIN", "DIRECTOR", "RISK_MANAGER", "RISK_OWNER", "STAFF"
-  // ================================================
+  const getEffectiveRole = () => {
+    if (userData?.role) {
+      return userData.role;
+    }
+    
+    if (currentUser?.email === 'hasan.pramudhito@gmail.com') {
+      return 'ADMIN';
+    }
+    
+    return 'STAFF';
+  };
 
-  const userRole = userData?.role ?? "STAFF";
-
-  console.log("🎭 FINAL USER ROLE FROM CONTEXT:", userRole);
-
-  const hasAccess =
-    allowedRoles.length === 0 || allowedRoles.includes(userRole);
-
-  console.log("🔎 ACCESS CHECK RESULT:", hasAccess);
+  const userRole = getEffectiveRole();
+  const hasAccess = allowedRoles.length === 0 || allowedRoles.includes(userRole);
 
   if (!hasAccess) {
     return (
@@ -68,6 +63,16 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
         >
           Required roles: {allowedRoles.join(", ")}
         </Typography>
+        
+        {!userData && (
+          <Typography
+            variant="caption"
+            color="warning.main"
+            sx={{ mt: 2 }}
+          >
+            Warning: Using fallback permissions. Firestore data not loaded.
+          </Typography>
+        )}
       </Box>
     );
   }
