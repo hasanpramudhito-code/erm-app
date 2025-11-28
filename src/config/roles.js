@@ -74,7 +74,7 @@ export const ROLES = {
     ],
     approval_level: 0,
     can_approve: [],
-    can_assess: false
+    can_assess: true
   }
 };
 

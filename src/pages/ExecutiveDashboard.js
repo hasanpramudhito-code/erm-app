@@ -13,7 +13,6 @@ import {
   TableHead,
   TableRow,
   Chip,
-  LinearProgress,
   CircularProgress,
   Alert,
   ToggleButton,
@@ -34,6 +33,28 @@ import {
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import CompositeScoreService from '../services/compositeScoreService'; // ✅ IMPORT COMPOSITE SCORE
+
+// ✅ CUSTOM PROGRESS BAR UNTUK GANTI LINEARPROGRESS
+const CustomProgressBar = ({ value = 0, color = '#1976d2', height = 8 }) => {
+  return (
+    <div style={{
+      width: '100%',
+      height: height,
+      backgroundColor: '#f0f0f0',
+      borderRadius: '4px',
+      overflow: 'hidden',
+      margin: '4px 0'
+    }}>
+      <div style={{
+        width: `${value}%`,
+        height: '100%',
+        backgroundColor: color,
+        borderRadius: '4px',
+        transition: 'width 0.3s ease'
+      }} />
+    </div>
+  );
+};
 
 const ExecutiveDashboard = () => {
   const [risks, setRisks] = useState([]);
@@ -157,6 +178,15 @@ const ExecutiveDashboard = () => {
 
   // ✅ GET COMPOSITE SCORE COLOR
   const getCompositeScoreColor = (score) => {
+    if (!score) return '#1976d2';
+    if (score >= 80) return '#f44336';
+    if (score >= 60) return '#ff9800';
+    if (score >= 40) return '#2196f3';
+    return '#4caf50';
+  };
+
+  // ✅ GET COMPOSITE SCORE CHIP COLOR
+  const getCompositeScoreChipColor = (score) => {
     if (!score) return 'default';
     if (score >= 80) return 'error';
     if (score >= 60) return 'warning';
@@ -368,7 +398,7 @@ const ExecutiveDashboard = () => {
                     <Box display="flex" alignItems="center" gap={2} mb={2}>
                       <Chip 
                         label={compositeScore.risk_level} 
-                        color={getCompositeScoreColor(compositeScore.score)}
+                        color={getCompositeScoreChipColor(compositeScore.score)}
                         sx={{ color: 'white', fontWeight: 'bold' }}
                       />
                       {getTrendIcon(compositeScore.trend)}
@@ -377,7 +407,7 @@ const ExecutiveDashboard = () => {
                       </Typography>
                     </Box>
 
-                    {/* Component Scores */}
+                    {/* Component Scores - MENGGUNAKAN CUSTOM PROGRESS BAR */}
                     <Grid container spacing={2}>
                       {compositeScore.components && Object.entries(compositeScore.components).map(([component, score]) => (
                         <Grid item xs={6} key={component}>
@@ -385,18 +415,11 @@ const ExecutiveDashboard = () => {
                             <Typography variant="body2" sx={{ opacity: 0.9 }}>
                               {component.replace('_', ' ').toUpperCase()}
                             </Typography>
-                            <LinearProgress 
-                              variant="determinate" 
+                            {/* ✅ MENGGUNAKAN CUSTOM PROGRESS BAR */}
+                            <CustomProgressBar 
                               value={score}
                               color={getCompositeScoreColor(score)}
-                              sx={{ 
-                                height: 8, 
-                                borderRadius: 4,
-                                backgroundColor: 'rgba(255,255,255,0.3)',
-                                '& .MuiLinearProgress-bar': {
-                                  backgroundColor: 'white'
-                                }
-                              }}
+                              height={8}
                             />
                             <Typography variant="body2" fontWeight="bold" sx={{ mt: 0.5 }}>
                               {score}
@@ -426,10 +449,7 @@ const ExecutiveDashboard = () => {
                   <Box>
                     {scoreHistory.slice(0, 4).map((score, index) => (
                       <Box key={score.id} sx={{ mb: 2, p: 1, borderLeft: `4px solid` }} style={{ 
-                        borderLeftColor: 
-                          score.score >= 80 ? '#f44336' :
-                          score.score >= 60 ? '#ff9800' :
-                          score.score >= 40 ? '#2196f3' : '#4caf50'
+                        borderLeftColor: getCompositeScoreColor(score.score)
                       }}>
                         <Box display="flex" justifyContent="space-between" alignItems="center">
                           <Typography variant="body2" fontWeight="bold">
@@ -438,11 +458,10 @@ const ExecutiveDashboard = () => {
                           <Chip 
                             label={score.risk_level} 
                             size="small"
-                            color={getCompositeScoreColor(score.score)}
+                            color={getCompositeScoreChipColor(score.score)}
                           />
                         </Box>
                         <Typography variant="caption" color="textSecondary">
-                          {/* ✅ FIX: Use the safe date formatter */}
                           {formatScoreDate(score.calculated_at)}
                         </Typography>
                       </Box>
@@ -526,7 +545,6 @@ const ExecutiveDashboard = () => {
         </Grid>
       </Grid>
 
-      {/* Rest of your existing dashboard content remains the same */}
       {/* Risk Heatmap & Top Risks - REAL DATA */}
       <Grid container spacing={3}>
         {/* Risk Heatmap */}
@@ -594,7 +612,7 @@ const ExecutiveDashboard = () => {
                 </Paper>
               </Box>
 
-              {/* Risk Distribution */}
+              {/* Risk Distribution - MENGGUNAKAN CUSTOM PROGRESS BAR */}
               <Box sx={{ mt: 3 }}>
                 <Typography variant="h6" gutterBottom>
                   Risk Distribution by Category
@@ -605,10 +623,11 @@ const ExecutiveDashboard = () => {
                       <Typography variant="body2">{category}</Typography>
                       <Typography variant="body2" fontWeight="bold">{count}</Typography>
                     </Box>
-                    <LinearProgress 
-                      variant="determinate" 
+                    {/* ✅ MENGGUNAKAN CUSTOM PROGRESS BAR */}
+                    <CustomProgressBar 
                       value={(count / stats.totalRisks) * 100}
-                      sx={{ height: 8, borderRadius: 4 }}
+                      color="#1976d2"
+                      height={8}
                     />
                   </Box>
                 ))}

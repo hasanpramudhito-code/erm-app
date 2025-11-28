@@ -2,12 +2,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
-import { 
-  CssBaseline, 
-  Box, 
-  Typography, 
-  Button 
-} from '@mui/material';
+import { CssBaseline, Box, Typography, Button } from '@mui/material';
 import { AuthProvider } from './contexts/AuthContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -23,7 +18,7 @@ import RiskRegister from './pages/RiskRegister';
 import RiskAssessment from './pages/RiskAssessment';
 import RiskTreatmentPlans from './pages/RiskTreatmentPlans';
 import ExecutiveDashboard from './pages/ExecutiveDashboard';
-import KRIMonitoring from './pages/KRIMonitoring';
+import KRIMonitoring from './pages/KRIMonitoring'; // ✅ Gunakan yang original
 import IncidentReporting from './pages/IncidentReporting';
 import Reporting from './pages/Reporting';
 import KRIMonitoringService from './services/kriMonitoringService';
@@ -33,43 +28,35 @@ import APIIntegration from './pages/APIIntegration';
 import SettingsPanel from './pages/SettingsPanel';
 import RiskParameterSettings from './pages/RiskParameterSettings';
 import RACIChart from './components/RACIChart';
+import RiskAppetiteDashboard from './pages/RiskAppetite/RiskAppetiteDashboard';
+import KRISettings from './pages/KRIMonitoring/KRISettings';
+import RiskToleranceSettings from './pages/RiskAppetite/RiskToleranceSettings';
+import ControlRegister from './pages/ControlTesting/ControlRegister';
+import TestingSchedule from './pages/ControlTesting/TestingSchedule';
+import TestResults from './pages/ControlTesting/TestResults';
+import DeficiencyTracking from './pages/ControlTesting/DeficiencyTracking';
+
+// ❌ HAPUS: import EnhancedKRIMonitoring from './pages/KRIMonitoring/KRIDashboard';
 
 const theme = createTheme({
   palette: {
-    primary: { 
-    main: '#2e7d32',    // ✅ HIJAU
-    light: '#4caf50', 
-    dark: '#1b5e20'
-  },
-    secondary: { 
-    main: '#ff6f00',    // ✅ ORANGE
-    light: '#ff9800',
-    dark: '#e65100'
-  },
-    background: { 
-      default: '#f5f5f5',
-      paper: '#ffffff'
-    },
+    primary: { main: '#2e7d32', light: '#4caf50', dark: '#1b5e20' },
+    secondary: { main: '#ff6f00', light: '#ff9800', dark: '#e65100' },
+    background: { default: '#f5f5f5', paper: '#ffffff' },
   },
   typography: {
     fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    h4: {
-      fontWeight: 600,
-    },
-    h6: {
-      fontWeight: 600,
-    }
+    h4: { fontWeight: 600 },
+    h6: { fontWeight: 600 }
   },
-  shape: {
-    borderRadius: 8,
-  },
+  shape: { borderRadius: 8 },
 });
 
 function App() {
   useEffect(() => {
     console.log('Starting KRI Monitoring Service...');
     KRIMonitoringService.startMonitoring();
-    
+
     return () => {
       console.log('Stopping KRI Monitoring Service...');
       KRIMonitoringService.stopMonitoring();
@@ -83,18 +70,17 @@ function App() {
         <AuthProvider>
           <SettingsProvider>
             <Routes>
+
               {/* Public Routes */}
               <Route path="/login" element={<Login />} />
               <Route path="/unauthorized" element={<Unauthorized />} />
 
-              {/* Protected Routes with Layout */}
+              {/* Dashboard */}
               <Route
                 path="/"
                 element={
                   <ProtectedRoute>
-                    <Layout>
-                      <Dashboard />
-                    </Layout>
+                    <Layout><Dashboard /></Layout>
                   </ProtectedRoute>
                 }
               />
@@ -103,203 +89,240 @@ function App() {
                 path="/dashboard"
                 element={
                   <ProtectedRoute>
-                    <Layout>
-                      <Dashboard />
-                    </Layout>
+                    <Layout><Dashboard /></Layout>
                   </ProtectedRoute>
                 }
               />
 
-              {/* EXECUTIVE DASHBOARD - Accessible by all roles */}
+              {/* EXECUTIVE DASHBOARD */}
               <Route
                 path="/executive-dashboard"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Owner', 'Risk Officer', 'Direksi', 'DK/Dewas']}>
-                    <Layout>
-                      <ExecutiveDashboard />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OWNER', 'RISK_OFFICER', 'DIRECTOR', 'DK/DEWAS']}>
+                    <Layout><ExecutiveDashboard /></Layout>
                   </ProtectedRoute>
                 }
               />
 
-              {/* KRI MONITORING - Accessible by all roles */}
+              {/* ✅ FIXED: KRI MONITORING - Gunakan KRIMonitoring bukan EnhancedKRIMonitoring */}
               <Route
                 path="/kri-monitoring"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Owner', 'Risk Officer', 'Direksi', 'DK/Dewas']}>
-                    <Layout>
-                      <KRIMonitoring />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OWNER', 'RISK_OFFICER', 'DIRECTOR', 'DK/DEWAS']}>
+                    <Layout><KRIMonitoring /></Layout>
                   </ProtectedRoute>
                 }
               />
 
+              {/* ORGANIZATION */}
               <Route
                 path="/organization"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Officer']}>
-                    <Layout>
-                      <OrganizationStructure />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER']}>
+                    <Layout><OrganizationStructure /></Layout>
                   </ProtectedRoute>
                 }
               />
 
-              {/* USER MANAGEMENT - Admin only */}
+              {/* USER MANAGEMENT */}
               <Route
                 path="/user-management"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin']}>
-                    <Layout>
-                      <UserManagement />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN']}>
+                    <Layout><UserManagement /></Layout>
                   </ProtectedRoute>
                 }
               />
 
+              {/* RISK REGISTER */}
               <Route
                 path="/risk-register"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Owner', 'Risk Officer', 'Direksi', 'DK/Dewas']}>
-                    <Layout>
-                      <RiskRegister />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OWNER', 'RISK_OFFICER', 'DIRECTOR', 'DK/DEWAS']}>
+                    <Layout><RiskRegister /></Layout>
                   </ProtectedRoute>
                 }
               />
 
+              {/* RISK ASSESSMENT */}
               <Route
                 path="/risk-assessment"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Owner', 'Risk Officer', 'Direksi', 'DK/Dewas']}>
-                    <Layout>
-                      <RiskAssessment />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OWNER', 'RISK_OFFICER', 'DIRECTOR', 'DK/DEWAS']}>
+                    <Layout><RiskAssessment /></Layout>
                   </ProtectedRoute>
                 }
               />
 
-              <Route 
-                path="/treatment-plans" 
+              {/* TREATMENT PLANS */}
+              <Route
+                path="/treatment-plans"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Owner', 'Risk Officer', 'Direksi']}>
-                    <Layout>
-                      <RiskTreatmentPlans />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OWNER', 'RISK_OFFICER', 'DIRECTOR']}>
+                    <Layout><RiskTreatmentPlans /></Layout>
                   </ProtectedRoute>
-                } 
+                }
               />
 
-              {/* ✅ RISK PARAMETERS SETTINGS - Sesuaikan dengan role yang ada */}
+              {/* RISK PARAMETERS */}
               <Route
                 path="/risk-parameters"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Officer', 'Direksi']}>
-                    <Layout>
-                      <RiskParameterSettings />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER', 'DIRECTOR', 'RISK_OWNER']}>
+                    <Layout><RiskParameterSettings /></Layout>
                   </ProtectedRoute>
                 }
               />
 
-              {/* SETTINGS - Admin & Risk Officer */}
+              {/* SETTINGS */}
               <Route
                 path="/settings"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Officer']}>
-                    <Layout>
-                      <SettingsPanel />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER']}>
+                    <Layout><SettingsPanel /></Layout>
                   </ProtectedRoute>
                 }
               />
 
+              {/* INCIDENT REPORTING */}
               <Route
                 path="/incident-reporting"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Owner', 'Risk Officer', 'Direksi', 'DK/Dewas']}>
-                    <Layout>
-                      <IncidentReporting />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OWNER', 'RISK_OFFICER', 'DIRECTOR', 'DK/DEWAS']}>
+                    <Layout><IncidentReporting /></Layout>
                   </ProtectedRoute>
                 }
               />
 
+              {/* REPORTING */}
               <Route
                 path="/reporting"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Officer', 'Direksi', 'DK/Dewas']}>
-                    <Layout>
-                      <Reporting />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER', 'DIRECTOR', 'DK/DEWAS']}>
+                    <Layout><Reporting /></Layout>
                   </ProtectedRoute>
                 }
               />
 
+              {/* RISK CULTURE */}
               <Route
                 path="/risk-culture"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Officer', 'Direksi', 'DK/Dewas']}>
-                    <Layout>
-                      <RiskCulture />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER', 'DIRECTOR', 'DK/DEWAS']}>
+                    <Layout><RiskCulture /></Layout>
                   </ProtectedRoute>
                 }
               />
 
+              {/* DATABASE MGMT */}
               <Route
                 path="/database-management"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin']}>
-                    <Layout>
-                      <DatabaseManagement />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN']}>
+                    <Layout><DatabaseManagement /></Layout>
                   </ProtectedRoute>
                 }
               />
 
+              {/* API INTEGRATION */}
               <Route
                 path="/api-integration"
                 element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Officer']}>
-                    <Layout>
-                      <APIIntegration />
-                    </Layout>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER']}>
+                    <Layout><APIIntegration /></Layout>
                   </ProtectedRoute>
                 }
               />
-              <Route
-                path="/risk-parameters"
-                element={
-                  <ProtectedRoute allowedRoles={['Admin', 'Risk Officer', 'Direksi', 'Risk Owner']}> {/* ✅ TAMBAH Risk Owner */}
-                    <Layout>
-                      <RiskParameterSettings />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="/raci-chart" element={<RACIChart />} />
 
-              {/* Catch all route - 404 */}
+              {/* RACI */}
+              <Route
+                path="/raci-chart"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OWNER', 'RISK_OFFICER', 'DIRECTOR', 'DK/DEWAS']}>
+                    <Layout><RACIChart /></Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* RISK APPETITE */}
+              <Route
+                path="/risk-appetite"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER', 'DIRECTOR', 'DK/DEWAS']}>
+                    <Layout><RiskAppetiteDashboard /></Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* KRI SETTINGS */}
+              <Route
+                path="/kri-settings"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER']}>
+                    <Layout><KRISettings /></Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* RISK TOLERANCE */}
+              <Route
+                path="/risk-tolerance"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER', 'DIRECTOR']}>
+                    <Layout><RiskToleranceSettings /></Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* CONTROL REGISTER */}
+              <Route
+                path="/control-register"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER', 'DIRECTOR']}>
+                    <Layout><ControlRegister /></Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* CONTROL TESTING */}
+              <Route
+                path="/testing-schedule"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER']}>
+                    <Layout><TestingSchedule /></Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/test-results"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OWNER', 'RISK_OFFICER', 'DIRECTOR', 'DK/DEWAS']}>
+                    <Layout><TestResults /></Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/deficiency-tracking"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OWNER', 'RISK_OFFICER', 'DIRECTOR']}>
+                    <Layout><DeficiencyTracking /></Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* 404 */}
               <Route
                 path="*"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <Box 
-                        display="flex" 
-                        justifyContent="center" 
-                        alignItems="center" 
-                        height="80vh"
-                        flexDirection="column"
-                      >
+                      <Box display="flex" justifyContent="center" alignItems="center" height="80vh" flexDirection="column">
                         <Typography variant="h4" color="textSecondary" gutterBottom>
                           404 - Page Not Found
                         </Typography>
-                        <Button 
-                          variant="contained" 
-                          onClick={() => window.location.href = '/'}
-                        >
+                        <Button variant="contained" onClick={() => window.location.href = '/'}>
                           Back to Dashboard
                         </Button>
                       </Box>
@@ -307,6 +330,7 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+
             </Routes>
           </SettingsProvider>
         </AuthProvider>

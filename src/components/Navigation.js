@@ -24,7 +24,11 @@ import {
   Assignment,
   Report,
   AccountTree,
-  Logout // ✅ TAMBAHKAN INI
+  Logout,
+  Security, // ✅ ICON BARU UNTUK CONTROL TESTING
+  Schedule, // ✅ ICON BARU
+  BugReport, // ✅ ICON BARU
+  CheckCircle // ✅ ICON BARU
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,7 +37,8 @@ const Navigation = () => {
   const { currentUser, logout } = useAuth();
   const location = useLocation();
   const [openMenus, setOpenMenus] = useState({
-    organization: false
+    organization: false,
+    controltesting: false // ✅ MENU BARU
   });
 
   const handleMenuClick = (menu) => {
@@ -51,7 +56,7 @@ const Navigation = () => {
     }
   };
 
-  // Navigation structure sesuai permintaan - JANGAN DIUBAH
+  // Navigation structure dengan CONTROL TESTING - TAMBAH DI SETIAP ROLE
   const navigationStructure = {
     ADMIN: [
       {
@@ -73,6 +78,34 @@ const Navigation = () => {
         text: 'Treatment Plans',
         icon: <Assignment />,
         path: '/treatment-plans'
+      },
+      // ✅ CONTROL TESTING MODULE - TAMBAH DI SINI
+      {
+        text: 'Control Testing',
+        icon: <Security />,
+        hasChildren: true,
+        children: [
+          {
+            text: 'Control Register',
+            icon: <Security />,
+            path: '/control-register'
+          },
+          {
+            text: 'Testing Schedule',
+            icon: <Schedule />,
+            path: '/testing-schedule'
+          },
+          {
+            text: 'Test Results',
+            icon: <CheckCircle />,
+            path: '/test-results'
+          },
+          {
+            text: 'Deficiency Tracking',
+            icon: <BugReport />,
+            path: '/deficiency-tracking'
+          }
+        ]
       },
       {
         text: 'KRI Monitoring',
@@ -117,15 +150,15 @@ const Navigation = () => {
         hasChildren: true,
         children: [
           {
-          text: 'Dashboard', // ✅ TAMBAH DASHBOARD DI SINI
-          icon: <Dashboard />,
-          path: '/dashboard'
-        },
-        {
-          text: 'System Settings',
-          icon: <Settings />,
-          path: '/settings'
-        },
+            text: 'Dashboard',
+            icon: <Dashboard />,
+            path: '/dashboard'
+          },
+          {
+            text: 'System Settings',
+            icon: <Settings />,
+            path: '/settings'
+          },
         ]
       }
     ],
@@ -149,6 +182,34 @@ const Navigation = () => {
         text: 'Treatment Plans',
         icon: <Assignment />,
         path: '/treatment-plans'
+      },
+      // ✅ CONTROL TESTING MODULE - TAMBAH DI SINI
+      {
+        text: 'Control Testing',
+        icon: <Security />,
+        hasChildren: true,
+        children: [
+          {
+            text: 'Control Register',
+            icon: <Security />,
+            path: '/control-register'
+          },
+          {
+            text: 'Testing Schedule',
+            icon: <Schedule />,
+            path: '/testing-schedule'
+          },
+          {
+            text: 'Test Results',
+            icon: <CheckCircle />,
+            path: '/test-results'
+          },
+          {
+            text: 'Deficiency Tracking',
+            icon: <BugReport />,
+            path: '/deficiency-tracking'
+          }
+        ]
       },
       {
         text: 'KRI Monitoring',
@@ -188,15 +249,15 @@ const Navigation = () => {
         hasChildren: true,
         children: [
           {
-          text: 'Dashboard', // ✅ TAMBAH DASHBOARD DI SINI
-          icon: <Dashboard />,
-          path: '/dashboard'
-        },
-        {
-          text: 'System Settings',
-          icon: <Settings />,
-          path: '/settings'
-        },
+            text: 'Dashboard',
+            icon: <Dashboard />,
+            path: '/dashboard'
+          },
+          {
+            text: 'System Settings',
+            icon: <Settings />,
+            path: '/settings'
+          },
         ]
       }
     ],
@@ -220,6 +281,34 @@ const Navigation = () => {
         text: 'Treatment Plans',
         icon: <Assignment />,
         path: '/treatment-plans'
+      },
+      // ✅ CONTROL TESTING MODULE - TAMBAH DI SINI
+      {
+        text: 'Control Testing',
+        icon: <Security />,
+        hasChildren: true,
+        children: [
+          {
+            text: 'Control Register',
+            icon: <Security />,
+            path: '/control-register'
+          },
+          {
+            text: 'Testing Schedule',
+            icon: <Schedule />,
+            path: '/testing-schedule'
+          },
+          {
+            text: 'Test Results',
+            icon: <CheckCircle />,
+            path: '/test-results'
+          },
+          {
+            text: 'Deficiency Tracking',
+            icon: <BugReport />,
+            path: '/deficiency-tracking'
+          }
+        ]
       },
       {
         text: 'KRI Monitoring',
@@ -254,15 +343,15 @@ const Navigation = () => {
         hasChildren: true,
         children: [
           {
-          text: 'Dashboard', // ✅ TAMBAH DASHBOARD DI SINI
-          icon: <Dashboard />,
-          path: '/dashboard'
-        },
-        {
-          text: 'System Settings',
-          icon: <Settings />,
-          path: '/settings'
-        },
+            text: 'Dashboard',
+            icon: <Dashboard />,
+            path: '/dashboard'
+          },
+          {
+            text: 'System Settings',
+            icon: <Settings />,
+            path: '/settings'
+          },
         ]
       }
     ],
@@ -287,6 +376,29 @@ const Navigation = () => {
         icon: <Assignment />,
         path: '/treatment-plans'
       },
+      // ✅ CONTROL TESTING MODULE - TAMBAH DI SINI (READ-ONLY ACCESS)
+      {
+        text: 'Control Testing',
+        icon: <Security />,
+        hasChildren: true,
+        children: [
+          {
+            text: 'Control Register',
+            icon: <Security />,
+            path: '/control-register'
+          },
+          {
+            text: 'Test Results',
+            icon: <CheckCircle />,
+            path: '/test-results'
+          },
+          {
+            text: 'Deficiency Tracking',
+            icon: <BugReport />,
+            path: '/deficiency-tracking'
+          }
+        ]
+      },
       {
         text: 'Lapor Kejadian',
         icon: <Report />,
@@ -298,15 +410,15 @@ const Navigation = () => {
         hasChildren: true,
         children: [
           {
-          text: 'Dashboard', // ✅ TAMBAH DASHBOARD DI SINI
-          icon: <Dashboard />,
-          path: '/dashboard'
-        },
-        {
-          text: 'System Settings',
-          icon: <Settings />,
-          path: '/settings'
-        },
+            text: 'Dashboard',
+            icon: <Dashboard />,
+            path: '/dashboard'
+          },
+          {
+            text: 'System Settings',
+            icon: <Settings />,
+            path: '/settings'
+          },
         ]
       }
     ],
@@ -321,6 +433,24 @@ const Navigation = () => {
         icon: <Warning />,
         path: '/risk-register'
       },
+      // ✅ CONTROL TESTING MODULE - TAMBAH DI SINI (VIEW ONLY)
+      {
+        text: 'Control Testing',
+        icon: <Security />,
+        hasChildren: true,
+        children: [
+          {
+            text: 'Control Register',
+            icon: <Security />,
+            path: '/control-register'
+          },
+          {
+            text: 'Test Results',
+            icon: <CheckCircle />,
+            path: '/test-results'
+          }
+        ]
+      },
       {
         text: 'Lapor Kejadian',
         icon: <Report />,
@@ -334,7 +464,6 @@ const Navigation = () => {
   const rawRole = userData?.role || 'STAFF';
   const userRole = rawRole.toUpperCase();
   const menuItems = navigationStructure[userRole] || navigationStructure.STAFF;
-
 
   const renderMenuItem = (item, level = 0) => {
     const isActive = location.pathname === item.path;
@@ -424,11 +553,11 @@ const Navigation = () => {
         {menuItems.map(item => renderMenuItem(item))}
       </List>
       
-      {/* ✅ LOGOUT MENU */}
+      {/* LOGOUT MENU */}
       <Divider sx={{ my: 1 }} />
       <List>
         <ListItem
-           component="button"
+          component="button"
           onClick={handleLogout}
           sx={{
             pl: 2,
@@ -440,7 +569,7 @@ const Navigation = () => {
           }}
         >
           <ListItemIcon sx={{ color: 'inherit' }}>
-            <Logout /> {/* ✅ SEKARANG SUDAH TERDEFINISI */}
+            <Logout />
           </ListItemIcon>
           <ListItemText 
             primary={

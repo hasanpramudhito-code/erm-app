@@ -115,7 +115,21 @@ const Reporting = () => {
           riskOwner: data.riskOwner || '',
           title: data.title || data.riskDescription || 'Unnamed Risk',
           riskDescription: data.riskDescription || data.title || 'No description',
-          createdAt: convertFirebaseTimestamp(data.createdAt)
+          riskCode: data.riskCode || '',
+          department: data.department || '',
+          riskType: data.riskType || '',
+          riskSource: data.riskSource || '',
+          cause: data.cause || '',
+          effect: data.effect || '',
+          existingControl: data.existingControl || '',
+          status: data.status || 'Identified',
+          progress: data.progress || 0,
+          comments: data.comments || '',
+          createdBy: data.createdBy || '',
+          identificationDate: convertFirebaseTimestamp(data.identificationDate),
+          targetDate: convertFirebaseTimestamp(data.targetDate),
+          createdAt: convertFirebaseTimestamp(data.createdAt),
+          updatedAt: convertFirebaseTimestamp(data.updatedAt)
         });
       });
       console.log('✅ Loaded risks:', risksList.length);
@@ -240,13 +254,13 @@ const Reporting = () => {
     }
   };
 
-  // ✅ SIMPLE PDF EXPORT WITHOUT AUTOTABLE
+  // ✅ PDF EXPORT DIPERBAIKI untuk Risk Register lengkap
   const generatePDF = async () => {
     setGenerating(true);
     try {
       const { filteredRisks, filteredTreatments, filteredIncidents } = getFilteredData();
       
-      console.log('🔄 Starting PDF generation with manual tables...');
+      console.log('🔄 Starting PDF generation with complete risk register...');
 
       // Dynamic import jsPDF
       const { jsPDF } = await import('jspdf');
@@ -323,32 +337,42 @@ const Reporting = () => {
 
       yPosition += 5;
 
-      // Risk Register Section
-      if (filteredRisks.length > 0) {
+      // Risk Register Section - DIPERBAIKI dengan tabel lengkap
+      if (filteredRisks.length > 0 && (reportConfig.reportType === 'risk_register' || reportConfig.reportType === 'comprehensive')) {
         checkNewPage(15);
         doc.setFontSize(12);
         doc.setTextColor(25, 118, 210);
-        doc.text('RISK REGISTER', margin, yPosition);
+        doc.text('RISK REGISTER - LENGKAP', margin, yPosition);
         yPosition += 8;
 
-        // Table Header
+        // Table Header untuk risk register lengkap
         checkNewPage(10);
         doc.setFillColor(240, 240, 240);
         doc.rect(margin, yPosition, 170, 8, 'F');
-        doc.setFontSize(8);
+        doc.setFontSize(6);
         doc.setTextColor(0, 0, 0);
         doc.setFont('helvetica', 'bold');
+        
+        // Header columns
         doc.text('No', margin + 2, yPosition + 5);
-        doc.text('Description', margin + 15, yPosition + 5);
-        doc.text('L', margin + 120, yPosition + 5);
-        doc.text('I', margin + 130, yPosition + 5);
-        doc.text('Score', margin + 140, yPosition + 5);
-        doc.text('Level', margin + 160, yPosition + 5);
+        doc.text('Kode', margin + 8, yPosition + 5);
+        doc.text('Judul', margin + 20, yPosition + 5);
+        doc.text('Dept', margin + 60, yPosition + 5);
+        doc.text('Tipe', margin + 70, yPosition + 5);
+        doc.text('Sumber', margin + 80, yPosition + 5);
+        doc.text('L', margin + 95, yPosition + 5);
+        doc.text('I', margin + 100, yPosition + 5);
+        doc.text('Score', margin + 105, yPosition + 5);
+        doc.text('Level', margin + 115, yPosition + 5);
+        doc.text('Pemilik', margin + 125, yPosition + 5);
+        doc.text('Status', margin + 150, yPosition + 5);
+        doc.text('Progress', margin + 165, yPosition + 5);
+        
         yPosition += 10;
 
-        // Table Rows
+        // Table Rows dengan data lengkap
         filteredRisks.forEach((risk, index) => {
-          checkNewPage(10);
+          checkNewPage(8);
           
           const score = (risk.likelihood || 1) * (risk.impact || 1);
           const level = score >= 20 ? 'Extreme' : score >= 16 ? 'High' : score >= 10 ? 'Medium' : 'Low';
@@ -359,25 +383,100 @@ const Reporting = () => {
             doc.rect(margin, yPosition - 2, 170, 8, 'F');
           }
 
-          doc.setFontSize(7);
+          doc.setFontSize(5);
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(0, 0, 0);
           
+          // Data rows
           doc.text((index + 1).toString(), margin + 2, yPosition + 5);
-          doc.text(risk.title?.substring(0, 40) || 'No Title', margin + 15, yPosition + 5);
-          doc.text((risk.likelihood || 1).toString(), margin + 120, yPosition + 5);
-          doc.text((risk.impact || 1).toString(), margin + 130, yPosition + 5);
-          doc.text(score.toString(), margin + 140, yPosition + 5);
-          doc.text(level, margin + 160, yPosition + 5);
+          doc.text(risk.riskCode?.substring(0, 6) || '-', margin + 8, yPosition + 5);
+          doc.text(risk.title?.substring(0, 25) || 'No Title', margin + 20, yPosition + 5);
+          doc.text(risk.department?.substring(0, 6) || '-', margin + 60, yPosition + 5);
+          doc.text(risk.riskType?.substring(0, 6) || '-', margin + 70, yPosition + 5);
+          doc.text(risk.riskSource?.substring(0, 8) || '-', margin + 80, yPosition + 5);
+          doc.text((risk.likelihood || 1).toString(), margin + 95, yPosition + 5);
+          doc.text((risk.impact || 1).toString(), margin + 100, yPosition + 5);
+          doc.text(score.toString(), margin + 105, yPosition + 5);
+          doc.text(level.substring(0, 1), margin + 115, yPosition + 5);
+          doc.text(risk.riskOwner?.substring(0, 8) || '-', margin + 125, yPosition + 5);
+          doc.text(risk.status?.substring(0, 8) || '-', margin + 150, yPosition + 5);
+          doc.text(`${risk.progress || 0}%`, margin + 165, yPosition + 5);
           
           yPosition += 8;
         });
 
         yPosition += 5;
+
+        // Detail lengkap untuk risk register
+        if (reportConfig.reportType === 'risk_register') {
+          checkNewPage(20);
+          doc.setFontSize(12);
+          doc.setTextColor(25, 118, 210);
+          doc.text('DETAIL LENGKAP RISK REGISTER', margin, yPosition);
+          yPosition += 8;
+
+          // Tampilkan detail lengkap per risiko
+          filteredRisks.forEach((risk, index) => {
+            if (index > 0) {
+              checkNewPage(40);
+              if (yPosition > pageHeight - 40) {
+                doc.addPage();
+                yPosition = margin;
+              }
+            }
+
+            doc.setFontSize(10);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`Risk ${index + 1}: ${risk.title || 'No Title'}`, margin, yPosition);
+            yPosition += 6;
+
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            
+            const details = [
+              `Kode Risiko: ${risk.riskCode || '-'}`,
+              `Departemen: ${risk.department || '-'}`,
+              `Tipe Risiko: ${risk.riskType || '-'}`,
+              `Sumber Risiko: ${risk.riskSource || '-'}`,
+              `Penyebab: ${risk.cause || '-'}`,
+              `Dampak: ${risk.effect || '-'}`,
+              `Deskripsi: ${risk.riskDescription || '-'}`,
+              `Likelihood: ${risk.likelihood || 1} | Impact: ${risk.impact || 1} | Score: ${(risk.likelihood || 1) * (risk.impact || 1)}`,
+              `Klasifikasi: ${risk.classification || '-'}`,
+              `Pemilik: ${risk.riskOwner || '-'}`,
+              `Existing Control: ${risk.existingControl || '-'}`,
+              `Status: ${risk.status || '-'}`,
+              `Progress: ${risk.progress || 0}%`,
+              `Komentar: ${risk.comments || '-'}`,
+              `Tanggal Identifikasi: ${risk.identificationDate?.toLocaleDateString('id-ID') || '-'}`,
+              `Target Penyelesaian: ${risk.targetDate?.toLocaleDateString('id-ID') || '-'}`,
+              `Dibuat oleh: ${risk.createdBy || '-'} pada ${risk.createdAt?.toLocaleDateString('id-ID') || '-'}`
+            ];
+
+            details.forEach(detail => {
+              checkNewPage();
+              if (detail.length > 80) {
+                // Handle long text by splitting
+                const chunks = detail.match(/.{1,80}/g) || [];
+                chunks.forEach(chunk => {
+                  checkNewPage();
+                  doc.text(chunk, margin + 5, yPosition);
+                  yPosition += 4;
+                });
+              } else {
+                doc.text(detail, margin + 5, yPosition);
+                yPosition += 4;
+              }
+            });
+
+            yPosition += 8;
+          });
+        }
       }
 
       // Treatment Progress Section
-      if (filteredTreatments.length > 0) {
+      if (filteredTreatments.length > 0 && (reportConfig.reportType === 'treatment_progress' || reportConfig.reportType === 'comprehensive')) {
         checkNewPage(15);
         doc.setFontSize(12);
         doc.setTextColor(25, 118, 210);
@@ -429,7 +528,7 @@ const Reporting = () => {
       }
 
       // Incident Reports Section
-      if (filteredIncidents.length > 0) {
+      if (filteredIncidents.length > 0 && (reportConfig.reportType === 'incident_report' || reportConfig.reportType === 'comprehensive')) {
         checkNewPage(15);
         doc.setFontSize(12);
         doc.setTextColor(25, 118, 210);
@@ -496,8 +595,8 @@ const Reporting = () => {
       const fileName = `ERM_Report_${reportConfig.reportType}_${new Date().toISOString().split('T')[0]}.pdf`;
       doc.save(fileName);
       
-      console.log('✅ PDF generated successfully with manual tables');
-      showSnackbar('PDF report berhasil di-generate!', 'success');
+      console.log('✅ PDF generated successfully with complete risk register');
+      showSnackbar('PDF report berhasil di-generate dengan data lengkap!', 'success');
       
     } catch (error) {
       console.error('❌ Error generating PDF:', error);
@@ -507,7 +606,7 @@ const Reporting = () => {
     }
   };
 
-  // Generate Excel Report
+  // Generate Excel Report - DIPERBAIKI untuk Risk Register lengkap
   const generateExcel = async () => {
     setGenerating(true);
     try {
@@ -532,20 +631,54 @@ const Reporting = () => {
       csvContent += `Incidents Reported,${filteredIncidents.length}\n`;
       csvContent += `Critical Incidents,${filteredIncidents.filter(i => i.severity === 'critical').length}\n\n`;
 
-      // Risks section
-      if (filteredRisks.length > 0) {
-        csvContent += 'RISK REGISTER\n';
-        csvContent += 'No,Title,Description,Likelihood,Impact,Score,Level,Classification,Owner\n';
+      // Risks section - DIPERBAIKI dengan semua field
+      if (filteredRisks.length > 0 && (reportConfig.reportType === 'risk_register' || reportConfig.reportType === 'comprehensive')) {
+        csvContent += 'RISK REGISTER - LENGKAP\n';
+        // Header dengan semua field dari form input
+        csvContent += 'No,Kode Risiko,Judul Risiko,Deskripsi Risiko,Departemen,Tipe Risiko,Sumber Risiko,Penyebab,Dampak,Likelihood,Impact,Score,Level,Klasifikasi,Pemilik Risiko,Existing Control,Status,Tanggal Identifikasi,Target Penyelesaian,Progress,Komentar,Dibuat Oleh,Tanggal Dibuat\n';
+        
         filteredRisks.forEach((risk, index) => {
           const score = (risk.likelihood || 1) * (risk.impact || 1);
           const level = score >= 20 ? 'Extreme' : score >= 16 ? 'High' : score >= 10 ? 'Medium' : 'Low';
-          csvContent += `${index + 1},"${risk.title}","${risk.riskDescription}",${risk.likelihood},${risk.impact},${score},${level},"${risk.classification}","${risk.riskOwner || ''}"\n`;
+          
+          // Format data untuk menghindari issue CSV
+          const formatCSVValue = (value) => {
+            if (value === null || value === undefined) return '';
+            const stringValue = String(value);
+            // Escape quotes dan handle comma
+            return `"${stringValue.replace(/"/g, '""')}"`;
+          };
+
+          csvContent += 
+            `${index + 1},` +
+            `${formatCSVValue(risk.riskCode)},` +
+            `${formatCSVValue(risk.title)},` +
+            `${formatCSVValue(risk.riskDescription)},` +
+            `${formatCSVValue(risk.department)},` +
+            `${formatCSVValue(risk.riskType)},` +
+            `${formatCSVValue(risk.riskSource)},` +
+            `${formatCSVValue(risk.cause)},` +
+            `${formatCSVValue(risk.effect)},` +
+            `${risk.likelihood || 1},` +
+            `${risk.impact || 1},` +
+            `${score},` +
+            `${level},` +
+            `${formatCSVValue(risk.classification)},` +
+            `${formatCSVValue(risk.riskOwner)},` +
+            `${formatCSVValue(risk.existingControl)},` +
+            `${formatCSVValue(risk.status)},` +
+            `${formatCSVValue(risk.identificationDate?.toLocaleDateString('id-ID'))},` +
+            `${formatCSVValue(risk.targetDate?.toLocaleDateString('id-ID'))},` +
+            `${formatCSVValue(risk.progress)}%,` +
+            `${formatCSVValue(risk.comments)},` +
+            `${formatCSVValue(risk.createdBy)},` +
+            `${formatCSVValue(risk.createdAt?.toLocaleDateString('id-ID'))}\n`;
         });
         csvContent += '\n';
       }
 
       // Treatment plans section
-      if (filteredTreatments.length > 0) {
+      if (filteredTreatments.length > 0 && (reportConfig.reportType === 'treatment_progress' || reportConfig.reportType === 'comprehensive')) {
         csvContent += 'TREATMENT PLANS\n';
         csvContent += 'No,Description,Status,Progress,Responsible Person,Treatment Type\n';
         filteredTreatments.forEach((plan, index) => {
@@ -555,7 +688,7 @@ const Reporting = () => {
       }
 
       // Incidents section
-      if (filteredIncidents.length > 0) {
+      if (filteredIncidents.length > 0 && (reportConfig.reportType === 'incident_report' || reportConfig.reportType === 'comprehensive')) {
         csvContent += 'INCIDENT REPORTS\n';
         csvContent += 'No,Description,Severity,Status,Reported By,Incident Date\n';
         filteredIncidents.forEach((incident, index) => {
@@ -573,7 +706,7 @@ const Reporting = () => {
       link.click();
       document.body.removeChild(link);
       
-      showSnackbar('Excel report berhasil di-generate!', 'success');
+      showSnackbar('Excel report berhasil di-generate dengan data lengkap!', 'success');
     } catch (error) {
       console.error('❌ Error generating Excel:', error);
       showSnackbar('Error generating Excel report: ' + error.message, 'error');
@@ -883,12 +1016,14 @@ const Reporting = () => {
                   <Table size="small" stickyHeader>
                     <TableHead>
                       <TableRow sx={{ backgroundColor: 'grey.100' }}>
+                        <TableCell>Kode</TableCell>
                         <TableCell>Risk Description</TableCell>
-                        <TableCell align="center">Likelihood</TableCell>
-                        <TableCell align="center">Impact</TableCell>
+                        <TableCell align="center">Dept</TableCell>
+                        <TableCell align="center">L</TableCell>
+                        <TableCell align="center">I</TableCell>
                         <TableCell align="center">Score</TableCell>
                         <TableCell align="center">Level</TableCell>
-                        <TableCell align="center">Owner</TableCell>
+                        <TableCell align="center">Status</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -900,6 +1035,11 @@ const Reporting = () => {
                         return (
                           <TableRow key={risk.id} hover>
                             <TableCell>
+                              <Typography variant="body2" fontWeight="bold">
+                                {risk.riskCode || '-'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
                               <Typography variant="body2" sx={{ 
                                 display: '-webkit-box',
                                 WebkitLineClamp: 2,
@@ -907,6 +1047,11 @@ const Reporting = () => {
                                 overflow: 'hidden'
                               }}>
                                 {risk.title}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="center">
+                              <Typography variant="caption">
+                                {risk.department || '-'}
                               </Typography>
                             </TableCell>
                             <TableCell align="center">
@@ -928,9 +1073,11 @@ const Reporting = () => {
                               />
                             </TableCell>
                             <TableCell align="center">
-                              <Typography variant="caption">
-                                {risk.riskOwner || '-'}
-                              </Typography>
+                              <Chip 
+                                label={risk.status || 'Identified'} 
+                                size="small"
+                                variant="outlined"
+                              />
                             </TableCell>
                           </TableRow>
                         );
@@ -1042,10 +1189,10 @@ const Reporting = () => {
   function getTemplateDescription(type) {
     const descriptions = {
       executive_summary: 'High-level overview untuk Direksi dengan key metrics dan trends',
-      risk_register: 'Daftar lengkap semua risiko yang teridentifikasi',
+      risk_register: 'Daftar LENGKAP semua risiko dengan semua field dari form input',
       treatment_progress: 'Status dan progress treatment plans',
       incident_report: 'Laporan kejadian risiko yang terjadi',
-      comprehensive: 'Laporan komprehensif semua aspek risk management'
+      comprehensive: 'Laporan komprehensif semua aspek risk management dengan data lengkap'
     };
     return descriptions[type] || 'Standard report template';
   }

@@ -41,18 +41,17 @@ import {
   addDoc, 
   doc, 
   updateDoc, 
-  deleteDoc,
-  query,
-  where 
+  deleteDoc
 } from 'firebase/firestore';
 import { 
-  createUserWithEmailAndPassword,
-  updatePassword,
-  deleteUser 
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
+
 import { db, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { ROLES } from '../config/roles';
+
+const normalizeRole = (role) => role?.toUpperCase() || '';
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
@@ -80,21 +79,25 @@ const UserManagement = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      // Load users
+
       const usersSnapshot = await getDocs(collection(db, 'users'));
       const usersList = [];
       usersSnapshot.forEach((doc) => {
-        usersList.push({ id: doc.id, ...doc.data() });
+        usersList.push({
+          id: doc.id,
+          ...doc.data(),
+          role: normalizeRole(doc.data().role)
+        });
       });
       setUsers(usersList);
 
-      // Load organization units
       const unitsSnapshot = await getDocs(collection(db, 'organization_units'));
       const unitsList = [];
       unitsSnapshot.forEach((doc) => {
         unitsList.push({ id: doc.id, ...doc.data() });
       });
       setOrganizationUnits(unitsList);
+
     } catch (error) {
       console.error('Error loading data:', error);
       setError('Gagal memuat data');
@@ -113,59 +116,59 @@ const UserManagement = () => {
     setError('');
 
     try {
+      const upperRole = normalizeRole(formData.role);
+
       if (editingUser) {
-        // Update existing user
+        // Update user
         await updateDoc(doc(db, 'users', editingUser.id), {
           name: formData.name,
-          role: formData.role,
+          role: upperRole,
           department: formData.department,
           position: formData.position,
           unitId: formData.unitId,
           phone: formData.phone,
           status: formData.status,
           updatedAt: new Date(),
-          updatedBy: userData?.name || 'System' // ✅ PERBAIKAN
+          updatedBy: userData?.name || 'System'
         });
         setSuccess('User berhasil diupdate!');
       } else {
-        // Create new user with Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(
           auth, 
           formData.email, 
           formData.password
         );
         
-        // Save user data to Firestore
         await addDoc(collection(db, 'users'), {
           uid: userCredential.user.uid,
           name: formData.name,
           email: formData.email,
-          role: formData.role,
+          role: upperRole,
           department: formData.department,
           position: formData.position,
           unitId: formData.unitId,
           phone: formData.phone,
           status: 'active',
           createdAt: new Date(),
-          createdBy: userData?.name || 'System' // ✅ PERBAIKAN
+          createdBy: userData?.name || 'System'
         });
         setSuccess('User berhasil ditambahkan!');
       }
-      
-      // Reset form and reload data
+
       setOpenDialog(false);
       setEditingUser(null);
-      setFormData({ 
-        name: '', 
-        email: '', 
-        password: '', 
-        role: '', 
-        department: '', 
-        position: '', 
-        unitId: '', 
+      setFormData({
+        name: '',
+        email: '',
+        password: '',
+        role: '',
+        department: '',
+        position: '',
+        unitId: '',
         phone: '',
         status: 'active'
       });
+
       loadData();
       
     } catch (error) {
@@ -179,7 +182,6 @@ const UserManagement = () => {
   const handleDelete = async (user) => {
     if (window.confirm(`Apakah Anda yakin ingin menghapus user ${user.name}?`)) {
       try {
-        // Delete from Firestore
         await deleteDoc(doc(db, 'users', user.id));
         setSuccess('User berhasil dihapus!');
         loadData();
@@ -195,7 +197,7 @@ const UserManagement = () => {
     setFormData({
       name: user.name || '',
       email: user.email || '',
-      password: '', // Don't show password
+      password: '',
       role: user.role || '',
       department: user.department || '',
       position: user.position || '',
@@ -207,12 +209,13 @@ const UserManagement = () => {
   };
 
   const getRoleColor = (role) => {
-    switch (role) {
-      case 'Admin': return 'error';
-      case 'Risk Officer': return 'primary';
-      case 'Risk Owner': return 'warning';
-      case 'Direksi': return 'success';
-      case 'DK/Dewas': return 'info';
+    const r = normalizeRole(role);
+    switch (r) {
+      case 'ADMIN': return 'error';
+      case 'RISK_OFFICER': return 'primary';
+      case 'RISK_OWNER': return 'warning';
+      case 'DIRECTOR': return 'success';
+      case 'DK/DEWAS': return 'info';
       default: return 'default';
     }
   };
@@ -226,30 +229,30 @@ const UserManagement = () => {
     return unit ? unit.name : 'Tidak ada';
   };
 
-  // Close dialogs and reset states
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingUser(null);
-    setFormData({ 
-      name: '', 
-      email: '', 
-      password: '', 
-      role: '', 
-      department: '', 
-      position: '', 
-      unitId: '', 
+    setFormData({
+      name: '',
+      email: '',
+      password: '',
+      role: '',
+      department: '',
+      position: '',
+      unitId: '',
       phone: '',
       status: 'active'
     });
   };
 
-  // Statistics
   const userStats = {
     total: users.length,
     active: users.filter(u => u.status === 'active').length,
-    admin: users.filter(u => u.role === 'Admin').length,
-    riskOwners: users.filter(u => u.role === 'Risk Owner').length,
+    admin: users.filter(u => normalizeRole(u.role) === 'ADMIN').length,
+    riskOwners: users.filter(u => normalizeRole(u.role) === 'RISK_OWNER').length,
   };
+
+  const isAdmin = normalizeRole(userData?.role) === 'ADMIN';
 
   return (
     <Box sx={{ p: 3 }}>
@@ -265,23 +268,19 @@ const UserManagement = () => {
           </Box>
         </Box>
         
-        {/* ✅ PERBAIKAN: Tombol Tambah User */}
         <Button 
           variant="contained" 
           startIcon={<Add />}
           onClick={() => setOpenDialog(true)}
-          disabled={userData?.role !== 'Admin'} // ✅ PERBAIKAN
-          sx={{ 
-            minWidth: 140,
-            opacity: userData?.role === 'Admin' ? 1 : 0.6
-          }}
+          disabled={!isAdmin}
+          sx={{ minWidth: 140, opacity: isAdmin ? 1 : 0.6 }}
         >
           Tambah User
-          {userData?.role !== 'Admin' && (
+          {!isAdmin && (
             <Typography 
-              variant="caption" 
-              display="block" 
-              sx={{ 
+              variant="caption"
+              display="block"
+              sx={{
                 position: 'absolute',
                 bottom: -20,
                 left: 0,
@@ -314,7 +313,7 @@ const UserManagement = () => {
         </Alert>
       </Snackbar>
 
-      {/* Statistics Cards */}
+      {/* Stats */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card>
@@ -324,15 +323,14 @@ const UserManagement = () => {
                   <Typography color="textSecondary" gutterBottom>
                     Total Users
                   </Typography>
-                  <Typography variant="h4" component="div">
-                    {userStats.total}
-                  </Typography>
+                  <Typography variant="h4">{userStats.total}</Typography>
                 </Box>
                 <Person sx={{ fontSize: 40, color: 'primary.main' }} />
               </Box>
             </CardContent>
           </Card>
         </Grid>
+
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
@@ -341,15 +339,14 @@ const UserManagement = () => {
                   <Typography color="textSecondary" gutterBottom>
                     Active Users
                   </Typography>
-                  <Typography variant="h4" component="div" color="success.main">
-                    {userStats.active}
-                  </Typography>
+                  <Typography variant="h4" color="success.main">{userStats.active}</Typography>
                 </Box>
                 <Badge sx={{ fontSize: 40, color: 'success.main' }} />
               </Box>
             </CardContent>
           </Card>
         </Grid>
+
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
@@ -358,15 +355,14 @@ const UserManagement = () => {
                   <Typography color="textSecondary" gutterBottom>
                     Admin Users
                   </Typography>
-                  <Typography variant="h4" component="div" color="error.main">
-                    {userStats.admin}
-                  </Typography>
+                  <Typography variant="h4" color="error.main">{userStats.admin}</Typography>
                 </Box>
                 <Business sx={{ fontSize: 40, color: 'error.main' }} />
               </Box>
             </CardContent>
           </Card>
         </Grid>
+
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
@@ -375,9 +371,7 @@ const UserManagement = () => {
                   <Typography color="textSecondary" gutterBottom>
                     Risk Owners
                   </Typography>
-                  <Typography variant="h4" component="div" color="warning.main">
-                    {userStats.riskOwners}
-                  </Typography>
+                  <Typography variant="h4" color="warning.main">{userStats.riskOwners}</Typography>
                 </Box>
                 <Person sx={{ fontSize: 40, color: 'warning.main' }} />
               </Box>
@@ -396,10 +390,6 @@ const UserManagement = () => {
           <Box textAlign="center" py={4}>
             <Typography>Memuat data user...</Typography>
           </Box>
-        ) : users.length === 0 ? (
-          <Typography color="textSecondary" textAlign="center" py={4}>
-            Belum ada user. Klik "Tambah User" untuk memulai.
-          </Typography>
         ) : (
           <TableContainer>
             <Table>
@@ -426,21 +416,25 @@ const UserManagement = () => {
                         {user.position}
                       </Typography>
                     </TableCell>
+
                     <TableCell>
                       <Box display="flex" alignItems="center" gap={1}>
                         <Email fontSize="small" color="action" />
                         {user.email}
                       </Box>
                     </TableCell>
+
                     <TableCell>
                       <Chip 
-                        label={user.role} 
+                        label={user.role}
                         color={getRoleColor(user.role)}
                         size="small"
                       />
                     </TableCell>
+
                     <TableCell>{user.department}</TableCell>
                     <TableCell>{getUnitName(user.unitId)}</TableCell>
+
                     <TableCell>
                       <Chip 
                         label={user.status === 'active' ? 'Aktif' : 'Non-aktif'} 
@@ -448,24 +442,27 @@ const UserManagement = () => {
                         size="small"
                       />
                     </TableCell>
+
                     <TableCell>
                       <IconButton 
                         onClick={() => handleEdit(user)} 
                         color="primary"
                         size="small"
-                        disabled={userData?.role !== 'Admin'} // ✅ PERBAIKAN
+                        disabled={!isAdmin}
                       >
                         <Edit />
                       </IconButton>
+
                       <IconButton 
                         onClick={() => handleDelete(user)} 
                         color="error"
                         size="small"
-                        disabled={userData?.role !== 'Admin'} // ✅ PERBAIKAN
+                        disabled={!isAdmin}
                       >
                         <Delete />
                       </IconButton>
                     </TableCell>
+
                   </TableRow>
                 ))}
               </TableBody>
@@ -475,84 +472,86 @@ const UserManagement = () => {
       </Paper>
 
       {/* Add/Edit User Dialog */}
-      <Dialog 
-        open={openDialog} 
-        onClose={handleCloseDialog} 
-        maxWidth="md" 
-        fullWidth
-      >
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <DialogTitle>
           {editingUser ? 'Edit User' : 'Tambah User Baru'}
         </DialogTitle>
+
         <DialogContent>
           <form onSubmit={handleSubmit}>
             <Grid container spacing={2} sx={{ mt: 1 }}>
+              
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
                   label="Nama Lengkap"
                   value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   margin="normal"
                   required
                 />
               </Grid>
+
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
                   label="Email"
                   type="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   margin="normal"
                   required
                   disabled={!!editingUser}
                 />
               </Grid>
+
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
                   label="Password"
                   type="password"
                   value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   margin="normal"
                   required={!editingUser}
-                  helperText={editingUser ? "Kosongkan jika tidak ingin mengubah password" : ""}
+                  helperText={editingUser ? 'Kosongkan jika tidak ingin mengubah password' : ''}
                 />
               </Grid>
+
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
                   label="Nomor Telepon"
                   value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   margin="normal"
                 />
               </Grid>
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth margin="normal" required>
                   <InputLabel>Role</InputLabel>
                   <Select
                     value={formData.role}
                     label="Role"
-                    onChange={(e) => setFormData({...formData, role: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   >
-                    {Object.values(ROLES).map((role) => (
-                      <MenuItem key={role} value={role}>
-                        {role}
-                      </MenuItem>
-                    ))}
+                  {Object.keys(ROLES).map((roleKey) => (
+                    <MenuItem key={roleKey} value={roleKey}>
+                      {ROLES[roleKey].name}
+                    </MenuItem>
+                  ))}
                   </Select>
                 </FormControl>
               </Grid>
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth margin="normal">
                   <InputLabel>Unit Organisasi</InputLabel>
                   <Select
                     value={formData.unitId}
                     label="Unit Organisasi"
-                    onChange={(e) => setFormData({...formData, unitId: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, unitId: e.target.value })}
                   >
                     <MenuItem value="">Tidak Ada</MenuItem>
                     {organizationUnits.map((unit) => (
@@ -563,24 +562,27 @@ const UserManagement = () => {
                   </Select>
                 </FormControl>
               </Grid>
+
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
                   label="Department"
                   value={formData.department}
-                  onChange={(e) => setFormData({...formData, department: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                   margin="normal"
                 />
               </Grid>
+
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
                   label="Jabatan"
                   value={formData.position}
-                  onChange={(e) => setFormData({...formData, position: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, position: e.target.value })}
                   margin="normal"
                 />
               </Grid>
+
               {editingUser && (
                 <Grid item xs={12} md={6}>
                   <FormControl fullWidth margin="normal">
@@ -588,7 +590,7 @@ const UserManagement = () => {
                     <Select
                       value={formData.status}
                       label="Status"
-                      onChange={(e) => setFormData({...formData, status: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                     >
                       <MenuItem value="active">Aktif</MenuItem>
                       <MenuItem value="inactive">Non-aktif</MenuItem>
@@ -597,8 +599,8 @@ const UserManagement = () => {
                 </Grid>
               )}
             </Grid>
-            
-            <Box mt={3} display="flex" gap={2} justifyContent="flex-end">
+
+            <Box mt={3} display="flex" justifyContent="flex-end" gap={2}>
               <Button onClick={handleCloseDialog} disabled={loading}>
                 Batal
               </Button>

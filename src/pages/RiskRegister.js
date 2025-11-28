@@ -35,7 +35,12 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  FormHelperText
+  FormHelperText,
+  Stepper,
+  Step,
+  StepLabel,
+  Rating,
+  Slider
 } from '@mui/material';
 import {
   Add,
@@ -53,7 +58,11 @@ import {
   Visibility,
   History,
   AccountCircle,
-  CalendarToday
+  CalendarToday,
+  CorporateFare,
+  Analytics,
+  ExpandMore,
+  ExpandLess
 } from '@mui/icons-material';
 import {
   collection,
@@ -63,7 +72,8 @@ import {
   deleteDoc,
   doc,
   query,
-  orderBy
+  orderBy,
+  where
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -71,19 +81,23 @@ import { useAuth } from '../contexts/AuthContext';
 const RiskRegister = () => {
   const [risks, setRisks] = useState([]);
   const [organizationUnits, setOrganizationUnits] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
   const [detailDialog, setDetailDialog] = useState(false);
+  const [assessmentDialog, setAssessmentDialog] = useState(false);
   const [selectedRisk, setSelectedRisk] = useState(null);
   const [editingRisk, setEditingRisk] = useState(null);
+  const [assessingRisk, setAssessingRisk] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
   const [codeError, setCodeError] = useState('');
+  const [expandedRows, setExpandedRows] = useState({});
   const { userData } = useAuth();
 
-  // Form data structure
+  // Form data structure - DIPERBAIKI dengan tambahan department
   const [formData, setFormData] = useState({
     riskCode: '',
     riskType: '',
@@ -93,6 +107,7 @@ const RiskRegister = () => {
     cause: '',
     impactText: '',
     riskOwner: '',
+    department: '', // ✅ DITAMBAHKAN
     initialProbability: '',
     initialImpact: '',
     inherentRiskQuantification: '',
@@ -104,14 +119,95 @@ const RiskRegister = () => {
     additionalControls: '',
     controlCost: '',
     responsiblePerson: '',
-    targetCompletion: ''
+    targetCompletion: '',
+    status: 'open'
   });
 
-  // Simple risk sources - Internal/External saja
-  const riskSources = ['Internal', 'External'];
-  const riskTypes = ['Strategis', 'Operasional', 'Finansial', 'Kepatuhan', 'Reputasi', 'Teknologi'];
-  const riskClassifications = ['High Priority', 'Medium Priority', 'Low Priority', 'Critical'];
-  const effectivenessLevels = ['Sangat Efektif', 'Efektif', 'Cukup Efektif', 'Kurang Efektif', 'Tidak Efektif'];
+  // Assessment form data
+  const [assessmentData, setAssessmentData] = useState({
+    likelihood: 1,
+    impact: 1,
+    controlEffectiveness: 3,
+    residualLikelihood: 1,
+    residualImpact: 1,
+    treatmentPriority: 'Medium - Sedang (Penanganan < 1 Bulan)',
+    assessmentNotes: ''
+  });
+
+  // Data dropdown yang lebih lengkap
+  const riskSources = [
+    'Internal', 
+    'External' 
+  ];
+
+  const riskTypes = [
+    'Strategis', 
+    'Operasional', 
+    'Finansial', 
+    'Kepatuhan', 
+    'Reputasi', 
+    'Teknologi',
+    'HSSE (Health, Safety, Security, Environment)',
+    'Proyek',
+    'Supply Chain',
+    'Pemasaran',
+    'Lainnya (Input Manual)'
+  ];
+
+  const riskClassifications = [
+    'Critical - Prioritas Tertinggi',
+    'High Priority - Prioritas Tinggi', 
+    'Medium Priority - Prioritas Menengah', 
+    'Low Priority - Prioritas Rendah',
+    'Monitoring - Pemantauan Rutin'
+  ];
+
+  const effectivenessLevels = [
+    'Sangat Efektif (90-100%)',
+    'Efektif (75-89%)', 
+    'Cukup Efektif (50-74%)', 
+    'Kurang Efektif (25-49%)', 
+    'Tidak Efektif (0-24%)'
+  ];
+
+  const treatmentPriorities = [
+    { value: 'critical', label: 'Critical - Kritis (Penanganan Segera)' },
+    { value: 'high', label: 'High - Tinggi (Penanganan < 1 Minggu)' },
+    { value: 'medium', label: 'Medium - Sedang (Penanganan < 1 Bulan)' },
+    { value: 'low', label: 'Low - Rendah (Penanganan < 3 Bulan)' },
+    { value: 'monitor', label: 'Monitor - Pantau Saja' }
+  ];
+
+  const departmentsList = [
+    'Direksi',
+    'Keuangan & Akuntansi',
+    'SDM & Umum',
+    'Operasional',
+    'Pemasaran & Penjualan',
+    'Teknologi Informasi',
+    'HSSE',
+    'Legal & Kepatuhan',
+    'Procurement',
+    'R&D',
+    'Quality Assurance',
+    'Project Management',
+    'Customer Service',
+    'Logistik & Supply Chain',
+    'Lainnya (Input Manual)'
+  ];
+
+  const statusOptions = [
+    'Open - Baru Teridentifikasi',
+    'In Assessment - Dalam Penilaian',
+    'Assessed - Telah Dinilai',
+    'In Treatment - Dalam Penanganan',
+    'Monitored - Dalam Pemantauan',
+    'Closed - Ditutup',
+    'Rejected - Ditolak'
+  ];
+
+
+
   const ratingOptions = [1, 2, 3, 4, 5];
 
   // Calculate risk level
@@ -120,7 +216,8 @@ const RiskRegister = () => {
     if (score >= 20) return { level: 'Extreme', color: 'error', score };
     if (score >= 16) return { level: 'High', color: 'warning', score };
     if (score >= 10) return { level: 'Medium', color: 'info', score };
-    return { level: 'Low', color: 'success', score };
+    if (score >= 5) return { level: 'Low', color: 'success', score };
+    return { level: 'Very Low', color: 'success', score };
   };
 
   // Load data
@@ -166,7 +263,7 @@ const RiskRegister = () => {
     }
   }, [formData.riskCode, risks, editingRisk]);
 
-  // Handle form submit - DIPERBAIKI untuk kode manual
+  // Handle form submit
   const handleSubmit = async () => {
     try {
       // Validasi required fields
@@ -185,10 +282,21 @@ const RiskRegister = () => {
           return;
         }
       }
+    // Handle custom inputs sebelum save
+      const finalDepartment = formData.department === 'Lainnya (Input Manual)' 
+        ? formData.customDepartment 
+        : formData.department;
+
+      const finalRiskType = formData.riskType === 'Lainnya (Input Manual)'
+        ? formData.customRiskType
+        : formData.riskType;
 
       const riskData = {
         ...formData,
-        riskCode: formData.riskCode.toUpperCase(), // Standardize to uppercase
+        department: finalDepartment, // ✅ Gunakan value final
+        riskType: finalRiskType, // ✅ Gunakan value final
+        riskCode: formData.riskCode.toUpperCase(),
+        riskCode: formData.riskCode.toUpperCase(),
         initialRiskLevel: formData.initialProbability && formData.initialImpact ? 
           calculateRiskLevel(parseInt(formData.initialProbability), parseInt(formData.initialImpact)) : null,
         residualRiskLevel: formData.residualProbability && formData.residualImpact ? 
@@ -197,7 +305,6 @@ const RiskRegister = () => {
         createdBy: editingRisk ? editingRisk.createdBy : userData?.name,
         updatedAt: new Date(),
         updatedBy: userData?.name,
-        status: 'open',
         auditTrail: [
           {
             action: editingRisk ? 'updated' : 'created',
@@ -238,6 +345,57 @@ const RiskRegister = () => {
     }
   };
 
+  // Handle assessment submit
+  const handleAssessmentSubmit = async () => {
+    if (!assessingRisk) return;
+
+    try {
+      setLoading(true);
+      
+      const residualScore = assessmentData.residualLikelihood * assessmentData.residualImpact;
+      const inherentScore = assessmentData.likelihood * assessmentData.impact;
+      
+      const assessmentUpdate = {
+        likelihood: assessmentData.likelihood,
+        impact: assessmentData.impact,
+        controlEffectiveness: assessmentData.controlEffectiveness,
+        residualLikelihood: assessmentData.residualLikelihood,
+        residualImpact: assessmentData.residualImpact,
+        residualScore: residualScore,
+        inherentScore: inherentScore,
+        treatmentPriority: assessmentData.treatmentPriority,
+        assessmentNotes: assessmentData.assessmentNotes,
+        assessedAt: new Date(),
+        assessedBy: userData?.name,
+        status: 'Assessed - Telah Dinilai',
+        updatedAt: new Date(),
+        updatedBy: userData?.name
+      };
+
+      await updateDoc(doc(db, 'risks', assessingRisk.id), assessmentUpdate);
+      
+      showSnackbar('Assessment risiko berhasil disimpan!', 'success');
+      setAssessmentDialog(false);
+      setAssessingRisk(null);
+      setAssessmentData({
+        likelihood: 1,
+        impact: 1,
+        controlEffectiveness: 3,
+        residualLikelihood: 1,
+        residualImpact: 1,
+        treatmentPriority: 'Medium - Sedang (Penanganan < 1 Bulan)',
+        assessmentNotes: ''
+      });
+      loadData();
+      
+    } catch (error) {
+      console.error('Error saving assessment:', error);
+      showSnackbar('Error menyimpan assessment: ' + error.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Get changed fields for audit trail
   const getChangedFields = (oldData, newData) => {
     const changes = [];
@@ -264,6 +422,7 @@ const RiskRegister = () => {
       cause: '',
       impactText: '',
       riskOwner: '',
+      department: '',
       initialProbability: '',
       initialImpact: '',
       inherentRiskQuantification: '',
@@ -275,7 +434,8 @@ const RiskRegister = () => {
       additionalControls: '',
       controlCost: '',
       responsiblePerson: '',
-      targetCompletion: ''
+      targetCompletion: '',
+      status: 'open'
     });
     setCodeError('');
   };
@@ -292,6 +452,7 @@ const RiskRegister = () => {
       cause: risk.cause || '',
       impactText: risk.impactText || '',
       riskOwner: risk.riskOwner || '',
+      department: risk.department || '',
       initialProbability: risk.initialProbability || '',
       initialImpact: risk.initialImpact || '',
       inherentRiskQuantification: risk.inherentRiskQuantification || '',
@@ -303,14 +464,29 @@ const RiskRegister = () => {
       additionalControls: risk.additionalControls || '',
       controlCost: risk.controlCost || '',
       responsiblePerson: risk.responsiblePerson || '',
-      targetCompletion: risk.targetCompletion || ''
+      targetCompletion: risk.targetCompletion || '',
+      status: risk.status || 'open'
     });
     setOpenDialog(true);
   };
 
+  // Handle assessment
+  const handleAssessment = (risk) => {
+    setAssessingRisk(risk);
+    setAssessmentData({
+      likelihood: risk.likelihood || 1,
+      impact: risk.impact || 1,
+      controlEffectiveness: risk.controlEffectiveness || 3,
+      residualLikelihood: risk.residualLikelihood || risk.likelihood || 1,
+      residualImpact: risk.residualImpact || risk.impact || 1,
+      treatmentPriority: risk.treatmentPriority || 'Medium - Sedang (Penanganan < 1 Bulan)',
+      assessmentNotes: risk.assessmentNotes || ''
+    });
+    setAssessmentDialog(true);
+  };
+
   // Handle view detail
   const handleViewDetail = (risk) => {
-    console.log('View Detail clicked:', risk);
     setSelectedRisk(risk);
     setDetailDialog(true);
   };
@@ -327,6 +503,14 @@ const RiskRegister = () => {
         showSnackbar('Error menghapus risiko: ' + error.message, 'error');
       }
     }
+  };
+
+  // Toggle row expansion
+  const toggleRowExpansion = (riskId) => {
+    setExpandedRows(prev => ({
+      ...prev,
+      [riskId]: !prev[riskId]
+    }));
   };
 
   // Snackbar handler
@@ -354,7 +538,9 @@ const RiskRegister = () => {
     risk.riskDescription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     risk.riskType?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     risk.riskSource?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    risk.riskOwner?.toLowerCase().includes(searchTerm.toLowerCase())
+    risk.riskOwner?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    risk.department?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    risk.status?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Paginated risks
@@ -386,7 +572,7 @@ const RiskRegister = () => {
                   Identifikasi dan kelola seluruh risiko organisasi
                 </Typography>
                 <Typography variant="caption" color="primary">
-                  ✍️ Kode Risiko sekarang input manual - lebih mudah diingat!
+                  Total {risks.length} risiko teridentifikasi • {risks.filter(r => r.status === 'Assessed - Telah Dinilai').length} telah dinilai
                 </Typography>
               </Box>
             </Box>
@@ -408,7 +594,7 @@ const RiskRegister = () => {
         <CardContent>
           <TextField
             fullWidth
-            placeholder="Cari risiko berdasarkan kode, deskripsi, jenis, sumber, atau pemilik risiko..."
+            placeholder="Cari risiko berdasarkan kode, deskripsi, jenis, sumber, departemen, atau pemilik risiko..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             InputProps={{
@@ -422,12 +608,17 @@ const RiskRegister = () => {
         </CardContent>
       </Card>
 
-      {/* Risks Table */}
+      {/* Risks Table - DIPERBAIKI: Tampilan Lebih Lengkap */}
       <Card sx={{ boxShadow: 3 }}>
         <CardContent>
-          <Typography variant="h6" fontWeight="bold" gutterBottom>
-            Daftar Risiko ({filteredRisks.length})
-          </Typography>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6" fontWeight="bold">
+              Daftar Risiko ({filteredRisks.length})
+            </Typography>
+            <Typography variant="body2" color="textSecondary">
+              Klik ⬇️ untuk detail lengkap
+            </Typography>
+          </Box>
           
           {loading ? (
             <Box textAlign="center" py={4}>
@@ -442,161 +633,331 @@ const RiskRegister = () => {
             </Alert>
           ) : (
             <>
-              <TableContainer>
-                <Table>
+              <TableContainer sx={{ maxHeight: '70vh' }}>
+                <Table stickyHeader>
                   <TableHead>
                     <TableRow>
-                      <TableCell><strong>Kode Risiko</strong></TableCell>
-                      <TableCell><strong>Deskripsi</strong></TableCell>
-                      <TableCell><strong>Jenis</strong></TableCell>
-                      <TableCell><strong>Sumber</strong></TableCell>
-                      <TableCell><strong>Pemilik Risiko</strong></TableCell>
-                      <TableCell><strong>Inherent</strong></TableCell>
-                      <TableCell><strong>Residual</strong></TableCell>
-                      <TableCell><strong>PIC</strong></TableCell>
-                      <TableCell><strong>Target</strong></TableCell>
-                      <TableCell><strong>Aksi</strong></TableCell>
+                      <TableCell width="50px"></TableCell>
+                      <TableCell width="120px"><strong>Kode</strong></TableCell>
+                      <TableCell width="200px"><strong>Deskripsi</strong></TableCell>
+                      <TableCell width="120px"><strong>Jenis</strong></TableCell>
+                      <TableCell width="150px"><strong>Sumber</strong></TableCell>
+                      <TableCell width="120px"><strong>Departemen</strong></TableCell>
+                      <TableCell width="120px"><strong>Pemilik</strong></TableCell>
+                      <TableCell width="100px"><strong>Status</strong></TableCell>
+                      <TableCell width="100px"><strong>Inherent</strong></TableCell>
+                      <TableCell width="100px"><strong>Residual</strong></TableCell>
+                      <TableCell width="120px"><strong>Treatment Priority</strong></TableCell>
+                      <TableCell width="100px"><strong>PIC</strong></TableCell>
+                      <TableCell width="100px"><strong>Target</strong></TableCell>
+                      <TableCell width="150px"><strong>Aksi</strong></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {paginatedRisks.map((risk) => {
                       const initialLevel = risk.initialRiskLevel || {};
                       const residualLevel = risk.residualRiskLevel || {};
+                      const isExpanded = expandedRows[risk.id];
                       
                       return (
-                        <TableRow key={risk.id} hover>
-                          <TableCell>
-                            <Typography variant="body2" fontWeight="bold">
-                              {risk.riskCode}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" sx={{ maxWidth: 300 }}>
-                              {risk.riskDescription?.substring(0, 100)}
-                              {risk.riskDescription?.length > 100 && '...'}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Chip 
-                              label={risk.riskType} 
-                              size="small" 
-                              color="primary" 
-                              variant="outlined"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Chip 
-                              label={risk.riskSource} 
-                              size="small" 
-                              variant="outlined"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            {risk.riskOwner ? (
+                        <React.Fragment key={risk.id}>
+                          {/* Main Row */}
+                          <TableRow hover sx={{ backgroundColor: isExpanded ? 'action.hover' : 'inherit' }}>
+                            <TableCell>
+                              <IconButton 
+                                size="small" 
+                                onClick={() => toggleRowExpansion(risk.id)}
+                              >
+                                {isExpanded ? <ExpandLess /> : <ExpandMore />}
+                              </IconButton>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight="bold" color="primary">
+                                {risk.riskCode}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Tooltip title={risk.riskDescription}>
+                                <Typography variant="body2" sx={{ 
+                                  maxWidth: 200,
+                                  display: '-webkit-box',
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: 'vertical',
+                                  overflow: 'hidden'
+                                }}>
+                                  {risk.riskDescription}
+                                </Typography>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell>
                               <Chip 
-                                label={risk.riskOwner}
-                                size="small"
+                                label={risk.riskType} 
+                                size="small" 
+                                color="primary" 
+                                variant="outlined"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={risk.riskSource} 
+                                size="small" 
+                                variant="outlined"
                                 color="secondary"
-                                variant="outlined"
                               />
-                            ) : (
-                              <Typography variant="body2" color="textSecondary">
-                                -
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {initialLevel.level ? (
-                              <Chip 
-                                label={`${initialLevel.level} (${initialLevel.score})`}
-                                size="small" 
-                                color={initialLevel.color}
-                              />
-                            ) : (
-                              <Typography variant="body2" color="textSecondary">
-                                Belum dinilai
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {residualLevel.level ? (
-                              <Chip 
-                                label={`${residualLevel.level} (${residualLevel.score})`}
-                                size="small" 
-                                color={residualLevel.color}
-                                variant="outlined"
-                              />
-                            ) : (
-                              <Typography variant="body2" color="textSecondary">
-                                Belum dinilai
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {risk.responsiblePerson ? (
-                              <Chip 
-                                label={risk.responsiblePerson}
-                                size="small"
-                                variant="outlined"
-                              />
-                            ) : (
-                              <Typography variant="body2" color="textSecondary">
-                                -
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {risk.targetCompletion ? (
-                              <Typography variant="body2">
-                                {new Date(risk.targetCompletion).toLocaleDateString('id-ID')}
-                              </Typography>
-                            ) : (
-                              <Typography variant="body2" color="textSecondary">
-                                -
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Box display="flex" gap={1}>
-                              <Tooltip title="Lihat Detail">
-                                <IconButton 
+                            </TableCell>
+                            <TableCell>
+                              {risk.department ? (
+                                <Chip 
+                                  label={risk.department}
+                                  size="small"
                                   color="info"
+                                  variant="outlined"
+                                />
+                              ) : (
+                                <Typography variant="body2" color="textSecondary" fontSize="0.75rem">
+                                  -
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {risk.riskOwner ? (
+                                <Chip 
+                                  label={risk.riskOwner}
                                   size="small"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleViewDetail(risk);
-                                  }}
-                                >
-                                  <Visibility />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Edit Risiko">
-                                <IconButton 
-                                  color="primary"
+                                  variant="outlined"
+                                />
+                              ) : (
+                                <Typography variant="body2" color="textSecondary" fontSize="0.75rem">
+                                  -
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={risk.status || 'Open'}
+                                size="small"
+                                color={
+                                  risk.status?.includes('Critical') || risk.status?.includes('Extreme') ? 'error' :
+                                  risk.status?.includes('High') ? 'warning' :
+                                  risk.status?.includes('Assessed') ? 'info' :
+                                  risk.status?.includes('Closed') ? 'success' : 'default'
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {initialLevel.level ? (
+                                <Chip 
+                                  label={`${initialLevel.level} (${initialLevel.score})`}
+                                  size="small" 
+                                  color={initialLevel.color}
+                                />
+                              ) : (
+                                <Typography variant="body2" color="textSecondary" fontSize="0.75rem">
+                                  Belum
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {residualLevel.level ? (
+                                <Chip 
+                                  label={`${residualLevel.level} (${residualLevel.score})`}
+                                  size="small" 
+                                  color={residualLevel.color}
+                                  variant="outlined"
+                                />
+                              ) : (
+                                <Typography variant="body2" color="textSecondary" fontSize="0.75rem">
+                                  Belum
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {risk.treatmentPriority ? (
+                                <Chip 
+                                  label={risk.treatmentPriority}
                                   size="small"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEdit(risk);
-                                  }}
-                                >
-                                  <Edit />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Hapus Risiko">
-                                <IconButton 
-                                  color="error" 
-                                  size="small"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDelete(risk.id);
-                                  }}
-                                >
-                                  <Delete />
-                                </IconButton>
-                              </Tooltip>
-                            </Box>
-                          </TableCell>
-                        </TableRow>
+                                  color={
+                                    risk.treatmentPriority?.includes('Critical') ? 'error' :
+                                    risk.treatmentPriority?.includes('High') ? 'warning' :
+                                    risk.treatmentPriority?.includes('Medium') ? 'info' : 'default'
+                                  }
+                                />
+                              ) : (
+                                <Typography variant="body2" color="textSecondary" fontSize="0.75rem">
+                                  -
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {risk.responsiblePerson ? (
+                                <Typography variant="body2" fontSize="0.75rem">
+                                  {risk.responsiblePerson}
+                                </Typography>
+                              ) : (
+                                <Typography variant="body2" color="textSecondary" fontSize="0.75rem">
+                                  -
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {risk.targetCompletion ? (
+                                <Typography variant="body2" fontSize="0.75rem">
+                                  {new Date(risk.targetCompletion).toLocaleDateString('id-ID')}
+                                </Typography>
+                              ) : (
+                                <Typography variant="body2" color="textSecondary" fontSize="0.75rem">
+                                  -
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Box display="flex" gap={0.5}>
+                                <Tooltip title="Lihat Detail">
+                                  <IconButton 
+                                    color="info"
+                                    size="small"
+                                    onClick={() => handleViewDetail(risk)}
+                                  >
+                                    <Visibility fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Assessment">
+                                  <IconButton 
+                                    color="warning"
+                                    size="small"
+                                    onClick={() => handleAssessment(risk)}
+                                  >
+                                    <Assessment fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Edit">
+                                  <IconButton 
+                                    color="primary"
+                                    size="small"
+                                    onClick={() => handleEdit(risk)}
+                                  >
+                                    <Edit fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Hapus">
+                                  <IconButton 
+                                    color="error" 
+                                    size="small"
+                                    onClick={() => handleDelete(risk.id)}
+                                  >
+                                    <Delete fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+
+                          {/* Expanded Row dengan Detail Lengkap */}
+                          {isExpanded && (
+                            <TableRow>
+                              <TableCell colSpan={14} sx={{ 
+                                backgroundColor: 'grey.50',
+                                borderBottom: '1px solid',
+                                borderBottomColor: 'divider'
+                              }}>
+                                <Grid container spacing={2} sx={{ p: 2 }}>
+                                  {/* Kolom 1 - Identifikasi */}
+                                  <Grid item xs={12} md={4}>
+                                    <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                                      📋 Identifikasi Risiko
+                                    </Typography>
+                                    <Box sx={{ mb: 2 }}>
+                                      <Typography variant="caption" fontWeight="bold">Penyebab:</Typography>
+                                      <Typography variant="body2" sx={{ ml: 1 }}>
+                                        {risk.cause || '-'}
+                                      </Typography>
+                                    </Box>
+                                    <Box sx={{ mb: 2 }}>
+                                      <Typography variant="caption" fontWeight="bold">Dampak:</Typography>
+                                      <Typography variant="body2" sx={{ ml: 1 }}>
+                                        {risk.impactText || '-'}
+                                      </Typography>
+                                    </Box>
+                                    <Box>
+                                      <Typography variant="caption" fontWeight="bold">Klasifikasi:</Typography>
+                                      <Typography variant="body2" sx={{ ml: 1 }}>
+                                        {risk.classification || '-'}
+                                      </Typography>
+                                    </Box>
+                                  </Grid>
+
+                                  {/* Kolom 2 - Kontrol */}
+                                  <Grid item xs={12} md={4}>
+                                    <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                                      🛡️ Kontrol & Assessment
+                                    </Typography>
+                                    <Box sx={{ mb: 2 }}>
+                                      <Typography variant="caption" fontWeight="bold">Kontrol Existing:</Typography>
+                                      <Typography variant="body2" sx={{ ml: 1 }}>
+                                        {risk.existingControls ? risk.existingControls.substring(0, 100) + '...' : '-'}
+                                      </Typography>
+                                    </Box>
+                                    <Box sx={{ mb: 2 }}>
+                                      <Typography variant="caption" fontWeight="bold">Efektivitas:</Typography>
+                                      <Typography variant="body2" sx={{ ml: 1 }}>
+                                        {risk.controlEffectiveness || '-'}
+                                      </Typography>
+                                    </Box>
+                                    <Box>
+                                      <Typography variant="caption" fontWeight="bold">Kontrol Tambahan:</Typography>
+                                      <Typography variant="body2" sx={{ ml: 1 }}>
+                                        {risk.additionalControls ? risk.additionalControls.substring(0, 100) + '...' : '-'}
+                                      </Typography>
+                                    </Box>
+                                  </Grid>
+
+                                  {/* Kolom 3 - Kuantifikasi & Timeline */}
+                                  <Grid item xs={12} md={4}>
+                                    <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                                      📊 Kuantifikasi & Timeline
+                                    </Typography>
+                                    <Box sx={{ mb: 2 }}>
+                                      <Typography variant="caption" fontWeight="bold">Inherent:</Typography>
+                                      <Typography variant="body2" sx={{ ml: 1 }}>
+                                        {risk.inherentRiskQuantification || '-'}
+                                      </Typography>
+                                    </Box>
+                                    <Box sx={{ mb: 2 }}>
+                                      <Typography variant="caption" fontWeight="bold">Residual:</Typography>
+                                      <Typography variant="body2" sx={{ ml: 1 }}>
+                                        {risk.residualRiskQuantification || '-'}
+                                      </Typography>
+                                    </Box>
+                                    <Box>
+                                      <Typography variant="caption" fontWeight="bold">Biaya Kontrol:</Typography>
+                                      <Typography variant="body2" sx={{ ml: 1 }}>
+                                        {risk.controlCost ? `Rp ${parseInt(risk.controlCost).toLocaleString('id-ID')}` : '-'}
+                                      </Typography>
+                                    </Box>
+                                  </Grid>
+
+                                  {/* Treatment Priority */}
+                                  <Grid item xs={12}>
+                                    <FormControl fullWidth>
+                                      <InputLabel>Treatment Priority</InputLabel>
+                                      <Select
+                                        value={assessmentData.treatmentPriority}
+                                        label="Treatment Priority"
+                                        onChange={(e) => setAssessmentData({...assessmentData, treatmentPriority: e.target.value})}
+                                      >
+                                        {treatmentPriorities.map((priority) => (
+                                          <MenuItem key={priority} value={priority}>
+                                            {priority}
+                                          </MenuItem>
+                                        ))}
+                                      </Select>
+                                    </FormControl>
+                                  </Grid>
+                                </Grid>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </TableBody>
@@ -605,7 +966,7 @@ const RiskRegister = () => {
               
               {/* Pagination */}
               <TablePagination
-                rowsPerPageOptions={[5, 10, 25, 50]}
+                rowsPerPageOptions={[5, 10, 25, 50, 100]}
                 component="div"
                 count={filteredRisks.length}
                 rowsPerPage={rowsPerPage}
@@ -622,7 +983,7 @@ const RiskRegister = () => {
         </CardContent>
       </Card>
 
-      {/* Create/Edit Dialog */}
+      {/* Create/Edit Dialog - DIPERBAIKI dengan tambahan department */}
       <Dialog 
         open={openDialog} 
         onClose={() => {
@@ -648,7 +1009,7 @@ const RiskRegister = () => {
                 <Description /> 1. Identifikasi Risiko
               </Typography>
               <Grid container spacing={2}>
-                {/* ✅ PERBAIKAN: Kode Risiko Manual dengan Validasi */}
+                {/* Kode Risiko */}
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
@@ -668,13 +1029,22 @@ const RiskRegister = () => {
                     }}
                   />
                 </Grid>
+
+                {/* Jenis Risiko dengan custom input */}
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
                     <InputLabel>Jenis Risiko</InputLabel>
                     <Select
                       value={formData.riskType}
                       label="Jenis Risiko"
-                      onChange={(e) => setFormData({ ...formData, riskType: e.target.value })}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setFormData({ 
+                          ...formData, 
+                          riskType: value,
+                          customRiskType: value === 'Lainnya (Input Manual)' ? '' : formData.customRiskType
+                        });
+                      }}
                     >
                       {riskTypes.map((type) => (
                         <MenuItem key={type} value={type}>
@@ -684,6 +1054,21 @@ const RiskRegister = () => {
                     </Select>
                   </FormControl>
                 </Grid>
+
+                {/* Custom Risk Type Input - Tampilkan hanya jika pilih Lainnya */}
+                {formData.riskType === 'Lainnya (Input Manual)' && (
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Jenis Risiko Lainnya"
+                      value={formData.customRiskType}
+                      onChange={(e) => setFormData({ ...formData, customRiskType: e.target.value })}
+                      placeholder="Masukkan jenis risiko..."
+                    />
+                  </Grid>
+                )}
+
+                {/* Klasifikasi */}
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
                     <InputLabel>Klasifikasi</InputLabel>
@@ -700,6 +1085,8 @@ const RiskRegister = () => {
                     </Select>
                   </FormControl>
                 </Grid>
+
+                {/* Sumber Risiko */}
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
                     <InputLabel>Sumber Risiko *</InputLabel>
@@ -717,6 +1104,63 @@ const RiskRegister = () => {
                     </Select>
                   </FormControl>
                 </Grid>
+
+                {/* ✅ DITAMBAHKAN: Departemen */}
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Departemen</InputLabel>
+                    <Select
+                      value={formData.department}
+                      label="Departemen"
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setFormData({ 
+                          ...formData, 
+                          department: value,
+                          customDepartment: value === 'Lainnya (Input Manual)' ? '' : formData.customDepartment
+                        });
+                      }}
+                    >
+                      {departmentsList.map((dept) => (
+                        <MenuItem key={dept} value={dept}>
+                          {dept}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                {/* Custom Department Input - Tampilkan hanya jika pilih Lainnya */}
+                {formData.department === 'Lainnya (Input Manual)' && (
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Nama Departemen Lainnya"
+                      value={formData.customDepartment}
+                      onChange={(e) => setFormData({ ...formData, customDepartment: e.target.value })}
+                      placeholder="Masukkan nama departemen..."
+                    />
+                  </Grid>
+                )}
+
+                {/* Status */}
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={formData.status}
+                      label="Status"
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    >
+                      {statusOptions.map((status) => (
+                        <MenuItem key={status} value={status}>
+                          {status}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                {/* Deskripsi Risiko */}
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -729,6 +1173,8 @@ const RiskRegister = () => {
                     placeholder="Jelaskan risiko secara detail..."
                   />
                 </Grid>
+
+                {/* Penyebab */}
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -740,6 +1186,8 @@ const RiskRegister = () => {
                     placeholder="Apa penyebab risiko ini?"
                   />
                 </Grid>
+
+                {/* Dampak */}
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -751,7 +1199,9 @@ const RiskRegister = () => {
                     placeholder="Jelaskan dampak yang mungkin terjadi..."
                   />
                 </Grid>
-                <Grid item xs={12}>
+
+                {/* Pemilik Risiko */}
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label="Pemilik Risiko"
@@ -762,6 +1212,24 @@ const RiskRegister = () => {
                       startAdornment: (
                         <InputAdornment position="start">
                           <AccountCircle />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
+
+                {/* Penanggung Jawab */}
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Penanggung Jawab"
+                    value={formData.responsiblePerson}
+                    onChange={(e) => setFormData({ ...formData, responsiblePerson: e.target.value })}
+                    placeholder="Nama penanggung jawab"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Person />
                         </InputAdornment>
                       ),
                     }}
@@ -963,22 +1431,6 @@ const RiskRegister = () => {
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
-                    label="Penanggung Jawab"
-                    value={formData.responsiblePerson}
-                    onChange={(e) => setFormData({ ...formData, responsiblePerson: e.target.value })}
-                    placeholder="Nama penanggung jawab"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Person />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
                     label="Target Selesai"
                     type="date"
                     InputLabelProps={{ shrink: true }}
@@ -1017,6 +1469,211 @@ const RiskRegister = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Assessment Dialog */}
+      <Dialog 
+        open={assessmentDialog} 
+        onClose={() => {
+          setAssessmentDialog(false);
+          setAssessingRisk(null);
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <Assessment />
+            Risk Assessment - {assessingRisk?.riskCode}
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          {assessingRisk && (
+            <Box sx={{ mt: 2 }}>
+              <Stepper activeStep={0} sx={{ mb: 4 }}>
+                <Step><StepLabel>Inherent Risk</StepLabel></Step>
+                <Step><StepLabel>Control Assessment</StepLabel></Step>
+                <Step><StepLabel>Residual Risk</StepLabel></Step>
+              </Stepper>
+
+              <Grid container spacing={3}>
+                {/* Inherent Risk Assessment */}
+                <Grid item xs={12}>
+                  <Typography variant="h6" gutterBottom>
+                    Inherent Risk Assessment
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <Typography variant="body2" gutterBottom>Likelihood</Typography>
+                    <Select
+                      value={assessmentData.likelihood}
+                      onChange={(e) => setAssessmentData({...assessmentData, likelihood: e.target.value})}
+                    >
+                      <MenuItem value={1}>1 - Remote</MenuItem>
+                      <MenuItem value={2}>2 - Unlikely</MenuItem>
+                      <MenuItem value={3}>3 - Possible</MenuItem>
+                      <MenuItem value={4}>4 - Probable</MenuItem>
+                      <MenuItem value={5}>5 - Highly Probable</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <Typography variant="body2" gutterBottom>Impact</Typography>
+                    <Select
+                      value={assessmentData.impact}
+                      onChange={(e) => setAssessmentData({...assessmentData, impact: e.target.value})}
+                    >
+                      <MenuItem value={1}>1 - Insignificant</MenuItem>
+                      <MenuItem value={2}>2 - Minor</MenuItem>
+                      <MenuItem value={3}>3 - Moderate</MenuItem>
+                      <MenuItem value={4}>4 - Major</MenuItem>
+                      <MenuItem value={5}>5 - Catastrophic</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                {/* Control Effectiveness */}
+                <Grid item xs={12}>
+                  <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                    Control Effectiveness
+                  </Typography>
+                  <FormControl fullWidth>
+                    <Typography variant="body2" gutterBottom>
+                      Efektivitas Kontrol (1-5)
+                    </Typography>
+                    <Slider
+                      value={assessmentData.controlEffectiveness}
+                      onChange={(e, newValue) => setAssessmentData({...assessmentData, controlEffectiveness: newValue})}
+                      min={1}
+                      max={5}
+                      marks
+                      valueLabelDisplay="auto"
+                    />
+                  </FormControl>
+                </Grid>
+
+                {/* Residual Risk Assessment */}
+                <Grid item xs={12}>
+                  <Typography variant="h6" gutterBottom>
+                    Residual Risk Assessment
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <Typography variant="body2" gutterBottom>Residual Likelihood</Typography>
+                    <Select
+                      value={assessmentData.residualLikelihood}
+                      onChange={(e) => setAssessmentData({...assessmentData, residualLikelihood: e.target.value})}
+                    >
+                      <MenuItem value={1}>1 - Remote</MenuItem>
+                      <MenuItem value={2}>2 - Unlikely</MenuItem>
+                      <MenuItem value={3}>3 - Possible</MenuItem>
+                      <MenuItem value={4}>4 - Probable</MenuItem>
+                      <MenuItem value={5}>5 - Highly Probable</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <Typography variant="body2" gutterBottom>Residual Impact</Typography>
+                    <Select
+                      value={assessmentData.residualImpact}
+                      onChange={(e) => setAssessmentData({...assessmentData, residualImpact: e.target.value})}
+                    >
+                      <MenuItem value={1}>1 - Insignificant</MenuItem>
+                      <MenuItem value={2}>2 - Minor</MenuItem>
+                      <MenuItem value={3}>3 - Moderate</MenuItem>
+                      <MenuItem value={4}>4 - Major</MenuItem>
+                      <MenuItem value={5}>5 - Catastrophic</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                {/* Treatment Priority */}
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Treatment Priority</InputLabel>
+                    <Select
+                      value={assessmentData.treatmentPriority}
+                      label="Treatment Priority"
+                      onChange={(e) => setAssessmentData({...assessmentData, treatmentPriority: e.target.value})}
+                    >
+                      {treatmentPriorities.map((priority) => (
+                        <MenuItem key={priority} value={priority}>
+                          {priority}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                {/* Assessment Notes */}
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Assessment Notes"
+                    multiline
+                    rows={3}
+                    value={assessmentData.assessmentNotes}
+                    onChange={(e) => setAssessmentData({...assessmentData, assessmentNotes: e.target.value})}
+                    placeholder="Catatan tambahan untuk assessment..."
+                  />
+                </Grid>
+
+                {/* Risk Score Display */}
+                <Grid item xs={12}>
+                  <Card variant="outlined" sx={{ backgroundColor: 'grey.50', p: 2 }}>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="textSecondary">
+                          Inherent Score
+                        </Typography>
+                        <Typography variant="h4" color="primary">
+                          {assessmentData.likelihood * assessmentData.impact}
+                        </Typography>
+                        <Chip 
+                          label={calculateRiskLevel(assessmentData.impact, assessmentData.likelihood).level}
+                          color={calculateRiskLevel(assessmentData.impact, assessmentData.likelihood).color}
+                        />
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="textSecondary">
+                          Residual Score
+                        </Typography>
+                        <Typography variant="h4" color="secondary">
+                          {assessmentData.residualLikelihood * assessmentData.residualImpact}
+                        </Typography>
+                        <Chip 
+                          label={calculateRiskLevel(assessmentData.residualImpact, assessmentData.residualLikelihood).level}
+                          color={calculateRiskLevel(assessmentData.residualImpact, assessmentData.residualLikelihood).color}
+                          variant="outlined"
+                        />
+                      </Grid>
+                    </Grid>
+                  </Card>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 3 }}>
+          <Button onClick={() => setAssessmentDialog(false)}>
+            Batal
+          </Button>
+          <Button 
+            variant="contained"
+            onClick={handleAssessmentSubmit}
+            disabled={loading}
+          >
+            {loading ? <CircularProgress size={24} /> : 'Simpan Assessment'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Detail Dialog */}
       <Dialog 
         open={detailDialog} 
@@ -1043,17 +1700,30 @@ const RiskRegister = () => {
               <Card sx={{ mb: 3, backgroundColor: 'primary.light', color: 'white' }}>
                 <CardContent>
                   <Grid container spacing={2}>
-                    <Grid item xs={12} sm={4}>
+                    <Grid item xs={12} sm={3}>
                       <Typography variant="subtitle2">Kode Risiko</Typography>
                       <Typography variant="h6">{selectedRisk.riskCode}</Typography>
                     </Grid>
-                    <Grid item xs={12} sm={4}>
+                    <Grid item xs={12} sm={3}>
                       <Typography variant="subtitle2">Jenis Risiko</Typography>
-                      <Chip label={selectedRisk.riskType} color="primary" />
+                      <Chip label={selectedRisk.riskType} color="primary" sx={{ background: 'white', color: 'primary.main' }} />
                     </Grid>
-                    <Grid item xs={12} sm={4}>
+                    <Grid item xs={12} sm={3}>
                       <Typography variant="subtitle2">Sumber Risiko</Typography>
                       <Chip label={selectedRisk.riskSource} variant="outlined" sx={{ color: 'white', borderColor: 'white' }} />
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <Typography variant="subtitle2">Status</Typography>
+                      <Chip 
+                        label={selectedRisk.status || 'Open'} 
+                        color={
+                          selectedRisk.status?.includes('Critical') || selectedRisk.status?.includes('Extreme') ? 'error' :
+                          selectedRisk.status?.includes('High') ? 'warning' :
+                          selectedRisk.status?.includes('Assessed') ? 'info' :
+                          selectedRisk.status?.includes('Closed') ? 'success' : 'default'
+                        }
+                        sx={{ background: 'white' }}
+                      />
                     </Grid>
                   </Grid>
                 </CardContent>
@@ -1072,7 +1742,7 @@ const RiskRegister = () => {
                       <Grid container spacing={2}>
                         <Grid item xs={12}>
                           <Typography variant="subtitle2" fontWeight="bold">Deskripsi Risiko</Typography>
-                          <Typography variant="body1" paragraph>
+                          <Typography variant="body1" paragraph sx={{ whiteSpace: 'pre-wrap' }}>
                             {selectedRisk.riskDescription}
                           </Typography>
                         </Grid>
@@ -1081,16 +1751,28 @@ const RiskRegister = () => {
                           <Typography variant="body1">{selectedRisk.classification || '-'}</Typography>
                         </Grid>
                         <Grid item xs={12} sm={6}>
+                          <Typography variant="subtitle2" fontWeight="bold">Departemen</Typography>
+                          <Typography variant="body1">{selectedRisk.department || '-'}</Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
                           <Typography variant="subtitle2" fontWeight="bold">Pemilik Risiko</Typography>
                           <Typography variant="body1">{selectedRisk.riskOwner || '-'}</Typography>
                         </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="subtitle2" fontWeight="bold">Penanggung Jawab</Typography>
+                          <Typography variant="body1">{selectedRisk.responsiblePerson || '-'}</Typography>
+                        </Grid>
                         <Grid item xs={12}>
                           <Typography variant="subtitle2" fontWeight="bold">Penyebab</Typography>
-                          <Typography variant="body1">{selectedRisk.cause || '-'}</Typography>
+                          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                            {selectedRisk.cause || '-'}
+                          </Typography>
                         </Grid>
                         <Grid item xs={12}>
                           <Typography variant="subtitle2" fontWeight="bold">Dampak</Typography>
-                          <Typography variant="body1">{selectedRisk.impactText || '-'}</Typography>
+                          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                            {selectedRisk.impactText || '-'}
+                          </Typography>
                         </Grid>
                       </Grid>
                     </CardContent>
@@ -1101,32 +1783,24 @@ const RiskRegister = () => {
                     <CardContent>
                       <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Business />
-                        Kontrol Existing
+                        Kontrol & Rencana Aksi
                       </Typography>
                       <Grid container spacing={2}>
                         <Grid item xs={12}>
                           <Typography variant="subtitle2" fontWeight="bold">Kontrol Internal yang Ada</Typography>
-                          <Typography variant="body1">{selectedRisk.existingControls || '-'}</Typography>
+                          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                            {selectedRisk.existingControls || '-'}
+                          </Typography>
                         </Grid>
                         <Grid item xs={12}>
                           <Typography variant="subtitle2" fontWeight="bold">Efektivitas Kontrol</Typography>
                           <Typography variant="body1">{selectedRisk.controlEffectiveness || '-'}</Typography>
                         </Grid>
-                      </Grid>
-                    </CardContent>
-                  </Card>
-
-                  {/* Rencana Aksi */}
-                  <Card>
-                    <CardContent>
-                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Person />
-                        Rencana Aksi
-                      </Typography>
-                      <Grid container spacing={2}>
                         <Grid item xs={12}>
                           <Typography variant="subtitle2" fontWeight="bold">Pengendalian Tambahan</Typography>
-                          <Typography variant="body1">{selectedRisk.additionalControls || '-'}</Typography>
+                          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                            {selectedRisk.additionalControls || '-'}
+                          </Typography>
                         </Grid>
                         <Grid item xs={12} sm={6}>
                           <Typography variant="subtitle2" fontWeight="bold">Biaya Pengendalian</Typography>
@@ -1135,10 +1809,6 @@ const RiskRegister = () => {
                           </Typography>
                         </Grid>
                         <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2" fontWeight="bold">Penanggung Jawab</Typography>
-                          <Typography variant="body1">{selectedRisk.responsiblePerson || '-'}</Typography>
-                        </Grid>
-                        <Grid item xs={12}>
                           <Typography variant="subtitle2" fontWeight="bold">Target Selesai</Typography>
                           <Typography variant="body1">
                             {selectedRisk.targetCompletion ? 
@@ -1151,7 +1821,7 @@ const RiskRegister = () => {
                   </Card>
                 </Grid>
 
-                {/* Kolom Kanan - Penilaian & Audit Trail */}
+                {/* Kolom Kanan - Penilaian & Assessment */}
                 <Grid item xs={12} md={6}>
                   {/* Penilaian Risiko Inheren */}
                   <Card sx={{ mb: 3 }}>
@@ -1210,6 +1880,51 @@ const RiskRegister = () => {
                             <Alert severity="info">
                               <strong>Risk Score: {selectedRisk.residualRiskLevel.score}</strong> - 
                               Level: {selectedRisk.residualRiskLevel.level}
+                            </Alert>
+                          </Grid>
+                        )}
+                      </Grid>
+                    </CardContent>
+                  </Card>
+
+                  {/* Assessment Data */}
+                  <Card sx={{ mb: 3 }}>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Analytics />
+                        Assessment Data
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="subtitle2" fontWeight="bold">Likelihood</Typography>
+                          <Typography variant="body1">{selectedRisk.likelihood || '-'}</Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="subtitle2" fontWeight="bold">Impact</Typography>
+                          <Typography variant="body1">{selectedRisk.impact || '-'}</Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="subtitle2" fontWeight="bold">Inherent Score</Typography>
+                          <Typography variant="body1">{selectedRisk.inherentScore || '-'}</Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="subtitle2" fontWeight="bold">Residual Score</Typography>
+                          <Typography variant="body1">{selectedRisk.residualScore || '-'}</Typography>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Typography variant="subtitle2" fontWeight="bold">Treatment Priority</Typography>
+                          <Typography variant="body1">{selectedRisk.treatmentPriority || '-'}</Typography>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Typography variant="subtitle2" fontWeight="bold">Assessment Notes</Typography>
+                          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                            {selectedRisk.assessmentNotes || '-'}
+                          </Typography>
+                        </Grid>
+                        {selectedRisk.assessedBy && (
+                          <Grid item xs={12}>
+                            <Alert severity="success">
+                              Dinilai oleh: {selectedRisk.assessedBy} pada {selectedRisk.assessedAt ? new Date(selectedRisk.assessedAt.seconds * 1000).toLocaleDateString('id-ID') : '-'}
                             </Alert>
                           </Grid>
                         )}

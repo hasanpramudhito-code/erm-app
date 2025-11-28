@@ -33,7 +33,8 @@ import {
   Tab,
   Checkbox,
   Toolbar,
-  Slider // ✅ TAMBAHKAN INI
+  Slider,
+  InputAdornment // ✅ TAMBAHKAN INI
 } from '@mui/material';
 import {
   Add,
@@ -48,7 +49,8 @@ import {
   PlayArrow,
   Pause,
   PriorityHigh,
-  FilterList
+  FilterList,
+  Search // ✅ ICON SEARCH
 } from '@mui/icons-material';
 import {
   collection,
@@ -69,6 +71,7 @@ import EvidenceUpload from '../components/EvidenceUpload';
 const RiskTreatmentPlans = () => {
   const [treatmentPlans, setTreatmentPlans] = useState([]);
   const [risks, setRisks] = useState([]);
+  const [filteredRisks, setFilteredRisks] = useState([]); // ✅ NEW: Filtered risks for dropdown
   const [loading, setLoading] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
@@ -82,6 +85,7 @@ const RiskTreatmentPlans = () => {
   const [selectedPlans, setSelectedPlans] = useState([]);
   const [filterType, setFilterType] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
+  const [searchRisk, setSearchRisk] = useState(''); // ✅ NEW: Search term for risks
 
   const [formData, setFormData] = useState({
     riskId: '',
@@ -93,7 +97,7 @@ const RiskTreatmentPlans = () => {
     status: 'planned',
     progress: 0,
     effectiveness: '',
-    priority: 'medium' // ✅ NEW: Priority field
+    priority: 'medium'
   });
 
   // Treatment types dengan color coding
@@ -113,7 +117,7 @@ const RiskTreatmentPlans = () => {
     { value: 'cancelled', label: 'Dibatalkan', color: 'error' }
   ];
 
-  // ✅ NEW: Priority options
+  // Priority options
   const priorityOptions = [
     { value: 'low', label: 'Rendah', color: 'success', icon: <PriorityHigh sx={{ transform: 'rotate(180deg)' }} /> },
     { value: 'medium', label: 'Sedang', color: 'warning', icon: <PriorityHigh /> },
@@ -133,6 +137,7 @@ const RiskTreatmentPlans = () => {
         risksList.push({ id: doc.id, ...doc.data() });
       });
       setRisks(risksList);
+      setFilteredRisks(risksList); // ✅ Initialize filtered risks
 
       // Load treatment plans
       const plansQuery = query(
@@ -164,7 +169,21 @@ const RiskTreatmentPlans = () => {
     loadData();
   }, []);
 
-  // ✅ NEW: Filter treatment plans based on active tab and filters
+  // ✅ NEW: Filter risks based on search term
+  useEffect(() => {
+    if (searchRisk.trim() === '') {
+      setFilteredRisks(risks);
+    } else {
+      const filtered = risks.filter(risk => 
+        risk.title?.toLowerCase().includes(searchRisk.toLowerCase()) ||
+        risk.riskDescription?.toLowerCase().includes(searchRisk.toLowerCase()) ||
+        risk.riskCategory?.toLowerCase().includes(searchRisk.toLowerCase())
+      );
+      setFilteredRisks(filtered);
+    }
+  }, [searchRisk, risks]);
+
+  // Filter treatment plans based on active tab and filters
   const getFilteredPlans = () => {
     let filtered = treatmentPlans;
 
@@ -218,9 +237,9 @@ const RiskTreatmentPlans = () => {
     return { level: 'Low', color: 'success' };
   };
 
-  // ✅ NEW: Get priority info
+  // Get priority info
   const getPriorityInfo = (priority) => {
-    return priorityOptions.find(p => p.value === priority) || priorityOptions[1]; // default to medium
+    return priorityOptions.find(p => p.value === priority) || priorityOptions[1];
   };
 
   // Handle form submit
@@ -263,6 +282,7 @@ const RiskTreatmentPlans = () => {
         effectiveness: '',
         priority: 'medium'
       });
+      setSearchRisk(''); // ✅ Reset search when dialog closes
       
       loadData();
       
@@ -285,8 +305,15 @@ const RiskTreatmentPlans = () => {
       status: plan.status,
       progress: plan.progress || 0,
       effectiveness: plan.effectiveness || '',
-      priority: plan.priority || 'medium' // ✅ NEW
+      priority: plan.priority || 'medium'
     });
+    
+    // ✅ Set search term to current risk name for better UX
+    const currentRisk = risks.find(r => r.id === plan.riskId);
+    if (currentRisk) {
+      setSearchRisk(currentRisk.title || currentRisk.riskDescription);
+    }
+    
     setOpenDialog(true);
   };
 
@@ -304,7 +331,7 @@ const RiskTreatmentPlans = () => {
     }
   };
 
-  // ✅ NEW: Bulk delete
+  // Bulk delete
   const handleBulkDelete = async () => {
     if (selectedPlans.length === 0) return;
     
@@ -324,7 +351,7 @@ const RiskTreatmentPlans = () => {
     }
   };
 
-  // ✅ NEW: Bulk status update
+  // Bulk status update
   const handleBulkStatusUpdate = async (newStatus) => {
     if (selectedPlans.length === 0) return;
 
@@ -352,7 +379,7 @@ const RiskTreatmentPlans = () => {
     setViewDialog(true);
   };
 
-  // ✅ NEW: Handle select all
+  // Handle select all
   const handleSelectAll = (event) => {
     if (event.target.checked) {
       setSelectedPlans(getFilteredPlans().map(plan => plan.id));
@@ -361,7 +388,7 @@ const RiskTreatmentPlans = () => {
     }
   };
 
-  // ✅ NEW: Handle individual selection
+  // Handle individual selection
   const handleSelectPlan = (planId) => {
     const selectedIndex = selectedPlans.indexOf(planId);
     let newSelected = [];
@@ -391,7 +418,7 @@ const RiskTreatmentPlans = () => {
     setSnackbar({ ...snackbar, open: false });
   };
 
-  // ✅ NEW: Enhanced statistics
+  // Enhanced statistics
   const stats = {
     total: treatmentPlans.length,
     completed: treatmentPlans.filter(p => p.status === 'completed').length,
@@ -554,7 +581,7 @@ const RiskTreatmentPlans = () => {
               value={activeTab} 
               onChange={(e, newValue) => {
                 setActiveTab(newValue);
-                setSelectedPlans([]); // Reset selection when changing tabs
+                setSelectedPlans([]);
               }}
               sx={{ px: 2 }}
             >
@@ -803,7 +830,7 @@ const RiskTreatmentPlans = () => {
         </CardContent>
       </Card>
 
-      {/* Create/Edit Dialog - Enhanced dengan Priority */}
+      {/* Create/Edit Dialog - Enhanced dengan Search untuk Risk */}
       <Dialog 
         open={openDialog} 
         onClose={() => {
@@ -821,6 +848,7 @@ const RiskTreatmentPlans = () => {
             effectiveness: '',
             priority: 'medium'
           });
+          setSearchRisk(''); // Reset search when dialog closes
         }}
         maxWidth="md"
         fullWidth
@@ -830,6 +858,7 @@ const RiskTreatmentPlans = () => {
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
+            {/* ✅ ENHANCED: Risk Selection with Search */}
             <Grid item xs={12}>
               <FormControl fullWidth>
                 <InputLabel>Pilih Risk</InputLabel>
@@ -837,13 +866,80 @@ const RiskTreatmentPlans = () => {
                   value={formData.riskId}
                   label="Pilih Risk"
                   onChange={(e) => setFormData({ ...formData, riskId: e.target.value })}
+                  MenuProps={{
+                    PaperProps: {
+                      style: {
+                        maxHeight: 300, // Limit height for better UX
+                      },
+                    },
+                  }}
                 >
-                  {risks.map((risk) => (
-                    <MenuItem key={risk.id} value={risk.id}>
-                      {risk.title || risk.riskDescription} 
-                      {` (Score: ${(risk.likelihood * risk.impact) || 1})`}
+                  {/* ✅ SEARCH FIELD INSIDE DROPDOWN */}
+                  <MenuItem disabled>
+                    <TextField
+                      fullWidth
+                      placeholder="Cari risiko..."
+                      value={searchRisk}
+                      onChange={(e) => setSearchRisk(e.target.value)}
+                      onClick={(e) => e.stopPropagation()} // Prevent menu close
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Search />
+                          </InputAdornment>
+                        ),
+                      }}
+                      size="small"
+                      sx={{ mb: 1 }}
+                    />
+                  </MenuItem>
+
+                  {/* ✅ SHOW SEARCH RESULTS COUNT */}
+                  <MenuItem disabled>
+                    <Typography variant="caption" color="textSecondary">
+                      {filteredRisks.length} risiko ditemukan
+                      {searchRisk && ` untuk "${searchRisk}"`}
+                    </Typography>
+                  </MenuItem>
+
+                  {/* ✅ RISK LIST WITH SEARCH FILTERING */}
+                  {filteredRisks.length === 0 ? (
+                    <MenuItem disabled>
+                      <Typography variant="body2" color="textSecondary" sx={{ fontStyle: 'italic' }}>
+                        Tidak ada risiko yang sesuai dengan pencarian
+                      </Typography>
                     </MenuItem>
-                  ))}
+                  ) : (
+                    filteredRisks.map((risk) => {
+                      const riskScore = (risk.likelihood * risk.impact) || 1;
+                      const riskLevel = 
+                        riskScore >= 20 ? { level: 'Extreme', color: 'error' } :
+                        riskScore >= 16 ? { level: 'High', color: 'warning' } :
+                        riskScore >= 10 ? { level: 'Medium', color: 'info' } :
+                        { level: 'Low', color: 'success' };
+
+                      return (
+                        <MenuItem key={risk.id} value={risk.id}>
+                          <Box sx={{ width: '100%' }}>
+                            <Typography variant="body2" fontWeight="bold">
+                              {risk.title || risk.riskDescription}
+                            </Typography>
+                            <Box display="flex" justifyContent="space-between" alignItems="center">
+                              <Typography variant="caption" color="textSecondary">
+                                {risk.riskCategory} • Score: {riskScore}
+                              </Typography>
+                              <Chip 
+                                label={riskLevel.level}
+                                color={riskLevel.color}
+                                size="small"
+                                sx={{ ml: 1 }}
+                              />
+                            </Box>
+                          </Box>
+                        </MenuItem>
+                      );
+                    })
+                  )}
                 </Select>
               </FormControl>
             </Grid>
@@ -876,7 +972,7 @@ const RiskTreatmentPlans = () => {
               </FormControl>
             </Grid>
 
-            {/* ✅ NEW: Priority Field */}
+            {/* Priority Field */}
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
                 <InputLabel>Priority</InputLabel>
@@ -980,6 +1076,7 @@ const RiskTreatmentPlans = () => {
             onClick={() => {
               setOpenDialog(false);
               setEditingPlan(null);
+              setSearchRisk('');
             }}
           >
             Batal
@@ -994,7 +1091,7 @@ const RiskTreatmentPlans = () => {
         </DialogActions>
       </Dialog>
 
-      {/* View Details Dialog - Tetap sama */}
+      {/* View Details Dialog */}
       <Dialog 
         open={viewDialog} 
         onClose={() => setViewDialog(false)}
