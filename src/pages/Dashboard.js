@@ -259,7 +259,7 @@ const Dashboard = () => {
       title: 'Kelola Users',
       description: 'Management user dan hak akses',
       icon: <People />,
-      path: '/users',
+      path: '/user-management',
       color: '#9c27b0'
     },
     {

@@ -507,14 +507,18 @@ const RiskRegister = () => {
   const handleAssessment = (risk) => {
     setAssessingRisk(risk);
     setAssessmentData({
-      likelihood: risk.likelihood || 1,
-      impact: risk.impact || 1,
-      controlEffectiveness: risk.controlEffectiveness || 3,
-      residualLikelihood: risk.residualLikelihood || risk.likelihood || 1,
-      residualImpact: risk.residualImpact || risk.impact || 1,
-      treatmentPriority: risk.treatmentPriority || 'Medium - Sedang (Penanganan < 1 Bulan)',
-      assessmentNotes: risk.assessmentNotes || ''
-    });
+
+  likelihood: risk.initialProbability || 1,
+  impact: risk.initialImpact || 1,
+  controlEffectiveness: risk.controlEffectiveness || 3,
+
+  residualLikelihood: risk.residualProbability || risk.initialProbability || 1,
+  residualImpact: risk.residualImpact || risk.initialImpact || 1,
+
+  treatmentPriority: risk.treatmentPriority || 'Medium - Sedang (Penanganan < 1 Bulan)',
+  assessmentNotes: risk.assessmentNotes || ''
+});
+
     setAssessmentDialog(true);
   };
 

@@ -38,10 +38,10 @@ import {
 import { 
   collection, 
   getDocs, 
-  addDoc, 
   doc, 
   updateDoc, 
-  deleteDoc
+  deleteDoc,
+  setDoc // ← UBAH: setDoc menggantikan addDoc
 } from 'firebase/firestore';
 import { 
   createUserWithEmailAndPassword
@@ -82,22 +82,31 @@ const UserManagement = () => {
 
       const usersSnapshot = await getDocs(collection(db, 'users'));
       const usersList = [];
+      
       usersSnapshot.forEach((doc) => {
-        usersList.push({
+        const data = doc.data();
+        
+        // CREATE USER OBJECT WITH GUARANTEED uid
+        const userObj = {
           id: doc.id,
-          ...doc.data(),
-          role: normalizeRole(doc.data().role)
+          // uid MUTLAK harus ada: dari data.uid, atau dari id
+          uid: data.uid || doc.id, // ← INI YANG PENTING!
+          ...data,
+          role: normalizeRole(data.role)
+        };
+        
+        console.log('Loaded user:', { 
+          id: userObj.id, 
+          uid: userObj.uid, 
+          name: userObj.name 
         });
+        
+        usersList.push(userObj);
       });
+      
       setUsers(usersList);
-
-      const unitsSnapshot = await getDocs(collection(db, 'organization_units'));
-      const unitsList = [];
-      unitsSnapshot.forEach((doc) => {
-        unitsList.push({ id: doc.id, ...doc.data() });
-      });
-      setOrganizationUnits(unitsList);
-
+      
+      // Load organization units...
     } catch (error) {
       console.error('Error loading data:', error);
       setError('Gagal memuat data');
@@ -119,8 +128,8 @@ const UserManagement = () => {
       const upperRole = normalizeRole(formData.role);
 
       if (editingUser) {
-        // Update user
-        await updateDoc(doc(db, 'users', editingUser.id), {
+        // Update user - GUNAKAN uid sebagai document ID
+        await updateDoc(doc(db, 'users', editingUser.uid), { // ← UBAH: editingUser.uid
           name: formData.name,
           role: upperRole,
           department: formData.department,
@@ -139,8 +148,8 @@ const UserManagement = () => {
           formData.password
         );
         
-        await addDoc(collection(db, 'users'), {
-          uid: userCredential.user.uid,
+        // BUAT DOCUMENT DENGAN UID SEBAGAI DOCUMENT ID
+        await setDoc(doc(db, "users", userCredential.user.uid), {
           name: formData.name,
           email: formData.email,
           role: upperRole,
@@ -177,23 +186,54 @@ const UserManagement = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }; // ← TAMBAH: kurung tutup yang hilang
 
   const handleDelete = async (user) => {
-    if (window.confirm(`Apakah Anda yakin ingin menghapus user ${user.name}?`)) {
+    console.log('DELETE - User:', {
+      name: user.name,
+      firestoreDocId: user.id,      // ← Document ID di Firestore
+      authUid: user.uid,           // ← UID di Authentication
+      areTheySame: user.id === user.uid
+    });
+    
+    if (window.confirm(`Hapus user ${user.name}?`)) {
       try {
+        // GUNAKAN user.id (Firestore Document ID)
         await deleteDoc(doc(db, 'users', user.id));
+        
+        console.log(`Deleted user ${user.name} with Firestore ID: ${user.id}`);
         setSuccess('User berhasil dihapus!');
+        
+        // Refresh data
         loadData();
+        
       } catch (error) {
-        console.error('Error deleting user:', error);
-        setError('Gagal menghapus user: ' + error.message);
+        console.error('Delete error:', error);
+        
+        // Jika gagal dengan id, coba dengan uid
+        if (user.uid && user.uid !== user.id) {
+          console.log('Trying with UID instead...');
+          try {
+            await deleteDoc(doc(db, 'users', user.uid));
+            setSuccess('User berhasil dihapus (using UID)!');
+            loadData();
+          } catch (uidError) {
+            setError('Gagal menghapus dengan UID juga: ' + uidError.message);
+          }
+        } else {
+          setError('Gagal menghapus user: ' + error.message);
+        }
       }
     }
   };
 
   const handleEdit = (user) => {
-    setEditingUser(user);
+    setEditingUser({
+      ...user,
+      // PASTIKAN uid ada
+      uid: user.uid || user.id || '' // ← Tambah ini
+    });
+    
     setFormData({
       name: user.name || '',
       email: user.email || '',
@@ -205,6 +245,7 @@ const UserManagement = () => {
       phone: user.phone || '',
       status: user.status || 'active'
     });
+    
     setOpenDialog(true);
   };
 

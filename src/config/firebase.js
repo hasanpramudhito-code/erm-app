@@ -22,4 +22,5 @@ export const db = getFirestore(app);
 export const storage = getStorage(app); // Pastikan ini ada
 
 
+
 export default app;

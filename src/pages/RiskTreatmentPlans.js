@@ -33,8 +33,8 @@ import {
   Tab,
   Checkbox,
   Toolbar,
-  Slider,
-  InputAdornment // ✅ TAMBAHKAN INI
+  InputAdornment,
+  Slider
 } from '@mui/material';
 import {
   Add,
@@ -47,10 +47,8 @@ import {
   CheckCircle,
   Warning,
   PlayArrow,
-  Pause,
   PriorityHigh,
-  FilterList,
-  Search // ✅ ICON SEARCH
+  Search
 } from '@mui/icons-material';
 import {
   collection,
@@ -60,7 +58,6 @@ import {
   deleteDoc,
   doc,
   query,
-  where,
   orderBy
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
@@ -71,21 +68,20 @@ import EvidenceUpload from '../components/EvidenceUpload';
 const RiskTreatmentPlans = () => {
   const [treatmentPlans, setTreatmentPlans] = useState([]);
   const [risks, setRisks] = useState([]);
-  const [filteredRisks, setFilteredRisks] = useState([]); // ✅ NEW: Filtered risks for dropdown
+  const [filteredRisks, setFilteredRisks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const { userData } = useAuth();
   
-  // State baru untuk enhanced features
   const [viewPlan, setViewPlan] = useState(null);
   const [viewDialog, setViewDialog] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [selectedPlans, setSelectedPlans] = useState([]);
   const [filterType, setFilterType] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
-  const [searchRisk, setSearchRisk] = useState(''); // ✅ NEW: Search term for risks
+  const [searchRisk, setSearchRisk] = useState('');
 
   const [formData, setFormData] = useState({
     riskId: '',
@@ -100,7 +96,6 @@ const RiskTreatmentPlans = () => {
     priority: 'medium'
   });
 
-  // Treatment types dengan color coding
   const treatmentTypes = [
     { value: 'mitigation', label: 'Mitigasi', color: 'primary' },
     { value: 'avoidance', label: 'Avoidance', color: 'secondary' },
@@ -108,7 +103,6 @@ const RiskTreatmentPlans = () => {
     { value: 'acceptance', label: 'Acceptance', color: 'default' }
   ];
 
-  // Status options
   const statusOptions = [
     { value: 'planned', label: 'Terencana', color: 'default' },
     { value: 'in_progress', label: 'Dalam Progress', color: 'primary' },
@@ -117,7 +111,6 @@ const RiskTreatmentPlans = () => {
     { value: 'cancelled', label: 'Dibatalkan', color: 'error' }
   ];
 
-  // Priority options
   const priorityOptions = [
     { value: 'low', label: 'Rendah', color: 'success', icon: <PriorityHigh sx={{ transform: 'rotate(180deg)' }} /> },
     { value: 'medium', label: 'Sedang', color: 'warning', icon: <PriorityHigh /> },
@@ -125,21 +118,21 @@ const RiskTreatmentPlans = () => {
     { value: 'critical', label: 'Kritis', color: 'error', icon: <Warning /> }
   ];
 
-  // Load data
+  // Load data dari Firebase
   const loadData = async () => {
     try {
       setLoading(true);
       
-      // Load risks
+      // Load risks dari Firebase
       const risksSnapshot = await getDocs(collection(db, 'risks'));
       const risksList = [];
       risksSnapshot.forEach((doc) => {
         risksList.push({ id: doc.id, ...doc.data() });
       });
       setRisks(risksList);
-      setFilteredRisks(risksList); // ✅ Initialize filtered risks
+      setFilteredRisks(risksList);
 
-      // Load treatment plans
+      // Load treatment plans dari Firebase
       const plansQuery = query(
         collection(db, 'treatment_plans'),
         orderBy('createdAt', 'desc')
@@ -158,8 +151,8 @@ const RiskTreatmentPlans = () => {
       setTreatmentPlans(plansList);
 
     } catch (error) {
-      console.error('Error loading data:', error);
-      showSnackbar('Error memuat data: ' + error.message, 'error');
+      console.error('Error loading data from Firebase:', error);
+      showSnackbar('Error memuat data dari Firebase: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -169,7 +162,7 @@ const RiskTreatmentPlans = () => {
     loadData();
   }, []);
 
-  // ✅ NEW: Filter risks based on search term
+  // Filter risks berdasarkan pencarian
   useEffect(() => {
     if (searchRisk.trim() === '') {
       setFilteredRisks(risks);
@@ -183,7 +176,7 @@ const RiskTreatmentPlans = () => {
     }
   }, [searchRisk, risks]);
 
-  // Filter treatment plans based on active tab and filters
+  // Filter treatment plans
   const getFilteredPlans = () => {
     let filtered = treatmentPlans;
 
@@ -242,7 +235,7 @@ const RiskTreatmentPlans = () => {
     return priorityOptions.find(p => p.value === priority) || priorityOptions[1];
   };
 
-  // Handle form submit
+  // Handle form submit ke Firebase
   const handleSubmit = async () => {
     try {
       if (!formData.riskId || !formData.treatmentDescription) {
@@ -257,15 +250,15 @@ const RiskTreatmentPlans = () => {
       };
 
       if (editingPlan) {
-        // Update existing plan
+        // Update existing plan di Firebase
         await updateDoc(doc(db, 'treatment_plans', editingPlan.id), planData);
-        showSnackbar('Treatment plan berhasil diupdate!', 'success');
+        showSnackbar('Treatment plan berhasil diupdate di Firebase!', 'success');
       } else {
-        // Create new plan
+        // Create new plan di Firebase
         planData.createdAt = new Date();
         planData.createdBy = userData?.name;
         await addDoc(collection(db, 'treatment_plans'), planData);
-        showSnackbar('Treatment plan berhasil dibuat!', 'success');
+        showSnackbar('Treatment plan berhasil dibuat di Firebase!', 'success');
       }
 
       setOpenDialog(false);
@@ -282,12 +275,12 @@ const RiskTreatmentPlans = () => {
         effectiveness: '',
         priority: 'medium'
       });
-      setSearchRisk(''); // ✅ Reset search when dialog closes
+      setSearchRisk('');
       
       loadData();
       
     } catch (error) {
-      console.error('Error saving treatment plan:', error);
+      console.error('Error saving treatment plan to Firebase:', error);
       showSnackbar('Error menyimpan treatment plan: ' + error.message, 'error');
     }
   };
@@ -308,7 +301,6 @@ const RiskTreatmentPlans = () => {
       priority: plan.priority || 'medium'
     });
     
-    // ✅ Set search term to current risk name for better UX
     const currentRisk = risks.find(r => r.id === plan.riskId);
     if (currentRisk) {
       setSearchRisk(currentRisk.title || currentRisk.riskDescription);
@@ -317,21 +309,21 @@ const RiskTreatmentPlans = () => {
     setOpenDialog(true);
   };
 
-  // Handle delete
+  // Handle delete dari Firebase
   const handleDelete = async (planId) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus treatment plan ini?')) {
       try {
         await deleteDoc(doc(db, 'treatment_plans', planId));
-        showSnackbar('Treatment plan berhasil dihapus!', 'success');
+        showSnackbar('Treatment plan berhasil dihapus dari Firebase!', 'success');
         loadData();
       } catch (error) {
-        console.error('Error deleting treatment plan:', error);
+        console.error('Error deleting treatment plan from Firebase:', error);
         showSnackbar('Error menghapus treatment plan: ' + error.message, 'error');
       }
     }
   };
 
-  // Bulk delete
+  // Bulk delete dari Firebase
   const handleBulkDelete = async () => {
     if (selectedPlans.length === 0) return;
     
@@ -341,17 +333,17 @@ const RiskTreatmentPlans = () => {
           deleteDoc(doc(db, 'treatment_plans', planId))
         );
         await Promise.all(deletePromises);
-        showSnackbar(`${selectedPlans.length} treatment plan berhasil dihapus!`, 'success');
+        showSnackbar(`${selectedPlans.length} treatment plan berhasil dihapus dari Firebase!`, 'success');
         setSelectedPlans([]);
         loadData();
       } catch (error) {
-        console.error('Error bulk deleting:', error);
+        console.error('Error bulk deleting from Firebase:', error);
         showSnackbar('Error menghapus treatment plans: ' + error.message, 'error');
       }
     }
   };
 
-  // Bulk status update
+  // Bulk status update ke Firebase
   const handleBulkStatusUpdate = async (newStatus) => {
     if (selectedPlans.length === 0) return;
 
@@ -364,11 +356,11 @@ const RiskTreatmentPlans = () => {
         })
       );
       await Promise.all(updatePromises);
-      showSnackbar(`${selectedPlans.length} plan berhasil diupdate ke status ${statusOptions.find(s => s.value === newStatus)?.label}!`, 'success');
+      showSnackbar(`${selectedPlans.length} plan berhasil diupdate di Firebase!`, 'success');
       setSelectedPlans([]);
       loadData();
     } catch (error) {
-      console.error('Error bulk updating:', error);
+      console.error('Error bulk updating Firebase:', error);
       showSnackbar('Error update status: ' + error.message, 'error');
     }
   };
@@ -418,7 +410,7 @@ const RiskTreatmentPlans = () => {
     setSnackbar({ ...snackbar, open: false });
   };
 
-  // Enhanced statistics
+  // Statistics dari data Firebase
   const stats = {
     total: treatmentPlans.length,
     completed: treatmentPlans.filter(p => p.status === 'completed').length,
@@ -436,6 +428,34 @@ const RiskTreatmentPlans = () => {
   };
 
   const filteredPlans = getFilteredPlans();
+
+  // Jika tidak ada data di Firebase
+  if (!loading && risks.length === 0) {
+    return (
+      <Box sx={{ p: 3, textAlign: 'center', minHeight: '100vh' }}>
+        <Card sx={{ p: 4, maxWidth: 600, mx: 'auto', mt: 4 }}>
+          <Assignment sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
+          <Typography variant="h5" gutterBottom fontWeight="bold">
+            Belum Ada Data Treatment Plans
+          </Typography>
+          <Typography variant="body1" color="textSecondary" paragraph>
+            Mulai dengan membuat treatment plan pertama Anda.
+          </Typography>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Pastikan koleksi 'risks' dan 'treatment_plans' sudah ada di Firebase.
+          </Alert>
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            size="large"
+            onClick={() => setOpenDialog(true)}
+          >
+            Buat Treatment Plan Pertama
+          </Button>
+        </Card>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3, backgroundColor: 'grey.50', minHeight: '100vh' }}>
@@ -457,7 +477,7 @@ const RiskTreatmentPlans = () => {
                   Risk Treatment Plans
                 </Typography>
                 <Typography variant="subtitle1" color="textSecondary">
-                  Kelola rencana penanganan dan mitigasi risiko
+                  Data diambil dari Firebase Firestore
                 </Typography>
               </Box>
             </Box>
@@ -476,7 +496,7 @@ const RiskTreatmentPlans = () => {
           <Box sx={{ mt: 2 }}>
             <Box display="flex" justifyContent="space-between" mb={1}>
               <Typography variant="body2" color="textSecondary">
-                Overall Progress ({filteredPlans.length} plans)
+                Overall Progress ({treatmentPlans.length} plans dari Firebase)
               </Typography>
               <Typography variant="body2" fontWeight="bold">
                 {Math.round(stats.averageProgress)}%
@@ -848,7 +868,7 @@ const RiskTreatmentPlans = () => {
             effectiveness: '',
             priority: 'medium'
           });
-          setSearchRisk(''); // Reset search when dialog closes
+          setSearchRisk('');
         }}
         maxWidth="md"
         fullWidth
@@ -858,7 +878,7 @@ const RiskTreatmentPlans = () => {
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            {/* ✅ ENHANCED: Risk Selection with Search */}
+            {/* Enhanced: Risk Selection with Search */}
             <Grid item xs={12}>
               <FormControl fullWidth>
                 <InputLabel>Pilih Risk</InputLabel>
@@ -869,19 +889,18 @@ const RiskTreatmentPlans = () => {
                   MenuProps={{
                     PaperProps: {
                       style: {
-                        maxHeight: 300, // Limit height for better UX
+                        maxHeight: 300,
                       },
                     },
                   }}
                 >
-                  {/* ✅ SEARCH FIELD INSIDE DROPDOWN */}
                   <MenuItem disabled>
                     <TextField
                       fullWidth
                       placeholder="Cari risiko..."
                       value={searchRisk}
                       onChange={(e) => setSearchRisk(e.target.value)}
-                      onClick={(e) => e.stopPropagation()} // Prevent menu close
+                      onClick={(e) => e.stopPropagation()}
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start">
@@ -894,7 +913,6 @@ const RiskTreatmentPlans = () => {
                     />
                   </MenuItem>
 
-                  {/* ✅ SHOW SEARCH RESULTS COUNT */}
                   <MenuItem disabled>
                     <Typography variant="caption" color="textSecondary">
                       {filteredRisks.length} risiko ditemukan
@@ -902,7 +920,6 @@ const RiskTreatmentPlans = () => {
                     </Typography>
                   </MenuItem>
 
-                  {/* ✅ RISK LIST WITH SEARCH FILTERING */}
                   {filteredRisks.length === 0 ? (
                     <MenuItem disabled>
                       <Typography variant="body2" color="textSecondary" sx={{ fontStyle: 'italic' }}>
@@ -972,7 +989,6 @@ const RiskTreatmentPlans = () => {
               </FormControl>
             </Grid>
 
-            {/* Priority Field */}
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
                 <InputLabel>Priority</InputLabel>
@@ -1111,7 +1127,6 @@ const RiskTreatmentPlans = () => {
         <DialogContent>
           {viewPlan && (
             <Box sx={{ mt: 2 }}>
-              {/* Progress Tracking Component */}
               <ProgressTracking 
                 treatmentPlan={viewPlan}
                 onUpdate={async (updatedData) => {
@@ -1121,17 +1136,16 @@ const RiskTreatmentPlans = () => {
                       updatedAt: new Date(),
                       updatedBy: userData?.name
                     });
-                    showSnackbar('Progress berhasil diupdate!', 'success');
+                    showSnackbar('Progress berhasil diupdate di Firebase!', 'success');
                     setViewDialog(false);
                     loadData();
                   } catch (error) {
-                    console.error('Error updating progress:', error);
+                    console.error('Error updating progress in Firebase:', error);
                     showSnackbar('Error mengupdate progress: ' + error.message, 'error');
                   }
                 }}
               />
               
-              {/* Evidence Upload Component */}
               <EvidenceUpload 
                 treatmentPlan={viewPlan}
                 onUpdate={async (updatedData) => {
@@ -1141,16 +1155,15 @@ const RiskTreatmentPlans = () => {
                       updatedAt: new Date(),
                       updatedBy: userData?.name
                     });
-                    showSnackbar('Evidence berhasil diupdate!', 'success');
+                    showSnackbar('Evidence berhasil diupdate di Firebase!', 'success');
                     loadData();
                   } catch (error) {
-                    console.error('Error updating evidence:', error);
+                    console.error('Error updating evidence in Firebase:', error);
                     showSnackbar('Error mengupdate evidence: ' + error.message, 'error');
                   }
                 }}
               />
 
-              {/* Existing Plan Details */}
               <Grid container spacing={3}>
                 <Grid item xs={12}>
                   <Card variant="outlined">

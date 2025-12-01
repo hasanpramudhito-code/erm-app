@@ -1,782 +1,668 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Typography,
   Paper,
+  Typography,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Chip,
   Card,
   CardContent,
-  Chip,
+  Grid,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
   Button,
+  IconButton,
+  Tooltip,
+  TextField,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  IconButton,
-  Tooltip,
   Alert,
-  Grid,
-  InputAdornment,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemButton,
-  Pagination,
   CircularProgress
 } from '@mui/material';
 import {
-  People,
-  Assignment,
   Edit,
   Save,
   Cancel,
+  Person,
+  Assignment,
+  AccountTree,
   Add,
   Delete,
-  MedicalServices,
-  Search,
-  FilterList,
-  Clear
+  Visibility
 } from '@mui/icons-material';
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { 
+  collection, 
+  getDocs, 
+  doc, 
+  updateDoc, 
+  addDoc,
+  deleteDoc,
+  query,
+  where 
+} from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 const RACIChart = () => {
-  const [treatmentPlans, setTreatmentPlans] = useState([]);
-  const [filteredTreatments, setFilteredTreatments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [risks, setRisks] = useState([]);
   const [users, setUsers] = useState([]);
-  const [selectedTreatment, setSelectedTreatment] = useState('');
-  const [raciData, setRaciData] = useState([]);
+  const [organizations, setOrganizations] = useState([]);
+  const [raciMatrix, setRaciMatrix] = useState([]);
+  const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [editMode, setEditMode] = useState(false);
-  const [editingCell, setEditingCell] = useState(null);
-  const [loading, setLoading] = useState(false);
-  
-  // State untuk search functionality
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [filters, setFilters] = useState({
-    status: 'all',
-    riskLevel: 'all',
-    treatmentType: 'all'
-  });
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [newAssignment, setNewAssignment] = useState({ riskId: '', userId: '', role: 'R' });
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [editingCell, setEditingCell] = useState(null); // {riskId: 'xxx', role: 'R'}
 
-  // Load treatment plans and users
-  useEffect(() => {
-    loadData();
-  }, []);
+  // RACI Roles dengan warna
+  const raciRoles = [
+    { value: 'R', label: 'Responsible', color: '#4caf50', description: 'Melakukan pekerjaan' },
+    { value: 'A', label: 'Accountable', color: '#2196f3', description: 'Bertanggung jawab akhir' },
+    { value: 'C', label: 'Consulted', color: '#ff9800', description: 'Dikonsultasikan' },
+    { value: 'I', label: 'Informed', color: '#9c27b0', description: 'Diberi informasi' },
+    { value: 'S', label: 'Support', color: '#607d8b', description: 'Memberi dukungan' }
+  ];
 
-  // Filter treatment plans berdasarkan search term dan filters
-  useEffect(() => {
-    let results = treatmentPlans;
-    
-    // Filter berdasarkan search term
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      results = results.filter(treatment => 
-        treatment.treatmentCode?.toLowerCase().includes(term) ||
-        treatment.description?.toLowerCase().includes(term) ||
-        treatment.riskCode?.toLowerCase().includes(term) ||
-        treatment.riskTitle?.toLowerCase().includes(term)
-      );
-    }
-    
-    // Filter berdasarkan status
-    if (filters.status !== 'all') {
-      results = results.filter(treatment => treatment.status === filters.status);
-    }
-    
-    // Filter berdasarkan risk level
-    if (filters.riskLevel !== 'all') {
-      results = results.filter(treatment => treatment.riskLevel === filters.riskLevel);
-    }
-    
-    // Filter berdasarkan treatment type
-    if (filters.treatmentType !== 'all') {
-      results = results.filter(treatment => treatment.treatmentType === filters.treatmentType);
-    }
-    
-    setSearchResults(results);
-    setFilteredTreatments(results);
-  }, [searchTerm, filters, treatmentPlans]);
-
+  // Load data dari Firebase
   const loadData = async () => {
     try {
       setLoading(true);
       
-      // Load treatment plans (RTP - Risk Treatment Plan)
-      const treatmentsSnapshot = await getDocs(collection(db, 'risk_treatment_plans'));
-      const treatmentsList = treatmentsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setTreatmentPlans(treatmentsList);
-      setFilteredTreatments(treatmentsList);
+      // Load risks
+      const risksQuery = query(collection(db, 'risks'));
+      const risksSnapshot = await getDocs(risksQuery);
+      const risksData = risksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setRisks(risksData);
 
       // Load users
-      const usersSnapshot = await getDocs(collection(db, 'users'));
-      const usersList = usersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setUsers(usersList);
+      const usersQuery = query(collection(db, 'users'));
+      const usersSnapshot = await getDocs(usersQuery);
+      const usersData = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUsers(usersData);
+
+      // Load organization units
+      const orgQuery = query(collection(db, 'organization_units'));
+      const orgSnapshot = await getDocs(orgQuery);
+      const orgData = orgSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setOrganizations(orgData);
+
+      // Load RACI assignments
+      await loadRACIAssignments(risksData, usersData);
 
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Error loading RACI data:', error);
+      showSnackbar('Error loading RACI data: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  // ===============================
-  // RACI FUNCTIONS
-  // ===============================
-
-  const initializeRACIData = () => {
-    const treatment = treatmentPlans.find(t => t.id === selectedTreatment);
-    if (!treatment) return;
-
-    // Activities untuk treatment plan execution
-    const treatmentActivities = [
-      'Treatment Planning',
-      'Resource Allocation',
-      'Implementation',
-      'Monitoring & Evaluation',
-      'Progress Reporting',
-      'Effectiveness Review',
-      'Closure & Documentation'
-    ];
-
-    const newRaciData = treatmentActivities.map(activity => {
-      const row = { activity };
-      users.forEach(user => {
-        row[user.id] = treatment.raci?.[activity]?.[user.id] || '';
-      });
-      return row;
-    });
-
-    setRaciData(newRaciData);
-  };
-
-  const handleRACIChange = (activity, userId, value) => {
-    if (!editMode) return;
-
-    const updatedData = raciData.map(row => {
-      if (row.activity === activity) {
-        return { ...row, [userId]: value };
-      }
-      return row;
-    });
-    setRaciData(updatedData);
-  };
-
-  const saveRACI = async () => {
-    if (!selectedTreatment) return;
-
+  const loadRACIAssignments = async (risksData, usersData) => {
     try {
-      setLoading(true);
-      const treatmentRef = doc(db, 'risk_treatment_plans', selectedTreatment);
+      const raciQuery = query(collection(db, 'raci_assignments'));
+      const raciSnapshot = await getDocs(raciQuery);
       
-      const raciMatrix = {};
-      raciData.forEach(row => {
-        raciMatrix[row.activity] = {};
-        users.forEach(user => {
-          raciMatrix[row.activity][user.id] = row[user.id] || '';
+      // Initialize matrix
+      const matrix = [];
+      
+      risksData.forEach(risk => {
+        const row = {
+          riskId: risk.id,
+          riskTitle: risk.title || risk.riskDescription,
+          riskCode: risk.riskCode,
+          department: risk.department,
+          assignments: {}
+        };
+        
+        usersData.forEach(user => {
+          row.assignments[user.id] = '';
         });
+        
+        matrix.push(row);
       });
 
-      await updateDoc(treatmentRef, {
-        raci: raciMatrix,
-        raciUpdated: new Date()
+
+      // MODIFIKASI di loadRACIAssignments (sekitar line 80-120)
+      raciSnapshot.forEach(doc => {
+        const assignment = doc.data();
+        const rowIndex = matrix.findIndex(row => row.riskId === assignment.riskId);
+        if (rowIndex !== -1) {
+          // Simpan picName di assignment sesuai role
+          matrix[rowIndex].assignments[assignment.role] = assignment.picName || '';
+        }
       });
 
-      setEditMode(false);
-      // Show success message
+      setRaciMatrix(matrix);
+      
     } catch (error) {
-      console.error('Error saving RACI:', error);
-    } finally {
-      setLoading(false);
+      console.error('Error loading RACI assignments:', error);
+      // Initialize empty matrix
+      const emptyMatrix = risksData.map(risk => ({
+        riskId: risk.id,
+        riskTitle: risk.title || risk.riskDescription,
+        riskCode: risk.riskCode,
+        department: risk.department,
+        assignments: usersData.reduce((acc, user) => ({ ...acc, [user.id]: '' }), {})
+      }));
+      setRaciMatrix(emptyMatrix);
     }
   };
 
-  const getRACIColor = (value) => {
-    switch (value) {
-      case 'R': return '#ffeb3b'; // Yellow
-      case 'A': return '#4caf50'; // Green
-      case 'C': return '#2196f3'; // Blue
-      case 'I': return '#9e9e9e'; // Gray
-      default: return '#ffffff'; // White
-    }
-  };
-
-  const getRACITooltip = (value) => {
-    switch (value) {
-      case 'R': return 'Responsible - Melakukan pekerjaan';
-      case 'A': return 'Accountable - Bertanggung jawab dan approve';
-      case 'C': return 'Consulted - Memberikan konsultasi';
-      case 'I': return 'Informed - Diberi informasi';
-      default: return 'Tidak ditugaskan';
-    }
-  };
-
-  const addNewActivity = () => {
-    setRaciData([...raciData, { 
-      activity: 'Aktivitas Baru', 
-      ...Object.fromEntries(users.map(u => [u.id, ''])) 
-    }]);
-  };
-
-  const removeActivity = (activity) => {
-    setRaciData(raciData.filter(row => row.activity !== activity));
-  };
-
-  // ===============================
-  // SEARCH FUNCTIONS
-  // ===============================
-
-  const handleSearch = (term) => {
-    setSearchTerm(term);
-    setCurrentPage(1);
-  };
-
-  const clearSearch = () => {
-    setSearchTerm('');
-    setFilters({
-      status: 'all',
-      riskLevel: 'all',
-      treatmentType: 'all'
-    });
-    setCurrentPage(1);
-  };
-
-  // Pagination
-  const getPaginatedResults = () => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return searchResults.slice(startIndex, endIndex);
-  };
-
-  const totalPages = Math.ceil(searchResults.length / itemsPerPage);
-
-  // Initialize RACI data when treatment plan is selected
   useEffect(() => {
-    if (selectedTreatment) {
-      initializeRACIData();
-      setSearchOpen(false); // Tutup search dialog setelah select
-    }
-  }, [selectedTreatment]);
+    loadData();
+  }, []);
 
-  const getSelectedTreatmentInfo = () => {
-    return treatmentPlans.find(t => t.id === selectedTreatment);
+  // Filter matrix by department
+  const filteredMatrix = selectedDepartment === 'all' 
+    ? raciMatrix 
+    : raciMatrix.filter(row => row.department === selectedDepartment);
+
+  // Handle cell click for editing
+  const handleCellClick = (riskId, userId) => {
+    if (editMode) {
+      setEditingCell({ riskId, userId });
+    }
   };
+
+  // Handle role change
+  const handleRoleChange = (role) => {
+    if (!editingCell) return;
+
+    const { riskId, userId } = editingCell;
+    const newMatrix = [...raciMatrix];
+    const rowIndex = newMatrix.findIndex(row => row.riskId === riskId);
+    
+    if (rowIndex !== -1) {
+      newMatrix[rowIndex].assignments[userId] = role;
+      setRaciMatrix(newMatrix);
+      setEditingCell(null);
+      
+      // Save to Firebase
+      saveAssignment(riskId, userId, role);
+    }
+  };
+
+    // GANTI fungsi saveAssignment yang ada (sekitar line 130-170)
+    const saveAssignment = async (riskId, role, picName) => {
+      try {
+        // Cek apakah assignment sudah ada
+        const existingQuery = query(
+          collection(db, 'raci_assignments'),
+          where('riskId', '==', riskId),
+          where('role', '==', role)
+        );
+        
+        const existingSnapshot = await getDocs(existingQuery);
+        
+        if (!picName || picName.trim() === '') {
+          // Delete jika kosong
+          if (!existingSnapshot.empty) {
+            await deleteDoc(doc(db, 'raci_assignments', existingSnapshot.docs[0].id));
+          }
+        } else {
+          if (!existingSnapshot.empty) {
+            // Update existing
+            await updateDoc(doc(db, 'raci_assignments', existingSnapshot.docs[0].id), {
+              picName: picName.trim(),
+              updatedAt: new Date()
+            });
+          } else {
+            // Create new
+            await addDoc(collection(db, 'raci_assignments'), {
+              riskId,
+              role,
+              picName: picName.trim(),
+              createdAt: new Date(),
+              updatedAt: new Date()
+            });
+          }
+        }
+        
+        // Refresh data
+        await loadRACIAssignments(risks, users);
+        
+      } catch (error) {
+        console.error('Error saving RACI assignment:', error);
+        showSnackbar('Error saving assignment: ' + error.message, 'error');
+      }
+    };
+
+  // Add new assignment
+  const handleAddAssignment = async () => {
+    try {
+      if (!newAssignment.riskId || !newAssignment.userId || !newAssignment.role) {
+        showSnackbar('Please select risk, user, and role', 'error');
+        return;
+      }
+
+      await saveAssignment(newAssignment.riskId, newAssignment.userId, newAssignment.role);
+      
+      // Refresh data
+      await loadData();
+      
+      setNewAssignment({ riskId: '', userId: '', role: 'R' });
+      setDialogOpen(false);
+      
+    } catch (error) {
+      console.error('Error adding assignment:', error);
+      showSnackbar('Error adding assignment: ' + error.message, 'error');
+    }
+  };
+
+  // Get user name by ID
+  const getUserName = (userId) => {
+    const user = users.find(u => u.id === userId);
+    return user ? user.name : 'Unknown';
+  };
+
+  // Get risk title by ID
+  const getRiskTitle = (riskId) => {
+    const risk = risks.find(r => r.id === riskId);
+    return risk ? risk.title || risk.riskDescription : 'Unknown Risk';
+  };
+
+  // Snackbar handler
+  const showSnackbar = (message, severity) => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <CircularProgress />
+        <Typography sx={{ ml: 2 }}>Loading RACI Chart...</Typography>
+      </Box>
+    );
+  }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Card sx={{ mb: 3, boxShadow: 3 }}>
+    <Box sx={{ p: 3, backgroundColor: '#f5f5f5', minHeight: '100vh' }}>
+      {/* Header */}
+      <Card sx={{ mb: 3, boxShadow: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
         <CardContent>
-          <Box display="flex" alignItems="center" gap={2} mb={3}>
-            <MedicalServices sx={{ fontSize: 40, color: 'primary.main' }} />
+          <Box display="flex" justifyContent="space-between" alignItems="center">
             <Box>
-              <Typography variant="h4" fontWeight="bold">
-                RACI Chart - Treatment Plan
+              <Typography variant="h4" fontWeight="bold" gutterBottom>
+                RACI Chart (Responsibility Assignment Matrix)
               </Typography>
-              <Typography variant="subtitle1" color="textSecondary">
-                Responsibility Assignment Matrix untuk Risk Treatment Plan
+              <Typography variant="body1" sx={{ opacity: 0.9 }}>
+                Define clear roles and responsibilities for risk management
               </Typography>
+            </Box>
+            <Box display="flex" gap={2}>
+              <Button
+                variant={editMode ? "contained" : "outlined"}
+                startIcon={<Edit />}
+                onClick={() => setEditMode(!editMode)}
+                sx={{ 
+                  color: 'white',
+                  borderColor: 'rgba(255,255,255,0.3)',
+                  '&:hover': { borderColor: 'white' }
+                }}
+              >
+                {editMode ? 'Editing Mode ON' : 'Edit Mode'}
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                onClick={() => setDialogOpen(true)}
+                sx={{ 
+                  backgroundColor: 'rgba(255,255,255,0.2)',
+                  color: 'white',
+                  '&:hover': { backgroundColor: 'rgba(255,255,255,0.3)' }
+                }}
+              >
+                Add Assignment
+              </Button>
             </Box>
           </Box>
-
-          <Grid container spacing={2} alignItems="center">
-            {/* Search Button & Selected Treatment Info */}
-            <Grid item xs={12} md={6}>
-              <Box>
-                {selectedTreatment ? (
-                  <Box>
-                    <Typography variant="body2" color="textSecondary" gutterBottom>
-                      Treatment Plan Terpilih:
-                    </Typography>
-                    <Card variant="outlined" sx={{ p: 2, backgroundColor: 'success.50' }}>
-                      <Box display="flex" justifyContent="space-between" alignItems="center">
-                        <Box>
-                          <Typography variant="subtitle1" fontWeight="bold">
-                            {getSelectedTreatmentInfo()?.treatmentCode} - {getSelectedTreatmentInfo()?.description}
-                          </Typography>
-                          <Typography variant="caption" color="textSecondary">
-                            Status: {getSelectedTreatmentInfo()?.status} | 
-                            Risk: {getSelectedTreatmentInfo()?.riskCode}
-                          </Typography>
-                        </Box>
-                        <IconButton 
-                          size="small" 
-                          onClick={() => setSelectedTreatment('')}
-                          color="error"
-                        >
-                          <Clear />
-                        </IconButton>
-                      </Box>
-                    </Card>
-                  </Box>
-                ) : (
-                  <Button
-                    variant="outlined"
-                    fullWidth
-                    startIcon={<Search />}
-                    onClick={() => setSearchOpen(true)}
-                    sx={{ justifyContent: 'flex-start', height: 56 }}
-                  >
-                    Cari Treatment Plan...
-                  </Button>
-                )}
-              </Box>
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <Box display="flex" gap={1} justifyContent="flex-end">
-                <Button
-                  variant="outlined"
-                  startIcon={<Edit />}
-                  onClick={() => setEditMode(!editMode)}
-                  disabled={!selectedTreatment}
-                >
-                  {editMode ? 'Cancel Edit' : 'Edit RACI'}
-                </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<Save />}
-                  onClick={saveRACI}
-                  disabled={!editMode || loading}
-                >
-                  Simpan RACI
-                </Button>
-                {editMode && (
-                  <Button
-                    variant="outlined"
-                    startIcon={<Add />}
-                    onClick={addNewActivity}
-                  >
-                    Tambah Aktivitas
-                  </Button>
-                )}
-              </Box>
-            </Grid>
-          </Grid>
-
-          {/* Treatment Plan Statistics */}
-          {!selectedTreatment && (
-            <Box sx={{ mt: 2, p: 2, backgroundColor: 'grey.50', borderRadius: 1 }}>
-              <Typography variant="body2" color="textSecondary">
-                Total Treatment Plans: {treatmentPlans.length} | 
-                Hasil Pencarian: {searchResults.length}
-              </Typography>
-            </Box>
-          )}
         </CardContent>
       </Card>
 
-      {/* Search Dialog */}
-      <Dialog
-        open={searchOpen}
-        onClose={() => setSearchOpen(false)}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{ sx: { height: '80vh' } }}
-      >
-        <DialogTitle>
-          <Typography variant="h5" fontWeight="bold">
-            Cari Treatment Plan
-          </Typography>
-          <TextField
-            fullWidth
-            variant="outlined"
-            placeholder="Cari berdasarkan kode, deskripsi, atau risiko..."
-            value={searchTerm}
-            onChange={(e) => handleSearch(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search />
-                </InputAdornment>
-              ),
-              endAdornment: searchTerm && (
-                <InputAdornment position="end">
-                  <IconButton onClick={clearSearch} size="small">
-                    <Clear />
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-            sx={{ mt: 2 }}
-          />
-        </DialogTitle>
-        
-        <DialogContent dividers>
-          {/* Filters */}
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>
-              Filters:
-            </Typography>
-            <Grid container spacing={1}>
-              <Grid item xs={12} sm={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Status</InputLabel>
-                  <Select
-                    value={filters.status}
-                    label="Status"
-                    onChange={(e) => setFilters({...filters, status: e.target.value})}
-                  >
-                    <MenuItem value="all">Semua Status</MenuItem>
-                    <MenuItem value="planned">Planned</MenuItem>
-                    <MenuItem value="in_progress">In Progress</MenuItem>
-                    <MenuItem value="completed">Completed</MenuItem>
-                    <MenuItem value="cancelled">Cancelled</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Risk Level</InputLabel>
-                  <Select
-                    value={filters.riskLevel}
-                    label="Risk Level"
-                    onChange={(e) => setFilters({...filters, riskLevel: e.target.value})}
-                  >
-                    <MenuItem value="all">Semua Level</MenuItem>
-                    <MenuItem value="low">Low</MenuItem>
-                    <MenuItem value="medium">Medium</MenuItem>
-                    <MenuItem value="high">High</MenuItem>
-                    <MenuItem value="extreme">Extreme</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Treatment Type</InputLabel>
-                  <Select
-                    value={filters.treatmentType}
-                    label="Treatment Type"
-                    onChange={(e) => setFilters({...filters, treatmentType: e.target.value})}
-                  >
-                    <MenuItem value="all">Semua Tipe</MenuItem>
-                    <MenuItem value="mitigation">Mitigation</MenuItem>
-                    <MenuItem value="avoidance">Avoidance</MenuItem>
-                    <MenuItem value="transfer">Transfer</MenuItem>
-                    <MenuItem value="acceptance">Acceptance</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-            </Grid>
-          </Box>
-
-          {/* Search Results */}
-          <Typography variant="subtitle2" gutterBottom>
-            Hasil Pencarian: {searchResults.length} treatment plans ditemukan
-          </Typography>
-
-          {loading ? (
-            <Box textAlign="center" py={4}>
-              <CircularProgress />
-            </Box>
-          ) : searchResults.length === 0 ? (
-            <Box textAlign="center" py={4}>
-              <Typography color="textSecondary">
-                {searchTerm || Object.values(filters).some(f => f !== 'all') 
-                  ? 'Tidak ada treatment plan yang sesuai dengan kriteria pencarian.' 
-                  : 'Belum ada treatment plan tersedia.'}
-              </Typography>
-            </Box>
-          ) : (
-            <>
-              <List sx={{ maxHeight: 400, overflow: 'auto' }}>
-                {getPaginatedResults().map((treatment) => (
-                  <ListItem key={treatment.id} disablePadding>
-                    <ListItemButton 
-                      onClick={() => setSelectedTreatment(treatment.id)}
-                      selected={selectedTreatment === treatment.id}
-                    >
-                      <ListItemText
-                        primary={
-                          <Box>
-                            <Typography variant="subtitle1" fontWeight="bold">
-                              {treatment.treatmentCode} - {treatment.description}
-                            </Typography>
-                            <Box display="flex" gap={2} mt={0.5}>
-                              <Chip 
-                                label={treatment.status} 
-                                size="small"
-                                color={
-                                  treatment.status === 'completed' ? 'success' :
-                                  treatment.status === 'in_progress' ? 'primary' : 'default'
-                                }
-                              />
-                              <Chip 
-                                label={treatment.treatmentType} 
-                                size="small" 
-                                variant="outlined"
-                              />
-                              <Typography variant="caption" color="textSecondary">
-                                Risk: {treatment.riskCode}
-                              </Typography>
-                            </Box>
-                          </Box>
-                        }
-                      />
-                    </ListItemButton>
-                  </ListItem>
-                ))}
-              </List>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <Box display="flex" justifyContent="center" mt={2}>
-                  <Pagination 
-                    count={totalPages} 
-                    page={currentPage}
-                    onChange={(e, page) => setCurrentPage(page)}
-                    color="primary"
-                  />
+      {/* Legend */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>RACI Legend</Typography>
+            <Box display="flex" gap={2} flexWrap="wrap">
+              {raciRoles.map(role => (
+                <Box key={role.value} display="flex" alignItems="center" gap={1}>
+                  <Box sx={{ 
+                    width: 20, 
+                    height: 20, 
+                    backgroundColor: role.color,
+                    borderRadius: '4px'
+                  }} />
+                  <Typography variant="body2">
+                    <strong>{role.value}</strong> = {role.label} ({role.description})
+                  </Typography>
                 </Box>
-              )}
-            </>
-          )}
-        </DialogContent>
-        
-        <DialogActions>
-          <Button onClick={() => setSearchOpen(false)}>
-            Tutup
-          </Button>
-          <Button 
-            variant="contained" 
-            onClick={() => setSearchOpen(false)}
-            disabled={!selectedTreatment}
-          >
-            Pilih Treatment Plan
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* RACI Table */}
-      {selectedTreatment && (
-        <Card sx={{ boxShadow: 3 }}>
-          <CardContent>
-            <Box sx={{ overflowX: 'auto' }}>
-              <TableContainer component={Paper} variant="outlined">
-                <Table sx={{ minWidth: 800 }}>
-                  <TableHead>
-                    <TableRow sx={{ backgroundColor: 'primary.main' }}>
-                      <TableCell 
-                        sx={{ 
-                          color: 'white', 
-                          fontWeight: 'bold',
-                          minWidth: 200,
-                          position: 'sticky',
-                          left: 0,
-                          backgroundColor: 'primary.main',
-                          zIndex: 10
-                        }}
-                      >
-                        Aktivitas Treatment / Role
-                      </TableCell>
-                      {users.map(user => (
-                        <TableCell 
-                          key={user.id}
-                          align="center"
-                          sx={{ 
-                            color: 'white', 
-                            fontWeight: 'bold',
-                            minWidth: 120
-                          }}
-                        >
-                          <Box>
-                            <Typography variant="subtitle2">
-                              {user.name}
-                            </Typography>
-                            <Typography variant="caption">
-                              {user.role}
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                      ))}
-                      {editMode && (
-                        <TableCell 
-                          align="center"
-                          sx={{ 
-                            color: 'white', 
-                            fontWeight: 'bold',
-                            minWidth: 80
-                          }}
-                        >
-                          Aksi
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {raciData.map((row, index) => (
-                      <TableRow key={index} hover>
-                        <TableCell 
-                          sx={{ 
-                            fontWeight: 'bold',
-                            position: 'sticky',
-                            left: 0,
-                            backgroundColor: 'white',
-                            zIndex: 5
-                          }}
-                        >
-                          {editMode ? (
-                            <TextField
-                              value={row.activity}
-                              onChange={(e) => {
-                                const newData = [...raciData];
-                                newData[index].activity = e.target.value;
-                                setRaciData(newData);
-                              }}
-                              size="small"
-                              fullWidth
-                            />
-                          ) : (
-                            row.activity
-                          )}
-                        </TableCell>
-                        {users.map(user => (
-                          <TableCell 
-                            key={user.id} 
-                            align="center"
-                            sx={{ 
-                              backgroundColor: getRACIColor(row[user.id]),
-                              cursor: editMode ? 'pointer' : 'default',
-                              minWidth: 120,
-                              '&:hover': editMode ? { opacity: 0.8 } : {}
-                            }}
-                            onClick={() => editMode && setEditingCell({ activity: row.activity, userId: user.id })}
-                          >
-                            <Tooltip title={getRACITooltip(row[user.id])} arrow>
-                              <Typography 
-                                variant="h6" 
-                                fontWeight="bold"
-                                sx={{ 
-                                  color: row[user.id] ? 'black' : 'text.secondary'
-                                }}
-                              >
-                                {row[user.id] || '-'}
-                              </Typography>
-                            </Tooltip>
-                          </TableCell>
-                        ))}
-                        {editMode && (
-                          <TableCell align="center">
-                            <IconButton 
-                              color="error" 
-                              size="small"
-                              onClick={() => removeActivity(row.activity)}
-                            >
-                              <Delete />
-                            </IconButton>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+              ))}
             </Box>
+          </Paper>
+        </Grid>
+      </Grid>
 
-            {/* RACI Legend */}
-            <Box sx={{ mt: 3, p: 2, backgroundColor: 'grey.50', borderRadius: 1 }}>
-              <Typography variant="h6" gutterBottom>
-                Legenda RACI untuk Treatment Plan:
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={6} md={3}>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Box sx={{ width: 20, height: 20, backgroundColor: '#ffeb3b', border: '1px solid #ccc' }} />
-                    <Typography variant="body2">
-                      <strong>R</strong> - Melaksanakan aktivitas treatment
-                    </Typography>
-                  </Box>
-                </Grid>
-                <Grid item xs={6} md={3}>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Box sx={{ width: 20, height: 20, backgroundColor: '#4caf50', border: '1px solid #ccc' }} />
-                    <Typography variant="body2">
-                      <strong>A</strong> - Bertanggung jawab atas keberhasilan
-                    </Typography>
-                  </Box>
-                </Grid>
-                <Grid item xs={6} md={3}>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Box sx={{ width: 20, height: 20, backgroundColor: '#2196f3', border: '1px solid #ccc' }} />
-                    <Typography variant="body2">
-                      <strong>C</strong> - Dikonsultasikan selama implementasi
-                    </Typography>
-                  </Box>
-                </Grid>
-                <Grid item xs={6} md={3}>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Box sx={{ width: 20, height: 20, backgroundColor: '#9e9e9e', border: '1px solid #ccc' }} />
-                    <Typography variant="body2">
-                      <strong>I</strong> - Diberi update progress
-                    </Typography>
-                  </Box>
-                </Grid>
-              </Grid>
-            </Box>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* RACI Edit Dialog */}
-      <Dialog
-        open={!!editingCell}
-        onClose={() => setEditingCell(null)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>
-          Edit RACI Assignment untuk Treatment Plan
-        </DialogTitle>
-        <DialogContent>
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>RACI Role</InputLabel>
+      {/* Filters */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={6}>
+          <FormControl fullWidth>
+            <InputLabel>Filter by Department</InputLabel>
             <Select
-              value={editingCell ? raciData.find(r => r.activity === editingCell.activity)?.[editingCell.userId] || '' : ''}
-              label="RACI Role"
-              onChange={(e) => {
-                if (editingCell) {
-                  handleRACIChange(editingCell.activity, editingCell.userId, e.target.value);
-                }
-              }}
+              value={selectedDepartment}
+              label="Filter by Department"
+              onChange={(e) => setSelectedDepartment(e.target.value)}
             >
-              <MenuItem value="">- Tidak ditugaskan -</MenuItem>
-              <MenuItem value="R">R - Responsible (Melaksanakan)</MenuItem>
-              <MenuItem value="A">A - Accountable (Bertanggung jawab)</MenuItem>
-              <MenuItem value="C">C - Consulted (Dikonsultasikan)</MenuItem>
-              <MenuItem value="I">I - Informed (Diinformasikan)</MenuItem>
+              <MenuItem value="all">All Departments</MenuItem>
+              {organizations.map(org => (
+                <MenuItem key={org.id} value={org.name}>{org.name}</MenuItem>
+              ))}
             </Select>
           </FormControl>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Typography variant="body2" color="textSecondary">
+            Showing {filteredMatrix.length} risks, {users.length} users
+            {editMode && ' - Click cells to edit'}
+          </Typography>
+        </Grid>
+      </Grid>
+
+      {/* RACI Table */}
+      <TableContainer component={Paper} sx={{ maxHeight: 600, boxShadow: 3, mt: 3 }}>
+        <Table stickyHeader size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ 
+                backgroundColor: '#f5f5f5', 
+                fontWeight: 'bold', 
+                minWidth: 300,
+                position: 'sticky',
+                left: 0,
+                zIndex: 2
+              }}>
+                Risk Description
+              </TableCell>
+              
+              {/* RACI Column Headers */}
+              {raciRoles.map(role => (
+                <TableCell 
+                  key={role.value} 
+                  align="center"
+                  sx={{ 
+                    backgroundColor: role.color,
+                    color: 'white',
+                    fontWeight: 'bold',
+                    minWidth: 150,
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 1
+                  }}
+                >
+                  <Box>
+                    <Typography variant="body1" fontWeight="bold">
+                      {role.value}
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.9, fontSize: '0.7rem' }}>
+                      {role.label}
+                    </Typography>
+                  </Box>
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          
+          <TableBody>
+            {filteredMatrix.map((row) => (
+              <TableRow key={row.riskId} hover>
+                {/* Risk Description - Sticky column */}
+                <TableCell sx={{ 
+                  minWidth: 300,
+                  backgroundColor: '#fafafa',
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 1
+                }}>
+                  <Box>
+                    <Typography variant="body2" fontWeight="bold" noWrap>
+                      {row.riskTitle}
+                    </Typography>
+                    <Typography variant="caption" color="textSecondary">
+                      {row.riskCode} | {row.department}
+                    </Typography>
+                  </Box>
+                </TableCell>
+                
+                {/* RACI Cells - Input fields untuk nama PIC */}
+                {raciRoles.map(role => {
+                  const currentPIC = row.assignments[role.value] || '';
+                  
+                  return (
+                    <TableCell 
+                      key={`${row.riskId}-${role.value}`}
+                      align="center"
+                      sx={{ 
+                        backgroundColor: role.color + '08',
+                        border: '1px solid rgba(224, 224, 224, 1)',
+                        padding: '4px 8px',
+                        cursor: editMode ? 'pointer' : 'default',
+                        '&:hover': editMode ? {
+                          backgroundColor: role.color + '20'
+                        } : {}
+                      }}
+                      onClick={() => {
+                        if (editMode) {
+                          setEditingCell({ riskId: row.riskId, role: role.value });
+                        }
+                      }}
+                    >
+                      {editMode && editingCell?.riskId === row.riskId && editingCell?.role === role.value ? (
+                        <TextField
+                          size="small"
+                          placeholder="Nama/Jabatan PIC..."
+                          defaultValue={currentPIC}
+                          autoFocus
+                          onBlur={(e) => {
+                            if (e.target.value !== currentPIC) {
+                              saveAssignment(row.riskId, role.value, e.target.value);
+                            }
+                            setEditingCell(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              saveAssignment(row.riskId, role.value, e.target.value);
+                              setEditingCell(null);
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingCell(null);
+                            }
+                          }}
+                          sx={{ 
+                            backgroundColor: 'white',
+                            '& .MuiOutlinedInput-root': {
+                              height: 32,
+                              fontSize: '0.875rem'
+                            }
+                          }}
+                          fullWidth
+                        />
+                      ) : (
+                        <Box
+                          sx={{
+                            minHeight: 32,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '4px 8px',
+                            borderRadius: 1,
+                            backgroundColor: currentPIC ? role.color + '15' : 'transparent',
+                            border: editMode && !currentPIC ? '1px dashed rgba(0,0,0,0.2)' : 'none',
+                            '&:hover': editMode ? {
+                              backgroundColor: role.color + '20',
+                              border: '1px dashed ' + role.color
+                            } : {}
+                          }}
+                        >
+                          <Typography 
+                            variant="body2" 
+                            sx={{ 
+                              color: currentPIC ? 'inherit' : 'text.secondary',
+                              fontStyle: currentPIC ? 'normal' : 'italic'
+                            }}
+                          >
+                            {currentPIC || (editMode ? 'Klik untuk isi...' : '-')}
+                          </Typography>
+                        </Box>
+                      )}
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* Summary */}
+      <Grid container spacing={3} sx={{ mt: 3 }}>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Summary</Typography>
+              <Grid container spacing={2}>
+                {raciRoles.map(role => {
+                  const count = raciMatrix.reduce((total, row) => {
+                    return total + Object.values(row.assignments).filter(val => val === role.value).length;
+                  }, 0);
+                  
+                  return (
+                    <Grid item xs={6} key={role.value}>
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <Box sx={{ 
+                          width: 16, 
+                          height: 16, 
+                          backgroundColor: role.color,
+                          borderRadius: '2px'
+                        }} />
+                        <Typography variant="body2">
+                          {role.label}:
+                        </Typography>
+                        <Typography variant="body2" fontWeight="bold">
+                          {count}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Instructions</Typography>
+              <Typography variant="body2" paragraph>
+                • <strong>R (Responsible)</strong>: Person who performs the task
+              </Typography>
+              <Typography variant="body2" paragraph>
+                • <strong>A (Accountable)</strong>: Person ultimately accountable
+              </Typography>
+              <Typography variant="body2" paragraph>
+                • <strong>C (Consulted)</strong>: Person who provides input
+              </Typography>
+              <Typography variant="body2" paragraph>
+                • <strong>I (Informed)</strong>: Person who needs to be informed
+              </Typography>
+              <Typography variant="body2">
+                • <strong>S (Support)</strong>: Person who provides resources/support
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Add Assignment Dialog */}
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Add New RACI Assignment</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Select Risk</InputLabel>
+                <Select
+                  value={newAssignment.riskId}
+                  label="Select Risk"
+                  onChange={(e) => setNewAssignment({ ...newAssignment, riskId: e.target.value })}
+                >
+                  <MenuItem value="">Select a risk</MenuItem>
+                  {risks.map(risk => (
+                    <MenuItem key={risk.id} value={risk.id}>
+                      {risk.title || risk.riskDescription} ({risk.riskCode})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Select User</InputLabel>
+                <Select
+                  value={newAssignment.userId}
+                  label="Select User"
+                  onChange={(e) => setNewAssignment({ ...newAssignment, userId: e.target.value })}
+                >
+                  <MenuItem value="">Select a user</MenuItem>
+                  {users.map(user => (
+                    <MenuItem key={user.id} value={user.id}>
+                      {user.name} ({user.role})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Select Role</InputLabel>
+                <Select
+                  value={newAssignment.role}
+                  label="Select Role"
+                  onChange={(e) => setNewAssignment({ ...newAssignment, role: e.target.value })}
+                >
+                  {raciRoles.map(role => (
+                    <MenuItem key={role.value} value={role.value}>
+                      {role.value} - {role.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditingCell(null)}>
-            Tutup
+          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleAddAssignment}>
+            Save Assignment
           </Button>
         </DialogActions>
       </Dialog>
-
-      {!selectedTreatment && (
-        <Alert severity="info" sx={{ mt: 2 }}>
-          Silakan pilih treatment plan terlebih dahulu untuk menampilkan RACI Chart.
-        </Alert>
-      )}
     </Box>
   );
 };

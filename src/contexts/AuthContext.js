@@ -5,22 +5,18 @@ import {
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { 
+  doc, 
+  getDoc, 
+  collection,
+  query, 
+  where, 
+  getDocs,
+  setDoc
+} from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 
 const AuthContext = createContext();
-
-const normalizeRole = (role) => {
-  if (!role) return "STAFF";
-
-  let clean = role.toString()
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .replace(/[\n\r\t]/g, "")
-    .trim()
-    .toUpperCase();
-
-  return clean;
-};
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
@@ -40,6 +36,8 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("🔄 Auth state changed:", user?.email);
+      
       if (!user) {
         setCurrentUser(null);
         setUserData(null);
@@ -47,47 +45,70 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
-      try {
-        const snap = await getDoc(doc(db, "users", user.uid));
+      setCurrentUser(user);
 
-        if (!snap.exists()) {
-          setUserData(null);
+      try {
+        let userData = null;
+
+        // Coba by UID dulu
+        const userDocRef = doc(db, "users", user.uid);
+        const snap = await getDoc(userDocRef);
+        
+        if (snap.exists()) {
+          userData = snap.data();
+          console.log(`✅ ${user.email} found by UID`);
         } else {
-          const data = snap.data();
-          const fixedRole = normalizeRole(data.role);
+          // Fallback: query by email
+          const usersRef = collection(db, "users");
+          const q = query(usersRef, where("email", "==", user.email));
+          const querySnapshot = await getDocs(q);
           
-          const normalizedUserData = {
+          if (!querySnapshot.empty) {
+            userData = querySnapshot.docs[0].data();
+            console.log(`✅ ${user.email} found by email query`);
+          }
+        }
+        
+        if (userData) {
+          // Normalize role
+          const role = userData.role?.toString().trim().toUpperCase();
+          const allowedRoles = ['STAFF', 'RISK_OWNER', 'RISK_MANAGER', 'DIRECTOR', 'ADMIN'];
+          const normalizedRole = allowedRoles.includes(role) ? role : 'STAFF';
+          
+          setUserData({
+            ...userData,
             uid: user.uid,
-            email: data.email,
-            name: data.name,
-            role: fixedRole,
-            department: data.department,
-            position: data.position,
-            phone: data.phone,
-            status: data.status,
-            permissions: data.permissions || []
-          };
+            role: normalizedRole
+          });
           
-          setUserData(normalizedUserData);
+          console.log(`🎯 ${user.email} role: ${normalizedRole}`);
+        } else {
+          console.log(`❌ No user data for ${user.email}`);
+          setUserData(null);
         }
 
-      } catch (err) {
-        console.error("AuthContext Firestore error:", err);
+      } catch (error) {
+        console.error("Auth error:", error);
         setUserData(null);
       }
 
-      setCurrentUser(user);
       setLoading(false);
     });
 
     return unsubscribe;
   }, []);
 
+  const value = {
+    currentUser,
+    userData,
+    loading,
+    login,
+    logout
+  };
+
   return (
-    <AuthContext.Provider 
-      value={{ currentUser, userData, login, logout, loading }}
-    >
-      {!loading && children}
+    <AuthContext.Provider value={value}>
+      {children}
     </AuthContext.Provider>
   );
 };

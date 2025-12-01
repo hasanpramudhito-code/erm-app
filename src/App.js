@@ -120,7 +120,7 @@ function App() {
               <Route
                 path="/organization"
                 element={
-                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER']}>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OWNER', 'RISK_OFFICER', 'DIRECTOR', 'DK/DEWAS']}>
                     <Layout><OrganizationStructure /></Layout>
                   </ProtectedRoute>
                 }
@@ -180,7 +180,7 @@ function App() {
               <Route
                 path="/settings"
                 element={
-                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OFFICER']}>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'RISK_OWNER', 'RISK_OFFICER', 'DIRECTOR', 'DK/DEWAS']}>
                     <Layout><SettingsPanel /></Layout>
                   </ProtectedRoute>
                 }
