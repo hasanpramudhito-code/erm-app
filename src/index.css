@@ -5,9 +5,44 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  
+  /* TAMBAHKAN INI: */
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+/* TAMBAHKAN INI: Kontainer utama */
+#root {
+  flex: 1 0 auto; /* Mengisi ruang yang tersedia */
+  display: flex;
+  flex-direction: column;
+}
+
+/* TAMBAHKAN INI: Style untuk footer */
+footer {
+  flex-shrink: 0; /* Footer tidak menyusut */
+  margin-top: auto; /* Dorong ke bawah */
+  width: 100%;
+  
+  /* Style dari class Tailwind Anda */
+  background-color: #3b82f6; /* bg-primary */
+  color: #e5e7eb; /* text-gray-200 */
+  padding: 1.5rem 0; /* py-6 */
+  text-align: center;
+  font-size: 0.875rem; /* text-sm */
+  border-top: 1px solid rgba(255, 255, 255, 0.1); /* border-t border-white/10 */
+}
+
+/* TAMBAHKAN INI: Container dalam footer */
+footer > div {
+  max-width: 80rem; /* max-w-7xl */
+  margin: 0 auto;
+  padding: 0 1.5rem; /* px-6 */
+  width: 100%;
 }

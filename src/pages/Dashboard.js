@@ -69,29 +69,94 @@ const Dashboard = () => {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        
-        // 1. Total Risks Count
+      
+        // 1. Total Risks Count (Tetap sama)
         const risksQuery = query(collection(db, 'risks'));
         const risksSnapshot = await getCountFromServer(risksQuery);
         const totalRisks = risksSnapshot.data().count;
 
-        // 2. Active RTP Count (Risk Treatment Plans with status active)
-        const rtpQuery = query(
-          collection(db, 'risk_treatment_plans'),
-          where('status', '==', 'active')
-        );
-        const rtpSnapshot = await getCountFromServer(rtpQuery);
-        const activeRTP = rtpSnapshot.data().count;
+        // 2. Active RTP Count - DIPERBAIKI: ganti nama koleksi sesuai dengan halaman RTP
+        let activeRTP = 0;
+        try {
+          // Mencoba berbagai nama koleksi yang mungkin
+          const possibleCollections = [
+            'treatment_plans',  // ← INI YANG DIPAKAI DI HALAMAN RTP
+            'risk_treatment_plans',
+            'rtp',
+            'risk_treatments'
+          ];
 
-        // 3. High & Extreme Risks Count
+          for (const collectionName of possibleCollections) {
+            try {
+              // Debug: Cek koleksi
+              const testCollection = collection(db, collectionName);
+              const testSnapshot = await getDocs(testCollection);
+              
+              console.log(`Collection '${collectionName}': ${testSnapshot.size} documents`);
+              
+              if (testSnapshot.size > 0) {
+                // Coba query dengan berbagai status
+                const statusOptions = ['in_progress', 'In Progress', 'active', 'Active', 'ACTIVE', 'aktif'];
+                
+                for (const statusOption of statusOptions) {
+                  try {
+                    const rtpQuery = query(
+                      collection(db, collectionName),
+                      where('status', '==', statusOption)
+                    );
+                    const rtpSnapshot = await getCountFromServer(rtpQuery);
+                    const count = rtpSnapshot.data().count;
+                    console.log(`  - Status '${statusOption}': ${count} documents`);
+                    
+                    if (count > 0) {
+                      activeRTP += count;
+                    }
+                  } catch (queryError) {
+                    // Skip query error
+                  }
+                }
+                
+                // Jika masih 0, hitung manual
+                if (activeRTP === 0) {
+                  const allRtpData = testSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                  }));
+                  
+                  // Cari yang statusnya aktif/progress (case insensitive)
+                  const activeCount = allRtpData.filter(rtp => {
+                    const status = rtp.status?.toString().toLowerCase() || '';
+                    return status.includes('progress') || 
+                          status.includes('active') || 
+                          status.includes('in progress') ||
+                          status === 'in_progress';
+                  }).length;
+                  
+                  activeRTP += activeCount;
+                  console.log(`Active RTP (manual filter in ${collectionName}):`, activeCount);
+                }
+              }
+            } catch (collectionError) {
+              // Collection tidak ada, lanjut ke yang berikutnya
+              continue;
+            }
+          }
+
+          console.log("Total Active RTP found:", activeRTP);
+          
+        } catch (rtpError) {
+          console.error("Error counting active RTP:", rtpError);
+          activeRTP = 0;
+        }
+        // 3. High & Extreme Risks (MODIFIKASI: Ambil dari residualRiskLevel.level)
         const highRisksQuery = query(
           collection(db, 'risks'),
-          where('riskLevel', 'in', ['high', 'extreme'])
+          where('residualRiskLevel.level', 'in', ['Tinggi', 'Ekstrim', 'High', 'Extreme']) 
         );
         const highRisksSnapshot = await getCountFromServer(highRisksQuery);
         const highRisks = highRisksSnapshot.data().count;
 
-        // 4. Risk Owners Count (Users with risk_owner role)
+        // 4. Risk Owners (Tetap sama, tapi pastikan role di user benar)
         const ownersQuery = query(
           collection(db, 'users'),
           where('role', '==', 'risk_owner')
@@ -99,11 +164,11 @@ const Dashboard = () => {
         const ownersSnapshot = await getCountFromServer(ownersQuery);
         const riskOwners = ownersSnapshot.data().count;
 
-        // 5. Risk Distribution by Level
-        const extremeQuery = query(collection(db, 'risks'), where('riskLevel', '==', 'extreme'));
-        const highQuery = query(collection(db, 'risks'), where('riskLevel', '==', 'high'));
-        const mediumQuery = query(collection(db, 'risks'), where('riskLevel', '==', 'medium'));
-        const lowQuery = query(collection(db, 'risks'), where('riskLevel', '==', 'low'));
+        // 5. Risk Distribution (MODIFIKASI: Ambil dari residualRiskLevel.level)
+        const extremeQuery = query(collection(db, 'risks'), where('residualRiskLevel.level', 'in', ['Ekstrim', 'Extreme']));
+        const highQuery = query(collection(db, 'risks'), where('residualRiskLevel.level', 'in', ['Tinggi', 'High']));
+        const mediumQuery = query(collection(db, 'risks'), where('residualRiskLevel.level', 'in', ['Sedang', 'Medium']));
+        const lowQuery = query(collection(db, 'risks'), where('residualRiskLevel.level', 'in', ['Rendah', 'Sangat Rendah', 'Low', 'Very Low']));
 
         const [extremeSnap, highSnap, mediumSnap, lowSnap] = await Promise.all([
           getCountFromServer(extremeQuery),
@@ -347,7 +412,7 @@ const Dashboard = () => {
       {/* Header Section */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" gutterBottom fontWeight="bold">
-          📊 Dashboard ERM
+          PT Solusi Kelola Risiko
         </Typography>
         <Typography variant="h6" color="textSecondary" gutterBottom>
           Selamat datang kembali, <strong>{userData?.name || 'User'}!</strong>
@@ -396,6 +461,7 @@ const Dashboard = () => {
                   >
                     {stat.icon}
                   </Box>
+          
                 </Box>
               </CardContent>
             </Card>
@@ -594,6 +660,7 @@ const Dashboard = () => {
           </Button>
         </Paper>
       )}
+      
     </Box>
   );
 };

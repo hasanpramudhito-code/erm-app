@@ -1,4 +1,4 @@
-// src/pages/ControlTesting/DeficiencyTracking.js
+// src/pages/ControlTesting/DeficiencyTracking.js - FIXED VERSION
 import React, { useState, useEffect } from 'react';
 import {
   Box,
@@ -29,31 +29,32 @@ import {
   Tabs,
   Tab,
   Alert,
-  LinearProgress
+  CircularProgress
 } from '@mui/material';
 import { 
   Add, 
   Edit, 
   Comment, 
-  TrendingUp, 
-  Warning,
   CheckCircle,
-  Schedule,
-  Assignment
+  Warning
 } from '@mui/icons-material';
 import { controlTestingService } from '../../services/controlTestingService';
 
 const DeficiencyTracking = () => {
+  // STATE
   const [deficiencies, setDeficiencies] = useState([]);
   const [filteredDeficiencies, setFilteredDeficiencies] = useState([]);
   const [stats, setStats] = useState({});
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedTab, setSelectedTab] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [filters, setFilters] = useState({
     status: '',
     severity: '',
     assignedTo: ''
   });
+  
   const [newDeficiency, setNewDeficiency] = useState({
     title: '',
     description: '',
@@ -69,35 +70,90 @@ const DeficiencyTracking = () => {
     identifiedDate: new Date().toISOString().split('T')[0]
   });
 
+  // LOAD DATA
   useEffect(() => {
     loadDeficiencies();
     loadStats();
   }, []);
 
+  // FILTER DATA
   useEffect(() => {
     filterDeficiencies();
   }, [deficiencies, filters, selectedTab]);
 
   const loadDeficiencies = async () => {
     try {
-      const deficienciesData = await controlTestingService.getDeficiencies('org-001', filters);
-      setDeficiencies(deficienciesData);
+      setLoading(true);
+      setError(null);
+      
+      console.log('Loading deficiencies from Firebase...');
+      const data = await controlTestingService.getDeficiencies('org-001');
+      
+      console.log('Deficiencies loaded:', data);
+      setDeficiencies(data || []);
+      
     } catch (error) {
       console.error('Error loading deficiencies:', error);
+      setError('Failed to load deficiencies. Using sample data.');
+      
+      // Fallback data
+      setDeficiencies([
+        {
+          id: 'def-1',
+          title: 'Access Control Documentation Missing',
+          description: 'Access review procedures not properly documented',
+          controlId: 'ctrl-001',
+          severity: 'medium',
+          category: 'Documentation Issue',
+          status: 'open',
+          assignedTo: 'IT Security',
+          identifiedDate: '2024-01-15',
+          targetDate: '2024-02-15'
+        },
+        {
+          id: 'def-2',
+          title: 'Financial Reconciliation Delay',
+          description: 'Monthly reconciliations delayed by 5 days',
+          controlId: 'ctrl-002',
+          severity: 'high',
+          category: 'Process Gap',
+          status: 'in_progress',
+          assignedTo: 'Accounting Dept',
+          identifiedDate: '2024-01-10',
+          targetDate: '2024-01-31'
+        }
+      ]);
+    } finally {
+      setLoading(false);
     }
   };
 
   const loadStats = async () => {
     try {
+      console.log('Loading deficiency stats...');
       const statsData = await controlTestingService.getDeficiencyStats('org-001');
       setStats(statsData);
     } catch (error) {
       console.error('Error loading stats:', error);
+      
+      // Fallback stats
+      setStats({
+        total: 2,
+        open: 1,
+        in_progress: 1,
+        resolved: 0,
+        closed: 0,
+        critical: 0,
+        high: 1,
+        medium: 1,
+        low: 0,
+        averageDaysOpen: 15
+      });
     }
   };
 
   const filterDeficiencies = () => {
-    let filtered = deficiencies;
+    let filtered = [...deficiencies];
 
     // Apply tab filter
     if (selectedTab !== 'all') {
@@ -116,13 +172,30 @@ const DeficiencyTracking = () => {
   };
 
   const handleCreateDeficiency = async () => {
+    if (!newDeficiency.title || !newDeficiency.description) {
+      alert('Please fill in title and description');
+      return;
+    }
+
     try {
-      await controlTestingService.createDeficiency({
+      console.log('Creating deficiency:', newDeficiency);
+      
+      // Prepare data for Firebase
+      const deficiencyData = {
         ...newDeficiency,
         organizationId: 'org-001',
         status: 'open',
-        daysOpen: 0
-      });
+        daysOpen: 0,
+        createdAt: new Date().toISOString()
+      };
+
+      // Save to Firebase
+      await controlTestingService.createDeficiency(deficiencyData);
+      
+      // Success
+      alert('✅ Deficiency reported successfully!');
+      
+      // Reset form
       setNewDeficiency({
         title: '',
         description: '',
@@ -137,24 +210,41 @@ const DeficiencyTracking = () => {
         targetDate: '',
         identifiedDate: new Date().toISOString().split('T')[0]
       });
+      
       setOpenDialog(false);
+      
+      // Reload data
       loadDeficiencies();
       loadStats();
+      
     } catch (error) {
       console.error('Error creating deficiency:', error);
+      alert('Failed to create deficiency: ' + error.message);
     }
   };
 
   const handleUpdateDeficiency = async (deficiencyId, updates) => {
     try {
+      console.log('Updating deficiency:', deficiencyId, updates);
       await controlTestingService.updateDeficiency(deficiencyId, updates);
-      loadDeficiencies();
+      
+      // Update local state
+      setDeficiencies(prev => 
+        prev.map(def => 
+          def.id === deficiencyId ? { ...def, ...updates } : def
+        )
+      );
+      
+      // Reload stats
       loadStats();
+      
     } catch (error) {
       console.error('Error updating deficiency:', error);
+      alert('Failed to update deficiency: ' + error.message);
     }
   };
 
+  // UTILITY FUNCTIONS
   const getStatusColor = (status) => {
     const colors = {
       open: 'error',
@@ -182,6 +272,7 @@ const DeficiencyTracking = () => {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
+  // OPTIONS
   const statusOptions = [
     { value: 'open', label: 'Open', color: 'error' },
     { value: 'in_progress', label: 'In Progress', color: 'warning' },
@@ -205,12 +296,26 @@ const DeficiencyTracking = () => {
     'Compliance Issue'
   ];
 
+  // LOADING STATE
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress />
+        <Typography sx={{ ml: 2 }}>Loading deficiencies...</Typography>
+      </Box>
+    );
+  }
+
   return (
-    <Box>
+    <Box sx={{ p: 3 }}>
+      {/* HEADER */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">
-          Deficiency Tracking
-        </Typography>
+        <Box>
+          <Typography variant="h4">Deficiency Tracking</Typography>
+          <Typography variant="body2" color="textSecondary">
+            Track and manage control deficiencies
+          </Typography>
+        </Box>
         <Button
           variant="contained"
           startIcon={<Add />}
@@ -220,7 +325,14 @@ const DeficiencyTracking = () => {
         </Button>
       </Box>
 
-      {/* Statistics Cards */}
+      {/* ERROR MESSAGE */}
+      {error && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      {/* STATS CARDS */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card>
@@ -275,7 +387,7 @@ const DeficiencyTracking = () => {
         </Grid>
       </Grid>
 
-      {/* Filters and Tabs */}
+      {/* FILTERS AND TABS */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Grid container spacing={2} alignItems="center">
@@ -321,9 +433,6 @@ const DeficiencyTracking = () => {
                       label="Assigned To"
                     >
                       <MenuItem value="">All</MenuItem>
-                      <MenuItem value="John Doe">John Doe</MenuItem>
-                      <MenuItem value="Jane Smith">Jane Smith</MenuItem>
-                      <MenuItem value="IT Team">IT Team</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
@@ -343,7 +452,7 @@ const DeficiencyTracking = () => {
         </CardContent>
       </Card>
 
-      {/* Deficiencies Table */}
+      {/* DEFICIENCIES TABLE */}
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
@@ -420,15 +529,13 @@ const DeficiencyTracking = () => {
                       </TableCell>
                       
                       <TableCell>
-                        <Tooltip title="Edit">
-                          <IconButton size="small" onClick={() => handleUpdateDeficiency(deficiency.id, { status: 'in_progress' })}>
+                        <Tooltip title="Mark In Progress">
+                          <IconButton 
+                            size="small" 
+                            onClick={() => handleUpdateDeficiency(deficiency.id, { status: 'in_progress' })}
+                            disabled={deficiency.status === 'in_progress'}
+                          >
                             <Edit />
-                          </IconButton>
-                        </Tooltip>
-                        
-                        <Tooltip title="Add Comment">
-                          <IconButton size="small">
-                            <Comment />
                           </IconButton>
                         </Tooltip>
                         
@@ -436,7 +543,7 @@ const DeficiencyTracking = () => {
                           <IconButton 
                             size="small" 
                             onClick={() => handleUpdateDeficiency(deficiency.id, { status: 'resolved' })}
-                            disabled={deficiency.status === 'closed'}
+                            disabled={deficiency.status === 'resolved' || deficiency.status === 'closed'}
                           >
                             <CheckCircle />
                           </IconButton>
@@ -451,7 +558,7 @@ const DeficiencyTracking = () => {
         </CardContent>
       </Card>
 
-      {/* Report Deficiency Dialog */}
+      {/* REPORT DIALOG */}
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
         <DialogTitle>Report New Deficiency</DialogTitle>
         <DialogContent>
@@ -459,7 +566,7 @@ const DeficiencyTracking = () => {
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Deficiency Title"
+                label="Deficiency Title *"
                 value={newDeficiency.title}
                 onChange={(e) => setNewDeficiency({...newDeficiency, title: e.target.value})}
                 required
@@ -469,7 +576,7 @@ const DeficiencyTracking = () => {
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Description"
+                label="Description *"
                 value={newDeficiency.description}
                 onChange={(e) => setNewDeficiency({...newDeficiency, description: e.target.value})}
                 multiline
@@ -480,11 +587,11 @@ const DeficiencyTracking = () => {
 
             <Grid item xs={6}>
               <FormControl fullWidth>
-                <InputLabel>Severity</InputLabel>
+                <InputLabel>Severity *</InputLabel>
                 <Select
                   value={newDeficiency.severity}
                   onChange={(e) => setNewDeficiency({...newDeficiency, severity: e.target.value})}
-                  label="Severity"
+                  label="Severity *"
                 >
                   {severityOptions.map(opt => (
                     <MenuItem key={opt.value} value={opt.value}>
@@ -497,12 +604,13 @@ const DeficiencyTracking = () => {
 
             <Grid item xs={6}>
               <FormControl fullWidth>
-                <InputLabel>Category</InputLabel>
+                <InputLabel>Category *</InputLabel>
                 <Select
                   value={newDeficiency.category}
                   onChange={(e) => setNewDeficiency({...newDeficiency, category: e.target.value})}
-                  label="Category"
+                  label="Category *"
                 >
+                  <MenuItem value="">Select category</MenuItem>
                   {categoryOptions.map(opt => (
                     <MenuItem key={opt} value={opt}>{opt}</MenuItem>
                   ))}
@@ -570,7 +678,7 @@ const DeficiencyTracking = () => {
           <Button 
             onClick={handleCreateDeficiency} 
             variant="contained"
-            disabled={!newDeficiency.title || !newDeficiency.description}
+            disabled={!newDeficiency.title || !newDeficiency.description || !newDeficiency.category}
           >
             Report Deficiency
           </Button>

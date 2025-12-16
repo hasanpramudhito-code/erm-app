@@ -40,7 +40,9 @@ import {
   Step,
   StepLabel,
   Rating,
-  Slider
+  Slider,
+  Checkbox,
+  ListItemText as MuiListItemText
 } from '@mui/material';
 import {
   Add,
@@ -62,7 +64,9 @@ import {
   CorporateFare,
   Analytics,
   ExpandMore,
-  ExpandLess
+  ExpandLess,
+  FilterList,
+  RestartAlt
 } from '@mui/icons-material';
 import {
   collection,
@@ -71,13 +75,14 @@ import {
   updateDoc,
   deleteDoc,
   doc,
-  query,
+  query as firestoreQuery,
   orderBy,
   where
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
+import { useLocation } from 'react-router-dom';
 
 const RiskRegister = () => {
   const [risks, setRisks] = useState([]);
@@ -96,10 +101,80 @@ const RiskRegister = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [codeError, setCodeError] = useState('');
   const [expandedRows, setExpandedRows] = useState({});
-  const { userData } = useAuth();
-  const { config: assessmentConfig, calculateScore, calculateRiskLevel } = useAssessmentConfig();
+  
+  // State untuk filter
+  const [filters, setFilters] = useState({
+    status: [],
+    riskSources: [],
+    departments: [],
+    riskOwners: [],
+    inherentLevels: [],
+    residualLevels: [],
+    treatmentPriorities: [],
+    dateCreatedRange: { start: null, end: null },
+    targetDateRange: { start: null, end: null },
+    showFilters: false,
+  });
 
-  // Form data structure - DIPERBAIKI dengan tambahan department
+  // === FILTER DARI HEATMAP ===
+  const location = useLocation();
+  const urlQuery = new URLSearchParams(location.search);
+
+  const filterLikelihood = urlQuery.get("likelihood");
+  const filterImpact = urlQuery.get("impact");
+  const filterRiskLevel = urlQuery.get("riskLevel");
+  const viewMode = urlQuery.get("viewMode") || "inherent";
+
+  // State untuk data unik dropdown
+  const [uniqueRiskOwners, setUniqueRiskOwners] = useState([]);
+  const [uniqueDepartments, setUniqueDepartments] = useState([]);
+  
+  const { userData } = useAuth();
+  const { 
+    config: assessmentConfig, 
+    loading: configLoading,
+    calculateScore, 
+    calculateRiskLevel,
+    getRiskLevelOptions,
+    getRiskLevelColor,
+    getRiskLevelLabel,
+    getRatingOptions,
+    getRatingLabel
+  } = useAssessmentConfig();
+
+  // Helper function untuk mendapatkan warna Chip yang valid
+  const getValidChipColor = (color, fallback = 'default') => {
+    // Daftar warna valid Material-UI untuk Chip
+    const validColors = ['default', 'primary', 'secondary', 'error', 'warning', 'info', 'success'];
+    
+    if (color && validColors.includes(color)) {
+      return color;
+    }
+    
+    // Mapping warna yang mungkin digunakan di konfigurasi
+    const colorMap = {
+      'success': 'success',
+      'warning': 'warning',
+      'error': 'error',
+      'info': 'info',
+      'primary': 'primary',
+      'secondary': 'secondary',
+      'very_low': 'success',
+      'low': 'success',
+      'medium': 'warning',
+      'high': 'error',
+      'very_high': 'error',
+      'extreme': 'error'
+    };
+    
+    if (color && colorMap[color]) {
+      return colorMap[color];
+    }
+    
+    return fallback;
+  };
+
+  // Form data structure
   const [formData, setFormData] = useState({
     riskCode: '',
     riskType: '',
@@ -109,7 +184,7 @@ const RiskRegister = () => {
     cause: '',
     impactText: '',
     riskOwner: '',
-    department: '', // ✅ DITAMBAHKAN
+    department: '',
     initialProbability: '',
     initialImpact: '',
     inherentRiskQuantification: '',
@@ -208,13 +283,84 @@ const RiskRegister = () => {
     'Rejected - Ditolak'
   ];
 
-  const ratingOptions = [1, 2, 3, 4, 5];
+  // Helper functions yang menggunakan konfigurasi dari context
+  const getRatingOptionsFromConfig = () => {
+    if (getRatingOptions) {
+      return getRatingOptions();
+    }
+    // Fallback default
+    return [1, 2, 3, 4, 5];
+  };
+
+  const getRatingLabelFromConfig = (value, type = 'likelihood') => {
+    if (getRatingLabel) {
+      return getRatingLabel(value, type);
+    }
+    // Fallback default labels
+    if (type === 'likelihood') {
+      const labels = {
+        1: '1 - Sangat Rendah',
+        2: '2 - Rendah',
+        3: '3 - Sedang',
+        4: '4 - Tinggi',
+        5: '5 - Sangat Tinggi'
+      };
+      return labels[value] || `${value}`;
+    } else {
+      const labels = {
+        1: '1 - Dampak tidak signifikan',
+        2: '2 - Dampak terbatas',
+        3: '3 - Dampak signifikan',
+        4: '4 - Dampak kritis',
+        5: '5 - Dampak katastropik'
+      };
+      return labels[value] || `${value}`;
+    }
+  };
+
+  const getRiskLevelOptionsFromConfig = () => {
+    if (getRiskLevelOptions) {
+      return getRiskLevelOptions();
+    }
+    
+    // Default jika config tidak ada
+    return [
+      { value: 'very_low', label: 'Sangat Rendah', min: 1, max: 3, color: 'success' },
+      { value: 'low', label: 'Rendah', min: 4, max: 6, color: 'success' },
+      { value: 'medium', label: 'Sedang', min: 7, max: 10, color: 'warning' },
+      { value: 'high', label: 'Tinggi', min: 11, max: 15, color: 'error' },
+      { value: 'very_high', label: 'Sangat Tinggi', min: 16, max: 20, color: 'error' },
+      { value: 'extreme', label: 'Ekstrim', min: 21, max: 25, color: 'error' }
+    ];
+  };
+
+  const getRiskLevelColorFromConfig = (levelLabel) => {
+    if (getRiskLevelColor) {
+      return getRiskLevelColor(levelLabel);
+    }
+    
+    const level = getRiskLevelOptionsFromConfig().find(opt => 
+      opt.label.toLowerCase() === levelLabel.toLowerCase()
+    );
+    return level?.color || 'default';
+  };
+
+  const getRiskLevelLabelFromConfig = (levelValue) => {
+    if (getRiskLevelLabel) {
+      return getRiskLevelLabel(levelValue);
+    }
+    
+    const level = getRiskLevelOptionsFromConfig().find(opt => 
+      opt.value.toLowerCase() === levelValue.toLowerCase()
+    );
+    return level?.label || levelValue;
+  };
 
   // Calculate risk level
   const getRiskLevelInfo = (risk) => {
     let score;
     
-    if (assessmentConfig.assessmentMethod === 'coordinate') {
+    if (assessmentConfig?.assessmentMethod === 'coordinate') {
       score = calculateScore(risk.likelihood || 1, risk.impact || 1);
     } else {
       score = (risk.likelihood || 1) * (risk.impact || 1);
@@ -226,11 +372,13 @@ const RiskRegister = () => {
   // Render risk level in table
   const renderRiskLevel = (risk) => {
     const riskLevelInfo = getRiskLevelInfo(risk);
+    const validColor = getValidChipColor(riskLevelInfo.color, 'default');
+    
     return (
       <Chip 
         label={`${riskLevelInfo.level} (${riskLevelInfo.score})`}
         size="small" 
-        color={riskLevelInfo.color}
+        color={validColor}
       />
     );
   };
@@ -240,7 +388,7 @@ const RiskRegister = () => {
     try {
       setLoading(true);
       
-      const risksQuery = query(collection(db, 'risks'), orderBy('createdAt', 'desc'));
+      const risksQuery = firestoreQuery(collection(db, 'risks'), orderBy('createdAt', 'desc'));
       const risksSnapshot = await getDocs(risksQuery);
       const risksList = risksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setRisks(risksList);
@@ -259,7 +407,50 @@ const RiskRegister = () => {
 
   useEffect(() => {
     loadData();
+    
+    // Debug URL filters
+    console.log("URL Filter:", filterLikelihood, filterImpact, filterRiskLevel);
   }, []);
+
+  let filtered = risks;
+
+  if (filterLikelihood) {
+    filtered = filtered.filter(r =>
+      (viewMode === "inherent"
+        ? (r.likelihood || r.inherentLikelihood)
+        : (r.residualLikelihood || r.likelihood || r.inherentLikelihood)
+      ) == filterLikelihood
+    );
+  }
+
+  if (filterImpact) {
+    filtered = filtered.filter(r =>
+      (viewMode === "inherent"
+        ? (r.impact || r.inherentImpact)
+        : (r.residualImpact || r.impact || r.inherentImpact)
+      ) == filterImpact
+    );
+  }
+
+  if (filterRiskLevel) {
+    filtered = filtered.filter(r =>
+      r.inherentLevel === filterRiskLevel ||
+      r.residualLevel === filterRiskLevel
+    );
+  }
+
+  // Extract unique data for filters
+  useEffect(() => {
+    if (risks.length > 0) {
+      // Extract unique risk owners
+      const owners = [...new Set(risks.map(risk => risk.riskOwner).filter(Boolean))];
+      setUniqueRiskOwners(owners);
+      
+      // Extract unique departments
+      const depts = [...new Set(risks.map(risk => risk.department).filter(Boolean))];
+      setUniqueDepartments(depts);
+    }
+  }, [risks]);
 
   // Validasi kode unik real-time
   useEffect(() => {
@@ -277,6 +468,123 @@ const RiskRegister = () => {
       setCodeError('');
     }
   }, [formData.riskCode, risks, editingRisk]);
+
+  // Fungsi untuk filter risiko
+  const getFilteredRisks = () => {
+    return risks.filter(risk => {
+
+      // =========================================================
+      // 1. FILTER TAMBAHAN DARI HEATMAP (LIKELIHOOD / IMPACT / LEVEL)
+      // =========================================================
+
+      // Filter likelihood
+      if (filterLikelihood) {
+        const L = (viewMode === "inherent"
+          ? (risk.likelihood || risk.inherentLikelihood)
+          : (risk.residualLikelihood || risk.likelihood || risk.inherentLikelihood)
+        );
+        if (L != filterLikelihood) return false;
+      }
+
+      // Filter impact
+      if (filterImpact) {
+        const I = (viewMode === "inherent"
+          ? (risk.impact || risk.inherentImpact)
+          : (risk.residualImpact || risk.impact || risk.inherentImpact)
+        );
+        if (I != filterImpact) return false;
+      }
+
+      // Filter risk level
+      if (filterRiskLevel) {
+        if (
+          risk.inherentLevel !== filterRiskLevel &&
+          risk.residualLevel !== filterRiskLevel
+        ) {
+          return false;
+        }
+      }
+
+      // =========================================================
+      // 2. FILTER-FILTER LAMA (TIDAK DIUBAH)
+      // =========================================================
+
+      if (filters.status.length > 0 && !filters.status.includes(risk.status)) {
+        return false;
+      }
+
+      if (filters.riskSources.length > 0 && !filters.riskSources.includes(risk.riskSource)) {
+        return false;
+      }
+
+      if (filters.departments.length > 0 && !filters.departments.includes(risk.department)) {
+        return false;
+      }
+
+      if (filters.riskOwners.length > 0 && !filters.riskOwners.includes(risk.riskOwner)) {
+        return false;
+      }
+
+      if (filters.treatmentPriorities.length > 0 && !filters.treatmentPriorities.includes(risk.treatmentPriority)) {
+        return false;
+      }
+
+      // Inherent Risk Level
+      if (filters.inherentLevels.length > 0) {
+        const inherentLevel = risk.initialRiskLevel?.level?.toLowerCase() || '';
+        if (!filters.inherentLevels.some(level =>
+          inherentLevel.includes(level.toLowerCase())
+        )) return false;
+      }
+
+      // Residual Risk Level
+      if (filters.residualLevels.length > 0) {
+        const residualLevel = risk.residualRiskLevel?.level?.toLowerCase() || '';
+        if (!filters.residualLevels.some(level =>
+          residualLevel.includes(level.toLowerCase())
+        )) return false;
+      }
+
+      // Date Created Range
+      if (filters.dateCreatedRange.start || filters.dateCreatedRange.end) {
+        const riskDate = risk.createdAt?.toDate ? risk.createdAt.toDate() : new Date(risk.createdAt);
+        
+        if (filters.dateCreatedRange.start && riskDate < filters.dateCreatedRange.start) {
+          return false;
+        }
+        if (filters.dateCreatedRange.end && riskDate > filters.dateCreatedRange.end) {
+          return false;
+        }
+      }
+
+      // Target Date Range
+      if (filters.targetDateRange.start || filters.targetDateRange.end) {
+        if (!risk.targetCompletion) return false;
+
+        const targetDate = new Date(risk.targetCompletion);
+
+        if (filters.targetDateRange.start && targetDate < filters.targetDateRange.start) {
+          return false;
+        }
+        if (filters.targetDateRange.end && targetDate > filters.targetDateRange.end) return false;
+      }
+
+      // Search term
+      if (searchTerm && !(
+        risk.riskCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        risk.riskDescription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        risk.riskType?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        risk.riskSource?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        risk.riskOwner?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        risk.department?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        risk.status?.toLowerCase().includes(searchTerm.toLowerCase())
+      )) {
+        return false;
+      }
+
+      return true;
+    });
+  };
 
   // Get changed fields for audit trail
   const getChangedFields = (oldData, newData) => {
@@ -473,6 +781,22 @@ const RiskRegister = () => {
     setCodeError('');
   };
 
+  // Reset filter
+  const resetFilters = () => {
+    setFilters({
+      status: [],
+      riskSources: [],
+      departments: [],
+      riskOwners: [],
+      inherentLevels: [],
+      residualLevels: [],
+      treatmentPriorities: [],
+      dateCreatedRange: { start: null, end: null },
+      targetDateRange: { start: null, end: null },
+      showFilters: filters.showFilters,
+    });
+  };
+
   // Handle edit
   const handleEdit = (risk) => {
     setEditingRisk(risk);
@@ -507,18 +831,14 @@ const RiskRegister = () => {
   const handleAssessment = (risk) => {
     setAssessingRisk(risk);
     setAssessmentData({
-
-  likelihood: risk.initialProbability || 1,
-  impact: risk.initialImpact || 1,
-  controlEffectiveness: risk.controlEffectiveness || 3,
-
-  residualLikelihood: risk.residualProbability || risk.initialProbability || 1,
-  residualImpact: risk.residualImpact || risk.initialImpact || 1,
-
-  treatmentPriority: risk.treatmentPriority || 'Medium - Sedang (Penanganan < 1 Bulan)',
-  assessmentNotes: risk.assessmentNotes || ''
-});
-
+      likelihood: risk.initialProbability || 1,
+      impact: risk.initialImpact || 1,
+      controlEffectiveness: risk.controlEffectiveness || 3,
+      residualLikelihood: risk.residualProbability || risk.initialProbability || 1,
+      residualImpact: risk.residualImpact || risk.initialImpact || 1,
+      treatmentPriority: risk.treatmentPriority || 'Medium - Sedang (Penanganan < 1 Bulan)',
+      assessmentNotes: risk.assessmentNotes || ''
+    });
     setAssessmentDialog(true);
   };
 
@@ -629,22 +949,36 @@ const RiskRegister = () => {
     setPage(0);
   };
 
-  // Filter risks based on search term
-  const filteredRisks = risks.filter(risk =>
-    risk.riskCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    risk.riskDescription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    risk.riskType?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    risk.riskSource?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    risk.riskOwner?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    risk.department?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    risk.status?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter risks based on search term and filters
+  const filteredRisks = getFilteredRisks();
 
   // Paginated risks
   const paginatedRisks = filteredRisks.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
   );
+
+  // Count active filters
+  const countActiveFilters = () => {
+    let count = 0;
+    
+    // Count array filters
+    count += filters.status.length;
+    count += filters.riskSources.length;
+    count += filters.departments.length;
+    count += filters.riskOwners.length;
+    count += filters.inherentLevels.length;
+    count += filters.residualLevels.length;
+    count += filters.treatmentPriorities.length;
+    
+    // Count date filters
+    if (filters.dateCreatedRange.start) count++;
+    if (filters.dateCreatedRange.end) count++;
+    if (filters.targetDateRange.start) count++;
+    if (filters.targetDateRange.end) count++;
+    
+    return count;
+  };
 
   return (
     <Box sx={{ p: 3, backgroundColor: 'grey.50', minHeight: '100vh' }}>
@@ -686,24 +1020,398 @@ const RiskRegister = () => {
         </CardContent>
       </Card>
 
-      {/* Search Box */}
+      {/* Search and Filter Box */}
       <Card sx={{ mb: 3, boxShadow: 2 }}>
         <CardContent>
-          <TextField
-            fullWidth
-            placeholder="Cari risiko berdasarkan kode, deskripsi, jenis, sumber, departemen, atau pemilik risiko..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search />
-                </InputAdornment>
-              ),
-            }}
-          />
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={8}>
+              <TextField
+                fullWidth
+                placeholder="Cari risiko berdasarkan kode, deskripsi, jenis, sumber, departemen, atau pemilik risiko..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Box display="flex" gap={1}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<FilterList />}
+                  onClick={() => setFilters({...filters, showFilters: !filters.showFilters})}
+                >
+                  {filters.showFilters ? 'Sembunyikan Filter' : 'Tampilkan Filter'}
+                  {countActiveFilters() > 0 && (
+                    <Chip 
+                      size="small" 
+                      label={countActiveFilters()}
+                      color="primary"
+                      sx={{ ml: 1 }}
+                    />
+                  )}
+                </Button>
+                <Tooltip title="Reset Filter">
+                  <IconButton 
+                    onClick={resetFilters}
+                    color="primary"
+                  >
+                    <RestartAlt />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Grid>
+          </Grid>
         </CardContent>
       </Card>
+
+      {/* Filter Panel */}
+      {filters.showFilters && (
+        <Card sx={{ mb: 3, boxShadow: 2 }}>
+          <CardContent>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="h6" fontWeight="bold">
+                🔍 Filter Risiko
+              </Typography>
+              <Box display="flex" gap={1}>
+                <Button 
+                  size="small" 
+                  onClick={resetFilters}
+                  variant="outlined"
+                  startIcon={<Delete />}
+                >
+                  Reset Filter
+                </Button>
+                <Button 
+                  size="small" 
+                  onClick={() => setFilters({...filters, showFilters: false})}
+                >
+                  Tutup
+                </Button>
+              </Box>
+            </Box>
+            
+            <Grid container spacing={2}>
+              {/* Filter Status */}
+              <Grid item xs={12} sm={6} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    multiple
+                    value={filters.status}
+                    onChange={(e) => setFilters({...filters, status: e.target.value})}
+                    label="Status"
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => (
+                          <Chip key={value} label={value} size="small" />
+                        ))}
+                      </Box>
+                    )}
+                  >
+                    {statusOptions.map((status) => (
+                      <MenuItem key={status} value={status}>
+                        <Checkbox checked={filters.status.indexOf(status) > -1} />
+                        <MuiListItemText primary={status} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Filter Risk Source */}
+              <Grid item xs={12} sm={6} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Sumber Risiko</InputLabel>
+                  <Select
+                    multiple
+                    value={filters.riskSources}
+                    onChange={(e) => setFilters({...filters, riskSources: e.target.value})}
+                    label="Sumber Risiko"
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => (
+                          <Chip key={value} label={value} size="small" />
+                        ))}
+                      </Box>
+                    )}
+                  >
+                    {riskSources.map((source) => (
+                      <MenuItem key={source} value={source}>
+                        <Checkbox checked={filters.riskSources.indexOf(source) > -1} />
+                        <MuiListItemText primary={source} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Filter Department */}
+              <Grid item xs={12} sm={6} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Departemen</InputLabel>
+                  <Select
+                    multiple
+                    value={filters.departments}
+                    onChange={(e) => setFilters({...filters, departments: e.target.value})}
+                    label="Departemen"
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => (
+                          <Chip key={value} label={value} size="small" />
+                        ))}
+                      </Box>
+                    )}
+                  >
+                    {uniqueDepartments.map((dept) => (
+                      <MenuItem key={dept} value={dept}>
+                        <Checkbox checked={filters.departments.indexOf(dept) > -1} />
+                        <MuiListItemText primary={dept} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Filter Risk Owner */}
+              <Grid item xs={12} sm={6} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Pemilik Risiko</InputLabel>
+                  <Select
+                    multiple
+                    value={filters.riskOwners}
+                    onChange={(e) => setFilters({...filters, riskOwners: e.target.value})}
+                    label="Pemilik Risiko"
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => (
+                          <Chip key={value} label={value} size="small" />
+                        ))}
+                      </Box>
+                    )}
+                  >
+                    {uniqueRiskOwners.map((owner) => (
+                      <MenuItem key={owner} value={owner}>
+                        <Checkbox checked={filters.riskOwners.indexOf(owner) > -1} />
+                        <MuiListItemText primary={owner} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Filter Treatment Priority */}
+              <Grid item xs={12} sm={6} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Treatment Priority</InputLabel>
+                  <Select
+                    multiple
+                    value={filters.treatmentPriorities}
+                    onChange={(e) => setFilters({...filters, treatmentPriorities: e.target.value})}
+                    label="Treatment Priority"
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => (
+                          <Chip key={value} label={value} size="small" />
+                        ))}
+                      </Box>
+                    )}
+                  >
+                    {treatmentPriorities.map((priority) => (
+                      <MenuItem key={priority} value={priority}>
+                        <Checkbox checked={filters.treatmentPriorities.indexOf(priority) > -1} />
+                        <MuiListItemText primary={priority} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Filter Inherent Risk Level */}
+              <Grid item xs={12} sm={6} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Inherent Risk Level</InputLabel>
+                  <Select
+                    multiple
+                    value={filters.inherentLevels}
+                    onChange={(e) => setFilters({...filters, inherentLevels: e.target.value})}
+                    label="Inherent Risk Level"
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => {
+                          const levelOption = getRiskLevelOptionsFromConfig().find(opt => opt.value === value);
+                          const chipColor = getValidChipColor(
+                            getRiskLevelColorFromConfig(levelOption?.label || value),
+                            'default'
+                          );
+                          return (
+                            <Chip 
+                              key={value} 
+                              label={getRiskLevelLabelFromConfig(value)}
+                              size="small" 
+                              color={chipColor}
+                            />
+                          );
+                        })}
+                      </Box>
+                    )}
+                  >
+                    {getRiskLevelOptionsFromConfig().map((level) => (
+                      <MenuItem key={level.value} value={level.value}>
+                        <Checkbox checked={filters.inherentLevels.indexOf(level.value) > -1} />
+                        <MuiListItemText primary={level.label} />
+                        <Box sx={{ 
+                          width: 10, 
+                          height: 10, 
+                          borderRadius: '50%', 
+                          bgcolor: `${getValidChipColor(level.color, 'default')}.main`,
+                          ml: 1 
+                        }} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Filter Residual Risk Level */}
+              <Grid item xs={12} sm={6} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Residual Risk Level</InputLabel>
+                  <Select
+                    multiple
+                    value={filters.residualLevels}
+                    onChange={(e) => setFilters({...filters, residualLevels: e.target.value})}
+                    label="Residual Risk Level"
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => {
+                          const levelOption = getRiskLevelOptionsFromConfig().find(opt => opt.value === value);
+                          const chipColor = getValidChipColor(
+                            getRiskLevelColorFromConfig(levelOption?.label || value),
+                            'default'
+                          );
+                          return (
+                            <Chip 
+                              key={value} 
+                              label={getRiskLevelLabelFromConfig(value)}
+                              size="small" 
+                              color={chipColor}
+                              variant="outlined"
+                            />
+                          );
+                        })}
+                      </Box>
+                    )}
+                  >
+                    {getRiskLevelOptionsFromConfig().map((level) => (
+                      <MenuItem key={level.value} value={level.value}>
+                        <Checkbox checked={filters.residualLevels.indexOf(level.value) > -1} />
+                        <MuiListItemText primary={level.label} />
+                        <Box sx={{ 
+                          width: 10, 
+                          height: 10, 
+                          borderRadius: '50%', 
+                          bgcolor: `${getValidChipColor(level.color, 'default')}.main`,
+                          ml: 1 
+                        }} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Filter Date Created Range */}
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" gutterBottom>Tanggal Dibuat</Typography>
+                <Box display="flex" gap={1}>
+                  <TextField
+                    fullWidth
+                    type="date"
+                    size="small"
+                    label="Dari"
+                    InputLabelProps={{ shrink: true }}
+                    value={filters.dateCreatedRange.start ? filters.dateCreatedRange.start.toISOString().split('T')[0] : ''}
+                    onChange={(e) => setFilters({
+                      ...filters, 
+                      dateCreatedRange: {
+                        ...filters.dateCreatedRange,
+                        start: e.target.value ? new Date(e.target.value) : null
+                      }
+                    })}
+                  />
+                  <TextField
+                    fullWidth
+                    type="date"
+                    size="small"
+                    label="Sampai"
+                    InputLabelProps={{ shrink: true }}
+                    value={filters.dateCreatedRange.end ? filters.dateCreatedRange.end.toISOString().split('T')[0] : ''}
+                    onChange={(e) => setFilters({
+                      ...filters, 
+                      dateCreatedRange: {
+                        ...filters.dateCreatedRange,
+                        end: e.target.value ? new Date(e.target.value) : null
+                      }
+                    })}
+                  />
+                </Box>
+              </Grid>
+
+              {/* Filter Target Date Range */}
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" gutterBottom>Target Selesai</Typography>
+                <Box display="flex" gap={1}>
+                  <TextField
+                    fullWidth
+                    type="date"
+                    size="small"
+                    label="Dari"
+                    InputLabelProps={{ shrink: true }}
+                    value={filters.targetDateRange.start ? filters.targetDateRange.start.toISOString().split('T')[0] : ''}
+                    onChange={(e) => setFilters({
+                      ...filters, 
+                      targetDateRange: {
+                        ...filters.targetDateRange,
+                        start: e.target.value ? new Date(e.target.value) : null
+                      }
+                    })}
+                  />
+                  <TextField
+                    fullWidth
+                    type="date"
+                    size="small"
+                    label="Sampai"
+                    InputLabelProps={{ shrink: true }}
+                    value={filters.targetDateRange.end ? filters.targetDateRange.end.toISOString().split('T')[0] : ''}
+                    onChange={(e) => setFilters({
+                      ...filters, 
+                      targetDateRange: {
+                        ...filters.targetDateRange,
+                        end: e.target.value ? new Date(e.target.value) : null
+                      }
+                    })}
+                  />
+                </Box>
+              </Grid>
+
+              {/* Summary Filter Aktif */}
+              <Grid item xs={12}>
+                <Paper variant="outlined" sx={{ p: 1, backgroundColor: 'grey.50' }}>
+                  <Typography variant="body2" color="textSecondary">
+                    Filter aktif: {countActiveFilters()} • Menampilkan {filteredRisks.length} dari {risks.length} risiko
+                  </Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Risks Table */}
       <Card sx={{ boxShadow: 3 }}>
@@ -755,6 +1463,19 @@ const RiskRegister = () => {
                       const initialLevel = risk.initialRiskLevel || {};
                       const residualLevel = risk.residualRiskLevel || {};
                       const isExpanded = expandedRows[risk.id];
+                      const statusChipColor = getValidChipColor(
+                        risk.status?.includes('Critical') || risk.status?.includes('Extreme') ? 'error' :
+                        risk.status?.includes('High') ? 'warning' :
+                        risk.status?.includes('Assessed') ? 'info' :
+                        risk.status?.includes('Closed') ? 'success' : 'default',
+                        'default'
+                      );
+                      const treatmentPriorityColor = getValidChipColor(
+                        risk.treatmentPriority?.includes('Critical') ? 'error' :
+                        risk.treatmentPriority?.includes('High') ? 'warning' :
+                        risk.treatmentPriority?.includes('Medium') ? 'info' : 'default',
+                        'default'
+                      );
                       
                       return (
                         <React.Fragment key={risk.id}>
@@ -833,12 +1554,7 @@ const RiskRegister = () => {
                               <Chip 
                                 label={risk.status || 'Open'}
                                 size="small"
-                                color={
-                                  risk.status?.includes('Critical') || risk.status?.includes('Extreme') ? 'error' :
-                                  risk.status?.includes('High') ? 'warning' :
-                                  risk.status?.includes('Assessed') ? 'info' :
-                                  risk.status?.includes('Closed') ? 'success' : 'default'
-                                }
+                                color={statusChipColor}
                               />
                             </TableCell>
                             <TableCell>
@@ -846,7 +1562,7 @@ const RiskRegister = () => {
                                 <Chip 
                                   label={`${initialLevel.level} (${initialLevel.score})`}
                                   size="small" 
-                                  color={initialLevel.color}
+                                  color={getValidChipColor(initialLevel.color, 'default')}
                                 />
                               ) : (
                                 <Typography variant="body2" color="textSecondary" fontSize="0.75rem">
@@ -859,7 +1575,7 @@ const RiskRegister = () => {
                                 <Chip 
                                   label={`${residualLevel.level} (${residualLevel.score})`}
                                   size="small" 
-                                  color={residualLevel.color}
+                                  color={getValidChipColor(residualLevel.color, 'default')}
                                   variant="outlined"
                                 />
                               ) : (
@@ -873,11 +1589,7 @@ const RiskRegister = () => {
                                 <Chip 
                                   label={risk.treatmentPriority}
                                   size="small"
-                                  color={
-                                    risk.treatmentPriority?.includes('Critical') ? 'error' :
-                                    risk.treatmentPriority?.includes('High') ? 'warning' :
-                                    risk.treatmentPriority?.includes('Medium') ? 'info' : 'default'
-                                  }
+                                  color={treatmentPriorityColor}
                                 />
                               ) : (
                                 <Typography variant="body2" color="textSecondary" fontSize="0.75rem">
@@ -1326,15 +2038,15 @@ const RiskRegister = () => {
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Probabilitas Awal (1-5)</InputLabel>
+                    <InputLabel>Probabilitas Awal</InputLabel>
                     <Select
                       value={formData.initialProbability}
-                      label="Probabilitas Awal (1-5)"
+                      label="Probabilitas Awal"
                       onChange={(e) => setFormData({ ...formData, initialProbability: e.target.value })}
                     >
-                      {ratingOptions.map((option) => (
+                      {getRatingOptionsFromConfig().map((option) => (
                         <MenuItem key={option} value={option}>
-                          {option}
+                          {getRatingLabelFromConfig(option, 'likelihood')}
                         </MenuItem>
                       ))}
                     </Select>
@@ -1342,15 +2054,15 @@ const RiskRegister = () => {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Dampak Awal (1-5)</InputLabel>
+                    <InputLabel>Dampak Awal</InputLabel>
                     <Select
                       value={formData.initialImpact}
-                      label="Dampak Awal (1-5)"
+                      label="Dampak Awal"
                       onChange={(e) => setFormData({ ...formData, initialImpact: e.target.value })}
                     >
-                      {ratingOptions.map((option) => (
+                      {getRatingOptionsFromConfig().map((option) => (
                         <MenuItem key={option} value={option}>
-                          {option}
+                          {getRatingLabelFromConfig(option, 'impact')}
                         </MenuItem>
                       ))}
                     </Select>
@@ -1360,11 +2072,19 @@ const RiskRegister = () => {
                   <TextField
                     fullWidth
                     label="Kuantifikasi Risiko Inherent"
+                    type="number"
                     multiline
                     rows={2}
                     value={formData.inherentRiskQuantification}
                     onChange={(e) => setFormData({ ...formData, inherentRiskQuantification: e.target.value })}
-                    placeholder="Kuantifikasi risiko inherent (dalam nilai moneter atau lainnya)..."
+                    placeholder="Kuantifikasi risiko inherent (dalam nilai rupiah atau lainnya)..."
+                      InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <AttachMoney />
+                        </InputAdornment>
+                      ),
+                    }}
                   />
                 </Grid>
                 {formData.initialProbability && formData.initialImpact && (
@@ -1422,15 +2142,15 @@ const RiskRegister = () => {
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Probabilitas Residual (1-5)</InputLabel>
+                    <InputLabel>Probabilitas Residual</InputLabel>
                     <Select
                       value={formData.residualProbability}
-                      label="Probabilitas Residual (1-5)"
+                      label="Probabilitas Residual"
                       onChange={(e) => setFormData({ ...formData, residualProbability: e.target.value })}
                     >
-                      {ratingOptions.map((option) => (
+                      {getRatingOptionsFromConfig().map((option) => (
                         <MenuItem key={option} value={option}>
-                          {option}
+                          {getRatingLabelFromConfig(option, 'likelihood')}
                         </MenuItem>
                       ))}
                     </Select>
@@ -1438,15 +2158,15 @@ const RiskRegister = () => {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Dampak Residual (1-5)</InputLabel>
+                    <InputLabel>Dampak Residual</InputLabel>
                     <Select
                       value={formData.residualImpact}
-                      label="Dampak Residual (1-5)"
+                      label="Dampak Residual"
                       onChange={(e) => setFormData({ ...formData, residualImpact: e.target.value })}
                     >
-                      {ratingOptions.map((option) => (
+                      {getRatingOptionsFromConfig().map((option) => (
                         <MenuItem key={option} value={option}>
-                          {option}
+                          {getRatingLabelFromConfig(option, 'impact')}
                         </MenuItem>
                       ))}
                     </Select>
@@ -1456,11 +2176,19 @@ const RiskRegister = () => {
                   <TextField
                     fullWidth
                     label="Kuantifikasi Risiko Residual"
+                    type="number"
                     multiline
                     rows={2}
                     value={formData.residualRiskQuantification}
                     onChange={(e) => setFormData({ ...formData, residualRiskQuantification: e.target.value })}
-                    placeholder="Kuantifikasi risiko residual (dalam nilai moneter atau lainnya)..."
+                    placeholder="Kuantifikasi risiko residual (dalam nilai rupiah atau lainnya)..."
+                      InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <AttachMoney />
+                        </InputAdornment>
+                      ),
+                    }}
                   />
                 </Grid>
                 {formData.residualProbability && formData.residualImpact && (
@@ -1498,7 +2226,7 @@ const RiskRegister = () => {
                     type="number"
                     value={formData.controlCost}
                     onChange={(e) => setFormData({ ...formData, controlCost: e.target.value })}
-                    placeholder="Dalam Rupiah"
+                    placeholder="dalam nilai rupiah atau lainnya"
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -1589,11 +2317,11 @@ const RiskRegister = () => {
                       value={assessmentData.likelihood}
                       onChange={(e) => setAssessmentData({...assessmentData, likelihood: e.target.value})}
                     >
-                      <MenuItem value={1}>1 - Remote</MenuItem>
-                      <MenuItem value={2}>2 - Unlikely</MenuItem>
-                      <MenuItem value={3}>3 - Possible</MenuItem>
-                      <MenuItem value={4}>4 - Probable</MenuItem>
-                      <MenuItem value={5}>5 - Highly Probable</MenuItem>
+                      {getRatingOptionsFromConfig().map((option) => (
+                        <MenuItem key={option} value={option}>
+                          {getRatingLabelFromConfig(option, 'likelihood')}
+                        </MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
                 </Grid>
@@ -1605,11 +2333,11 @@ const RiskRegister = () => {
                       value={assessmentData.impact}
                       onChange={(e) => setAssessmentData({...assessmentData, impact: e.target.value})}
                     >
-                      <MenuItem value={1}>1 - Insignificant</MenuItem>
-                      <MenuItem value={2}>2 - Minor</MenuItem>
-                      <MenuItem value={3}>3 - Moderate</MenuItem>
-                      <MenuItem value={4}>4 - Major</MenuItem>
-                      <MenuItem value={5}>5 - Catastrophic</MenuItem>
+                      {getRatingOptionsFromConfig().map((option) => (
+                        <MenuItem key={option} value={option}>
+                          {getRatingLabelFromConfig(option, 'impact')}
+                        </MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
                 </Grid>
@@ -1648,11 +2376,11 @@ const RiskRegister = () => {
                       value={assessmentData.residualLikelihood}
                       onChange={(e) => setAssessmentData({...assessmentData, residualLikelihood: e.target.value})}
                     >
-                      <MenuItem value={1}>1 - Remote</MenuItem>
-                      <MenuItem value={2}>2 - Unlikely</MenuItem>
-                      <MenuItem value={3}>3 - Possible</MenuItem>
-                      <MenuItem value={4}>4 - Probable</MenuItem>
-                      <MenuItem value={5}>5 - Highly Probable</MenuItem>
+                      {getRatingOptionsFromConfig().map((option) => (
+                        <MenuItem key={option} value={option}>
+                          {getRatingLabelFromConfig(option, 'likelihood')}
+                        </MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
                 </Grid>
@@ -1664,11 +2392,11 @@ const RiskRegister = () => {
                       value={assessmentData.residualImpact}
                       onChange={(e) => setAssessmentData({...assessmentData, residualImpact: e.target.value})}
                     >
-                      <MenuItem value={1}>1 - Insignificant</MenuItem>
-                      <MenuItem value={2}>2 - Minor</MenuItem>
-                      <MenuItem value={3}>3 - Moderate</MenuItem>
-                      <MenuItem value={4}>4 - Major</MenuItem>
-                      <MenuItem value={5}>5 - Catastrophic</MenuItem>
+                      {getRatingOptionsFromConfig().map((option) => (
+                        <MenuItem key={option} value={option}>
+                          {getRatingLabelFromConfig(option, 'impact')}
+                        </MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
                 </Grid>
@@ -1717,7 +2445,7 @@ const RiskRegister = () => {
                         </Typography>
                         <Chip 
                           label={calculateRiskLevel(assessmentData.likelihood * assessmentData.impact).level}
-                          color={calculateRiskLevel(assessmentData.likelihood * assessmentData.impact).color}
+                          color={getValidChipColor(calculateRiskLevel(assessmentData.likelihood * assessmentData.impact).color, 'default')}
                         />
                       </Grid>
                       <Grid item xs={6}>
@@ -1729,7 +2457,7 @@ const RiskRegister = () => {
                         </Typography>
                         <Chip 
                           label={calculateRiskLevel(assessmentData.residualLikelihood * assessmentData.residualImpact).level}
-                          color={calculateRiskLevel(assessmentData.residualLikelihood * assessmentData.residualImpact).color}
+                          color={getValidChipColor(calculateRiskLevel(assessmentData.residualLikelihood * assessmentData.residualImpact).color, 'default')}
                           variant="outlined"
                         />
                       </Grid>
@@ -1796,12 +2524,13 @@ const RiskRegister = () => {
                       <Typography variant="subtitle2">Status</Typography>
                       <Chip 
                         label={selectedRisk.status || 'Open'} 
-                        color={
+                        color={getValidChipColor(
                           selectedRisk.status?.includes('Critical') || selectedRisk.status?.includes('Extreme') ? 'error' :
                           selectedRisk.status?.includes('High') ? 'warning' :
                           selectedRisk.status?.includes('Assessed') ? 'info' :
-                          selectedRisk.status?.includes('Closed') ? 'success' : 'default'
-                        }
+                          selectedRisk.status?.includes('Closed') ? 'success' : 'default',
+                          'default'
+                        )}
                         sx={{ background: 'white' }}
                       />
                     </Grid>

@@ -182,6 +182,39 @@ const ControlRegister = () => {
     }
   };
 
+      // TAMBAHKAN fungsi ini setelah handleCreate:
+
+    const handleUpdate = async () => {
+      if (!validateForm(newControl) || !editingControl) {
+        setError('Please fix validation errors.');
+        return;
+      }
+
+      try {
+        await controlTestingService.updateControl(editingControl.id, newControl);
+        
+        setOpenDialog(false);
+        setEditingControl(null);
+        setNewControl({
+          name: '',
+          description: '',
+          category: '',
+          controlType: 'preventive',
+          frequency: 'quarterly',
+          owner: '',
+          objective: '',
+          testProcedure: '',
+          isActive: true
+        });
+        
+        setSuccess('Control updated successfully.');
+        loadControls();
+        
+      } catch (err) {
+        console.error(err);
+        setError('Failed to update control');
+      }
+    };
 
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this control?")) return;
@@ -348,33 +381,77 @@ const ControlRegister = () => {
                       />
                     </TableCell>
 
-                    <TableCell>
+          <TableCell>
 
-                      {permissions.canEditControl && (
-                        <IconButton size="small" color="primary">
-                          <Edit />
-                        </IconButton>
-                      )}
+            {permissions.canEditControl && (
+              <IconButton 
+                size="small" 
+                color="primary"
+                onClick={() => {
+                  // EDIT: Buka form edit
+                  setEditingControl(ctrl);
+                  setNewControl({
+                    name: ctrl.name,
+                    description: ctrl.description || '',
+                    category: ctrl.category,
+                    controlType: ctrl.controlType || 'preventive',
+                    frequency: ctrl.frequency || 'quarterly',
+                    owner: ctrl.owner || '',
+                    objective: ctrl.objective || '',
+                    testProcedure: ctrl.testProcedure || '',
+                    isActive: ctrl.isActive !== false
+                  });
+                  setOpenDialog(true);
+                }}
+              >
+                <Edit />
+              </IconButton>
+            )}
 
-                      <IconButton size="small" color="info">
-                        <Visibility />
-                      </IconButton>
+            <IconButton 
+              size="small" 
+              color="info"
+              onClick={() => {
+                // VIEW: Tampilkan alert dengan detail
+                alert(
+                  `CONTROL DETAILS:\n\n` +
+                  `Name: ${ctrl.name}\n` +
+                  `Category: ${ctrl.category}\n` + 
+                  `Owner: ${ctrl.owner}\n` +
+                  `Type: ${ctrl.controlType}\n` +
+                  `Frequency: ${ctrl.frequency}\n` +
+                  `Status: ${ctrl.isActive ? 'Active' : 'Inactive'}`
+                );
+              }}
+            >
+              <Visibility />
+            </IconButton>
 
-                      <IconButton size="small" color="secondary">
-                        <PlayArrow />
-                      </IconButton>
+            <IconButton 
+              size="small" 
+              color="secondary"
+              onClick={() => {
+                // PLAY ARROW: Pilih untuk testing
+                alert(`Control "${ctrl.name}" selected for testing.\n\nGo to Testing Schedule page.`);
+                // Simpan ke localStorage untuk digunakan di Testing Schedule
+                localStorage.setItem('selectedControlId', ctrl.id);
+                localStorage.setItem('selectedControlName', ctrl.name);
+              }}
+            >
+              <PlayArrow />
+            </IconButton>
 
-                      {permissions.canDeleteControl && (
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleDelete(ctrl.id)}
-                        >
-                          <Delete />
-                        </IconButton>
-                      )}
+            {permissions.canDeleteControl && (
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleDelete(ctrl.id)}
+              >
+                <Delete />
+              </IconButton>
+            )}
 
-                    </TableCell>
+          </TableCell>
 
                   </TableRow>
                 ))}
@@ -387,8 +464,22 @@ const ControlRegister = () => {
 
 
       {/* ADD/EDIT DIALOG */}
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Add New Control</DialogTitle>
+      <Dialog open={openDialog} onClose={() => {
+          setOpenDialog(false);
+          setEditingControl(null);
+          setNewControl({
+            name: '',
+            description: '',
+            category: '',
+            controlType: 'preventive',
+            frequency: 'quarterly',
+            owner: '',
+            objective: '',
+            testProcedure: '',
+            isActive: true
+          });
+        }} maxWidth="md" fullWidth>
+        <DialogTitle>{editingControl ? 'Edit Control' : 'Add New Control'}</DialogTitle>
 
         <DialogContent>
           <Grid container spacing={2} mt={1}>
@@ -501,8 +592,8 @@ const ControlRegister = () => {
 
         <DialogActions>
           <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreate}>
-            Create Control
+          <Button variant="contained" onClick={editingControl ? handleUpdate : handleCreate}>
+            {editingControl ? 'Update Control' : 'Create Control'}
           </Button>
         </DialogActions>
       </Dialog>

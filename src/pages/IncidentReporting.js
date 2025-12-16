@@ -670,6 +670,7 @@ const IncidentReporting = () => {
         open={searchDialogOpen}
         onClose={() => setSearchDialogOpen(false)}
         onRiskSelect={handleRiskSelect}
+        db={db} // ← TAMBAH INI!
       />
 
       {/* View Details Dialog */}
