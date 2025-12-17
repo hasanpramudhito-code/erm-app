@@ -292,12 +292,12 @@ const Reporting = () => {
       doc.setFillColor(25, 118, 210);
       doc.rect(0, 0, pageWidth, 15, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(16);
+      doc.setFontSize(12);
       doc.setFont('helvetica', 'bold');
-      doc.text('RISK REGISTER - LAPORAN LENGKAP', pageWidth / 2, 9, { align: 'center' });
+      doc.text('RISK REGISTER', pageWidth / 2, 9, { align: 'center' });
       
       doc.setFontSize(10);
-      doc.text('Sistem Enterprise Risk Management', pageWidth / 2, 14, { align: 'center' });
+      doc.text('PT Solusi Kelola Risiko', pageWidth / 2, 14, { align: 'center' });
       
       yPosition = 20;
 
@@ -306,6 +306,7 @@ const Reporting = () => {
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       
+
       const reportInfo = [
         `Tanggal Generate: ${new Date().toLocaleString('id-ID')}`,
         `Jumlah Data: ${filteredRisks.length} risiko`,

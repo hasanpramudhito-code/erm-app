@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -42,7 +42,11 @@ import {
   Rating,
   Slider,
   Checkbox,
-  ListItemText as MuiListItemText
+  ListItemText as MuiListItemText,
+  InputBase,
+  Popper,
+  Autocomplete,
+  ListSubheader
 } from '@mui/material';
 import {
   Add,
@@ -66,7 +70,10 @@ import {
   ExpandMore,
   ExpandLess,
   FilterList,
-  RestartAlt
+  RestartAlt,
+  ArrowDropDown,
+  Search as SearchIcon,
+  Clear
 } from '@mui/icons-material';
 import {
   collection,
@@ -86,7 +93,7 @@ import { useLocation } from 'react-router-dom';
 
 const RiskRegister = () => {
   const [risks, setRisks] = useState([]);
-  const [organizationUnits, setOrganizationUnits] = useState([]);
+  const [riskTypes, setRiskTypes] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
@@ -101,6 +108,10 @@ const RiskRegister = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [codeError, setCodeError] = useState('');
   const [expandedRows, setExpandedRows] = useState({});
+  
+  // State untuk search di dropdown
+  const [riskTypeSearch, setRiskTypeSearch] = useState('');
+  const [departmentSearch, setDepartmentSearch] = useState('');
   
   // State untuk filter
   const [filters, setFilters] = useState({
@@ -127,7 +138,7 @@ const RiskRegister = () => {
 
   // State untuk data unik dropdown
   const [uniqueRiskOwners, setUniqueRiskOwners] = useState([]);
-  const [uniqueDepartments, setUniqueDepartments] = useState([]);
+  const [uniqueDepartmentNames, setUniqueDepartmentNames] = useState([]);
   
   const { userData } = useAuth();
   const { 
@@ -144,14 +155,12 @@ const RiskRegister = () => {
 
   // Helper function untuk mendapatkan warna Chip yang valid
   const getValidChipColor = (color, fallback = 'default') => {
-    // Daftar warna valid Material-UI untuk Chip
     const validColors = ['default', 'primary', 'secondary', 'error', 'warning', 'info', 'success'];
     
     if (color && validColors.includes(color)) {
       return color;
     }
     
-    // Mapping warna yang mungkin digunakan di konfigurasi
     const colorMap = {
       'success': 'success',
       'warning': 'warning',
@@ -217,20 +226,6 @@ const RiskRegister = () => {
     'External' 
   ];
 
-  const riskTypes = [
-    'Strategis', 
-    'Operasional', 
-    'Finansial', 
-    'Kepatuhan', 
-    'Reputasi', 
-    'Teknologi',
-    'HSSE (Health, Safety, Security, Environment)',
-    'Proyek',
-    'Supply Chain',
-    'Pemasaran',
-    'Lainnya (Input Manual)'
-  ];
-
   const riskClassifications = [
     'Critical - Prioritas Tertinggi',
     'High Priority - Prioritas Tinggi', 
@@ -288,7 +283,6 @@ const RiskRegister = () => {
     if (getRatingOptions) {
       return getRatingOptions();
     }
-    // Fallback default
     return [1, 2, 3, 4, 5];
   };
 
@@ -296,7 +290,6 @@ const RiskRegister = () => {
     if (getRatingLabel) {
       return getRatingLabel(value, type);
     }
-    // Fallback default labels
     if (type === 'likelihood') {
       const labels = {
         1: '1 - Sangat Rendah',
@@ -323,7 +316,6 @@ const RiskRegister = () => {
       return getRiskLevelOptions();
     }
     
-    // Default jika config tidak ada
     return [
       { value: 'very_low', label: 'Sangat Rendah', min: 1, max: 3, color: 'success' },
       { value: 'low', label: 'Rendah', min: 4, max: 6, color: 'success' },
@@ -356,6 +348,38 @@ const RiskRegister = () => {
     return level?.label || levelValue;
   };
 
+  // Helper untuk mendapatkan nama dari ID
+  const getRiskTypeName = (id) => {
+    if (!id) return '-';
+    const found = riskTypes.find(r => r.id === id);
+    return found ? found.name : '-';
+  };
+
+  const getDepartmentName = (id) => {
+    if (!id) return '-';
+    const found = departments.find(u => u.id === id);
+    return found ? found.name : '-';
+  };
+
+  // Filter risk types berdasarkan search
+  const filteredRiskTypes = useMemo(() => {
+    if (!riskTypeSearch) return riskTypes;
+    return riskTypes.filter(type => 
+      type.name.toLowerCase().includes(riskTypeSearch.toLowerCase()) ||
+      (type.description && type.description.toLowerCase().includes(riskTypeSearch.toLowerCase()))
+    );
+  }, [riskTypes, riskTypeSearch]);
+
+  // Filter departments berdasarkan search
+  const filteredDepartments = useMemo(() => {
+    if (!departmentSearch) return departments;
+    return departments.filter(dept => 
+      dept.name.toLowerCase().includes(departmentSearch.toLowerCase()) ||
+      (dept.code && dept.code.toLowerCase().includes(departmentSearch.toLowerCase())) ||
+      (dept.description && dept.description.toLowerCase().includes(departmentSearch.toLowerCase()))
+    );
+  }, [departments, departmentSearch]);
+
   // Calculate risk level
   const getRiskLevelInfo = (risk) => {
     let score;
@@ -383,7 +407,7 @@ const RiskRegister = () => {
     );
   };
 
-  // Load data
+  // Load data risiko
   const loadData = async () => {
     try {
       setLoading(true);
@@ -393,10 +417,6 @@ const RiskRegister = () => {
       const risksList = risksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setRisks(risksList);
 
-      const unitsSnapshot = await getDocs(collection(db, 'organization_units'));
-      const unitsList = unitsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setOrganizationUnits(unitsList);
-
     } catch (error) {
       console.error('Error loading data:', error);
       showSnackbar('Error memuat data: ' + error.message, 'error');
@@ -405,10 +425,38 @@ const RiskRegister = () => {
     }
   };
 
+  // Load master data dari risk_parameters
+  useEffect(() => {
+    const loadMasterData = async () => {
+      try {
+        const q = firestoreQuery(
+          collection(db, 'risk_parameters'),
+          where('type', 'in', ['risk_type', 'organization_unit'])
+        );
+
+        const snapshot = await getDocs(q);
+
+        const types = [];
+        const depts = [];
+
+        snapshot.forEach(doc => {
+          const data = { id: doc.id, ...doc.data() };
+          if (data.type === 'risk_type') types.push(data);
+          if (data.type === 'organization_unit') depts.push(data);
+        });
+
+        setRiskTypes(types);
+        setDepartments(depts);
+      } catch (err) {
+        console.error('Gagal memuat master risk parameter', err);
+      }
+    };
+
+    loadMasterData();
+  }, []);
+    
   useEffect(() => {
     loadData();
-    
-    // Debug URL filters
     console.log("URL Filter:", filterLikelihood, filterImpact, filterRiskLevel);
   }, []);
 
@@ -442,15 +490,18 @@ const RiskRegister = () => {
   // Extract unique data for filters
   useEffect(() => {
     if (risks.length > 0) {
-      // Extract unique risk owners
       const owners = [...new Set(risks.map(risk => risk.riskOwner).filter(Boolean))];
       setUniqueRiskOwners(owners);
       
-      // Extract unique departments
-      const depts = [...new Set(risks.map(risk => risk.department).filter(Boolean))];
-      setUniqueDepartments(depts);
+      const deptNames = [...new Set(risks.map(risk => {
+        const deptId = risk.department;
+        if (!deptId) return null;
+        const dept = departments.find(d => d.id === deptId);
+        return dept ? dept.name : null;
+      }).filter(Boolean))];
+      setUniqueDepartmentNames(deptNames);
     }
-  }, [risks]);
+  }, [risks, departments]);
 
   // Validasi kode unik real-time
   useEffect(() => {
@@ -472,12 +523,7 @@ const RiskRegister = () => {
   // Fungsi untuk filter risiko
   const getFilteredRisks = () => {
     return risks.filter(risk => {
-
-      // =========================================================
-      // 1. FILTER TAMBAHAN DARI HEATMAP (LIKELIHOOD / IMPACT / LEVEL)
-      // =========================================================
-
-      // Filter likelihood
+      // Filter dari heatmap
       if (filterLikelihood) {
         const L = (viewMode === "inherent"
           ? (risk.likelihood || risk.inherentLikelihood)
@@ -486,7 +532,6 @@ const RiskRegister = () => {
         if (L != filterLikelihood) return false;
       }
 
-      // Filter impact
       if (filterImpact) {
         const I = (viewMode === "inherent"
           ? (risk.impact || risk.inherentImpact)
@@ -495,7 +540,6 @@ const RiskRegister = () => {
         if (I != filterImpact) return false;
       }
 
-      // Filter risk level
       if (filterRiskLevel) {
         if (
           risk.inherentLevel !== filterRiskLevel &&
@@ -505,10 +549,7 @@ const RiskRegister = () => {
         }
       }
 
-      // =========================================================
-      // 2. FILTER-FILTER LAMA (TIDAK DIUBAH)
-      // =========================================================
-
+      // Filter lainnya
       if (filters.status.length > 0 && !filters.status.includes(risk.status)) {
         return false;
       }
@@ -517,8 +558,11 @@ const RiskRegister = () => {
         return false;
       }
 
-      if (filters.departments.length > 0 && !filters.departments.includes(risk.department)) {
-        return false;
+      if (filters.departments.length > 0) {
+        const deptName = getDepartmentName(risk.department);
+        if (!filters.departments.includes(deptName)) {
+          return false;
+        }
       }
 
       if (filters.riskOwners.length > 0 && !filters.riskOwners.includes(risk.riskOwner)) {
@@ -570,13 +614,16 @@ const RiskRegister = () => {
       }
 
       // Search term
+      const riskTypeName = getRiskTypeName(risk.riskType);
+      const deptName = getDepartmentName(risk.department);
+      
       if (searchTerm && !(
         risk.riskCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         risk.riskDescription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        risk.riskType?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        riskTypeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         risk.riskSource?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         risk.riskOwner?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        risk.department?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        deptName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         risk.status?.toLowerCase().includes(searchTerm.toLowerCase())
       )) {
         return false;
@@ -590,14 +637,12 @@ const RiskRegister = () => {
   const getChangedFields = (oldData, newData) => {
     const changes = [];
     Object.keys(newData).forEach(key => {
-      // Skip metadata fields dan calculated fields
       const skipFields = ['createdAt', 'updatedAt', 'createdBy', 'updatedBy', 'auditTrail', 'initialRiskLevel', 'residualRiskLevel'];
       if (skipFields.includes(key)) return;
 
       const oldValue = oldData[key];
       const newValue = newData[key];
       
-      // Handle perbandingan yang aman untuk berbagai tipe data
       const oldVal = oldValue === null || oldValue === undefined ? '' : oldValue;
       const newVal = newValue === null || newValue === undefined ? '' : newValue;
       
@@ -616,7 +661,6 @@ const RiskRegister = () => {
   const cleanDataForFirestore = (data) => {
     const cleaned = {};
     Object.keys(data).forEach(key => {
-      // Simpan semua nilai termasuk empty string, tapi hapus undefined dan null
       if (data[key] !== undefined && data[key] !== null) {
         cleaned[key] = data[key];
       }
@@ -627,13 +671,11 @@ const RiskRegister = () => {
   // Handle form submit
   const handleSubmit = async () => {
     try {
-      // Validasi required fields
       if (!formData.riskCode || !formData.riskDescription || !formData.riskSource) {
         showSnackbar('Kode Risiko, Deskripsi risiko dan sumber risiko harus diisi!', 'error');
         return;
       }
 
-      // Validasi kode unik untuk risiko baru
       if (!editingRisk) {
         const isCodeExists = risks.some(risk => 
           risk.riskCode?.toLowerCase() === formData.riskCode.toLowerCase()
@@ -644,27 +686,16 @@ const RiskRegister = () => {
         }
       }
 
-      // Handle custom inputs sebelum save
-      const finalDepartment = formData.department === 'Lainnya (Input Manual)' 
-        ? formData.customDepartment || ''
-        : formData.department || '';
-
-      const finalRiskType = formData.riskType === 'Lainnya (Input Manual)'
-        ? formData.customRiskType || ''
-        : formData.riskType || '';
-
-      // Data utama yang akan disimpan
       const riskDataToSave = {
-        // Copy semua form data
         riskCode: formData.riskCode.toUpperCase(),
-        riskType: finalRiskType,
+        riskType: formData.riskType || '',
         classification: formData.classification || '',
         riskSource: formData.riskSource || '',
         riskDescription: formData.riskDescription || '',
         cause: formData.cause || '',
         impactText: formData.impactText || '',
         riskOwner: formData.riskOwner || '',
-        department: finalDepartment,
+        department: formData.department || '',
         initialProbability: formData.initialProbability || '',
         initialImpact: formData.initialImpact || '',
         inherentRiskQuantification: formData.inherentRiskQuantification || '',
@@ -709,10 +740,8 @@ const RiskRegister = () => {
         riskDataToSave.residualRiskLevel = calculateRiskLevel(residualScore);
       }
 
-      // Bersihkan data sebelum simpan ke Firestore
       const cleanedRiskData = cleanDataForFirestore(riskDataToSave);
 
-      // Handle audit trail
       if (editingRisk) {
         const existingAuditTrail = editingRisk.auditTrail || [];
         cleanedRiskData.auditTrail = [
@@ -779,6 +808,8 @@ const RiskRegister = () => {
       status: 'open'
     });
     setCodeError('');
+    setRiskTypeSearch('');
+    setDepartmentSearch('');
   };
 
   // Reset filter
@@ -858,7 +889,6 @@ const RiskRegister = () => {
       const residualScore = assessmentData.residualLikelihood * assessmentData.residualImpact;
       const inherentScore = assessmentData.likelihood * assessmentData.impact;
       
-      // Data assessment
       const assessmentUpdate = {
         likelihood: assessmentData.likelihood || 1,
         impact: assessmentData.impact || 1,
@@ -876,7 +906,6 @@ const RiskRegister = () => {
         updatedBy: userData?.name || 'System'
       };
 
-      // Clean undefined values
       const cleanAssessmentData = {};
       Object.keys(assessmentUpdate).forEach(key => {
         if (assessmentUpdate[key] !== undefined && assessmentUpdate[key] !== null) {
@@ -962,7 +991,6 @@ const RiskRegister = () => {
   const countActiveFilters = () => {
     let count = 0;
     
-    // Count array filters
     count += filters.status.length;
     count += filters.riskSources.length;
     count += filters.departments.length;
@@ -971,13 +999,183 @@ const RiskRegister = () => {
     count += filters.residualLevels.length;
     count += filters.treatmentPriorities.length;
     
-    // Count date filters
     if (filters.dateCreatedRange.start) count++;
     if (filters.dateCreatedRange.end) count++;
     if (filters.targetDateRange.start) count++;
     if (filters.targetDateRange.end) count++;
     
     return count;
+  };
+
+  // Komponen Select dengan Search untuk Jenis Risiko
+  const RiskTypeSelectWithSearch = () => {
+    const MenuProps = {
+      PaperProps: {
+        style: {
+          maxHeight: 300,
+        },
+      },
+    };
+
+    return (
+      <FormControl fullWidth>
+        <InputLabel>Jenis Risiko</InputLabel>
+        <Select
+          value={formData.riskType}
+          label="Jenis Risiko"
+          onChange={(e) => setFormData({ ...formData, riskType: e.target.value })}
+          MenuProps={MenuProps}
+          renderValue={(selected) => {
+            const selectedType = riskTypes.find(type => type.id === selected);
+            return selectedType ? selectedType.name : '';
+          }}
+        >
+          {/* Search Box */}
+          <ListSubheader>
+            <Box sx={{ p: 1 }}>
+              <TextField
+                size="small"
+                autoFocus
+                placeholder="Cari jenis risiko..."
+                fullWidth
+                value={riskTypeSearch}
+                onChange={(e) => setRiskTypeSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Escape') {
+                    e.stopPropagation();
+                  }
+                }}
+                InputProps={{
+                  startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />,
+                  endAdornment: riskTypeSearch && (
+                    <IconButton
+                      size="small"
+                      onClick={() => setRiskTypeSearch('')}
+                    >
+                      <Clear fontSize="small" />
+                    </IconButton>
+                  )
+                }}
+                variant="outlined"
+              />
+            </Box>
+          </ListSubheader>
+          
+          {/* Hasil Filter */}
+          {filteredRiskTypes.length === 0 ? (
+            <MenuItem disabled>
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                Tidak ditemukan jenis risiko "{riskTypeSearch}"
+              </Typography>
+            </MenuItem>
+          ) : (
+            filteredRiskTypes.map((type) => (
+              <MenuItem key={type.id} value={type.id}>
+                <Box>
+                  <Typography variant="body1">{type.name}</Typography>
+                  {type.description && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      {type.description}
+                    </Typography>
+                  )}
+                </Box>
+              </MenuItem>
+            ))
+          )}
+        </Select>
+        <FormHelperText>
+          {filteredRiskTypes.length} jenis risiko tersedia
+        </FormHelperText>
+      </FormControl>
+    );
+  };
+
+  // Komponen Select dengan Search untuk Departemen
+  const DepartmentSelectWithSearch = () => {
+    const MenuProps = {
+      PaperProps: {
+        style: {
+          maxHeight: 300,
+        },
+      },
+    };
+
+    return (
+      <FormControl fullWidth>
+        <InputLabel>Departemen</InputLabel>
+        <Select
+          value={formData.department}
+          label="Departemen"
+          onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+          MenuProps={MenuProps}
+          renderValue={(selected) => {
+            const selectedDept = departments.find(dept => dept.id === selected);
+            return selectedDept ? selectedDept.name : '';
+          }}
+        >
+          {/* Search Box */}
+          <ListSubheader>
+            <Box sx={{ p: 1 }}>
+              <TextField
+                size="small"
+                autoFocus
+                placeholder="Cari departemen..."
+                fullWidth
+                value={departmentSearch}
+                onChange={(e) => setDepartmentSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Escape') {
+                    e.stopPropagation();
+                  }
+                }}
+                InputProps={{
+                  startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />,
+                  endAdornment: departmentSearch && (
+                    <IconButton
+                      size="small"
+                      onClick={() => setDepartmentSearch('')}
+                    >
+                      <Clear fontSize="small" />
+                    </IconButton>
+                  )
+                }}
+                variant="outlined"
+              />
+            </Box>
+          </ListSubheader>
+          
+          {/* Hasil Filter */}
+          {filteredDepartments.length === 0 ? (
+            <MenuItem disabled>
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                Tidak ditemukan departemen "{departmentSearch}"
+              </Typography>
+            </MenuItem>
+          ) : (
+            filteredDepartments.map((dept) => (
+              <MenuItem key={dept.id} value={dept.id}>
+                <Box>
+                  <Typography variant="body1">{dept.name}</Typography>
+                  {dept.code && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
+                      Kode: {dept.code}
+                    </Typography>
+                  )}
+                  {dept.parent && (
+                    <Typography variant="caption" color="text.secondary">
+                      Parent: {dept.parent}
+                    </Typography>
+                  )}
+                </Box>
+              </MenuItem>
+            ))
+          )}
+        </Select>
+        <FormHelperText>
+          {filteredDepartments.length} departemen tersedia
+        </FormHelperText>
+      </FormControl>
+    );
   };
 
   return (
@@ -1169,7 +1367,7 @@ const RiskRegister = () => {
                       </Box>
                     )}
                   >
-                    {uniqueDepartments.map((dept) => (
+                    {uniqueDepartmentNames.map((dept) => (
                       <MenuItem key={dept} value={dept}>
                         <Checkbox checked={filters.departments.indexOf(dept) > -1} />
                         <MuiListItemText primary={dept} />
@@ -1476,6 +1674,8 @@ const RiskRegister = () => {
                         risk.treatmentPriority?.includes('Medium') ? 'info' : 'default',
                         'default'
                       );
+                      const riskTypeName = getRiskTypeName(risk.riskType);
+                      const departmentName = getDepartmentName(risk.department);
                       
                       return (
                         <React.Fragment key={risk.id}>
@@ -1509,7 +1709,7 @@ const RiskRegister = () => {
                             </TableCell>
                             <TableCell>
                               <Chip 
-                                label={risk.riskType} 
+                                label={riskTypeName} 
                                 size="small" 
                                 color="primary" 
                                 variant="outlined"
@@ -1524,9 +1724,9 @@ const RiskRegister = () => {
                               />
                             </TableCell>
                             <TableCell>
-                              {risk.department ? (
+                              {departmentName ? (
                                 <Chip 
-                                  label={risk.department}
+                                  label={departmentName}
                                   size="small"
                                   color="info"
                                   variant="outlined"
@@ -1670,7 +1870,6 @@ const RiskRegister = () => {
                                 borderBottomColor: 'divider'
                               }}>
                                 <Grid container spacing={2} sx={{ p: 2 }}>
-                                  {/* Kolom 1 - Identifikasi */}
                                   <Grid item xs={12} md={4}>
                                     <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
                                       📋 Identifikasi Risiko
@@ -1695,7 +1894,6 @@ const RiskRegister = () => {
                                     </Box>
                                   </Grid>
 
-                                  {/* Kolom 2 - Kontrol */}
                                   <Grid item xs={12} md={4}>
                                     <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
                                       🛡️ Kontrol & Assessment
@@ -1720,7 +1918,6 @@ const RiskRegister = () => {
                                     </Box>
                                   </Grid>
 
-                                  {/* Kolom 3 - Kuantifikasi & Timeline */}
                                   <Grid item xs={12} md={4}>
                                     <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
                                       📊 Kuantifikasi & Timeline
@@ -1821,43 +2018,10 @@ const RiskRegister = () => {
                   />
                 </Grid>
 
-                {/* Jenis Risiko dengan custom input */}
+                {/* Jenis Risiko dengan Search */}
                 <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Jenis Risiko</InputLabel>
-                    <Select
-                      value={formData.riskType}
-                      label="Jenis Risiko"
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setFormData({ 
-                          ...formData, 
-                          riskType: value,
-                          customRiskType: value === 'Lainnya (Input Manual)' ? '' : formData.customRiskType
-                        });
-                      }}
-                    >
-                      {riskTypes.map((type) => (
-                        <MenuItem key={type} value={type}>
-                          {type}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <RiskTypeSelectWithSearch />
                 </Grid>
-
-                {/* Custom Risk Type Input - Tampilkan hanya jika pilih Lainnya */}
-                {formData.riskType === 'Lainnya (Input Manual)' && (
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Jenis Risiko Lainnya"
-                      value={formData.customRiskType}
-                      onChange={(e) => setFormData({ ...formData, customRiskType: e.target.value })}
-                      placeholder="Masukkan jenis risiko..."
-                    />
-                  </Grid>
-                )}
 
                 {/* Klasifikasi */}
                 <Grid item xs={12} sm={6}>
@@ -1896,43 +2060,10 @@ const RiskRegister = () => {
                   </FormControl>
                 </Grid>
 
-                {/* Departemen */}
+                {/* Departemen dengan Search */}
                 <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Departemen</InputLabel>
-                    <Select
-                      value={formData.department}
-                      label="Departemen"
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setFormData({ 
-                          ...formData, 
-                          department: value,
-                          customDepartment: value === 'Lainnya (Input Manual)' ? '' : formData.customDepartment
-                        });
-                      }}
-                    >
-                      {departmentsList.map((dept) => (
-                        <MenuItem key={dept} value={dept}>
-                          {dept}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <DepartmentSelectWithSearch />
                 </Grid>
-
-                {/* Custom Department Input - Tampilkan hanya jika pilih Lainnya */}
-                {formData.department === 'Lainnya (Input Manual)' && (
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Nama Departemen Lainnya"
-                      value={formData.customDepartment}
-                      onChange={(e) => setFormData({ ...formData, customDepartment: e.target.value })}
-                      placeholder="Masukkan nama departemen..."
-                    />
-                  </Grid>
-                )}
 
                 {/* Status */}
                 <Grid item xs={12} sm={6}>
@@ -2514,7 +2645,7 @@ const RiskRegister = () => {
                     </Grid>
                     <Grid item xs={12} sm={3}>
                       <Typography variant="subtitle2">Jenis Risiko</Typography>
-                      <Chip label={selectedRisk.riskType} color="primary" sx={{ background: 'white', color: 'primary.main' }} />
+                      <Chip label={getRiskTypeName(selectedRisk.riskType)} color="primary" sx={{ background: 'white', color: 'primary.main' }} />
                     </Grid>
                     <Grid item xs={12} sm={3}>
                       <Typography variant="subtitle2">Sumber Risiko</Typography>
@@ -2561,7 +2692,7 @@ const RiskRegister = () => {
                         </Grid>
                         <Grid item xs={12} sm={6}>
                           <Typography variant="subtitle2" fontWeight="bold">Departemen</Typography>
-                          <Typography variant="body1">{selectedRisk.department || '-'}</Typography>
+                          <Typography variant="body1">{getDepartmentName(selectedRisk.department) || '-'}</Typography>
                         </Grid>
                         <Grid item xs={12} sm={6}>
                           <Typography variant="subtitle2" fontWeight="bold">Pemilik Risiko</Typography>

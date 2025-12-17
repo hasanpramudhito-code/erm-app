@@ -139,212 +139,180 @@ try {
 const { RISK_LEVELS, COORDINATE_MATRIX, getCoordinateScore } = importedConfig;
 
 // =======================================================================
-// LINE CHART COMPONENT UNTUK PERBANDINGAN
+// AVERAGE RISK SCORE TREND (RECOMMENDED)
 // =======================================================================
 
-const RiskComparisonLineChart = ({ risks }) => {
-  const chartData = RISK_LEVELS.map(level => ({
-    level: level.label,
-    inherent: risks.filter(r => r.inherentLevel === level.label).length,
-    residual: risks.filter(r => r.residualLevel === level.label).length,
-    color: level.color
-  }));
+const AverageRiskScoreTrend = ({ risks }) => {
+  const inherentScores = risks
+    .filter(r => typeof r.inherentScore === 'number')
+    .map(r => r.inherentScore);
 
-  const maxCount = Math.max(
-    ...chartData.map(d => Math.max(d.inherent, d.residual)),
-    1
-  );
+  const residualScores = risks
+    .filter(r => typeof r.residualScore === 'number')
+    .map(r => r.residualScore);
+
+  const avgInherent =
+    inherentScores.length > 0
+      ? inherentScores.reduce((a, b) => a + b, 0) / inherentScores.length
+      : 0;
+
+  const avgResidual =
+    residualScores.length > 0
+      ? residualScores.reduce((a, b) => a + b, 0) / residualScores.length
+      : 0;
+
+  const reduction =
+    avgInherent > 0
+      ? ((avgInherent - avgResidual) / avgInherent) * 100
+      : 0;
+
+  const maxY = Math.max(avgInherent, avgResidual, 1);
 
   return (
-    <Card sx={{ height: '100%', mb: 2 }}>
+    <Card sx={{ mb: 3 }}>
       <CardContent>
-        <Box display="flex" alignItems="center" gap={1} mb={3}>
-          <Timeline sx={{ color: 'primary.main' }} />
+        {/* HEADER */}
+        <Box display="flex" alignItems="center" gap={1} mb={2}>
+          <ShowChart sx={{ color: 'primary.main' }} />
           <Typography variant="h6" fontWeight="bold">
-            Risk Level Comparison
+            Average Risk Score Trend
           </Typography>
         </Box>
 
-        {/* Chart Container */}
-        <Box sx={{ height: 250, position: 'relative' }}>
-          {/* Y-axis labels */}
-          <Box sx={{ 
-            position: 'absolute', 
-            left: 0, 
-            top: 0, 
-            bottom: 30, 
-            width: 40,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            alignItems: 'flex-end',
-            pr: 1
-          }}>
-            {[0, Math.ceil(maxCount/2), maxCount].map((value, index) => (
-              <Typography key={index} variant="caption" color="textSecondary">
-                {value}
+        <Typography variant="body2" color="textSecondary" mb={3}>
+          Perbandingan rata-rata skor risiko sebelum dan sesudah treatment
+        </Typography>
+
+        {/* CHART */}
+        <Box sx={{ position: 'relative', height: 220 }}>
+          {/* Y Axis */}
+          <Box
+            sx={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 30,
+              width: 40,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              alignItems: 'flex-end',
+              pr: 1
+            }}
+          >
+            {[0, Math.round(maxY / 2), Math.round(maxY)].map((v, i) => (
+              <Typography key={i} variant="caption" color="textSecondary">
+                {v}
               </Typography>
             ))}
           </Box>
 
-          {/* Chart area */}
-          <Box sx={{ 
-            position: 'absolute', 
-            left: 50, 
-            right: 0, 
-            top: 0, 
-            bottom: 30,
-            display: 'flex',
-            alignItems: 'flex-end',
-            justifyContent: 'space-around'
-          }}>
-            {chartData.map((data, index) => (
-              <Box key={index} sx={{ 
-                display: 'flex', 
-                flexDirection: 'column',
-                alignItems: 'center',
-                width: '20%'
-              }}>
-                {/* Inherent bars */}
-                <Box sx={{ 
-                  width: 30,
-                  height: `${(data.inherent / maxCount) * 180}px`,
-                  backgroundColor: 'primary.main',
-                  borderRadius: '4px 4px 0 0',
-                  position: 'relative',
-                  mb: 0.5
-                }}>
-                  <Tooltip title={`Inherent: ${data.inherent} risks`}>
-                    <Box sx={{
-                      position: 'absolute',
-                      top: -25,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      fontSize: 12,
-                      fontWeight: 'bold',
-                      color: 'primary.main'
-                    }}>
-                      {data.inherent}
-                    </Box>
-                  </Tooltip>
-                </Box>
+          {/* LINE */}
+          <Box
+            sx={{
+              position: 'absolute',
+              left: 50,
+              right: 20,
+              top: 20,
+              bottom: 40
+            }}
+          >
+            <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+              {/* Line */}
+              <polyline
+                fill="none"
+                stroke="#1976d2"
+                strokeWidth="2"
+                points={`10,${100 - (avgInherent / maxY) * 80}
+                         90,${100 - (avgResidual / maxY) * 80}`}
+              />
 
-                {/* Residual bars */}
-                <Box sx={{ 
-                  width: 30,
-                  height: `${(data.residual / maxCount) * 180}px`,
-                  backgroundColor: 'success.main',
-                  borderRadius: '4px 4px 0 0',
-                  position: 'relative'
-                }}>
-                  <Tooltip title={`Residual: ${data.residual} risks`}>
-                    <Box sx={{
-                      position: 'absolute',
-                      top: -25,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      fontSize: 12,
-                      fontWeight: 'bold',
-                      color: 'success.main'
-                    }}>
-                      {data.residual}
-                    </Box>
-                  </Tooltip>
-                </Box>
+              {/* Inherent Point */}
+              <circle
+                cx="10"
+                cy={100 - (avgInherent / maxY) * 80}
+                r="3"
+                fill="#1976d2"
+              />
 
-                {/* Level label */}
-                <Box sx={{ mt: 1 }}>
-                  <Box sx={{
-                    width: 12,
-                    height: 12,
-                    backgroundColor: data.color,
-                    borderRadius: 1,
-                    mx: 'auto',
-                    mb: 0.5
-                  }} />
-                  <Typography variant="caption" align="center" sx={{ display: 'block' }}>
-                    {data.level}
-                  </Typography>
-                </Box>
-              </Box>
-            ))}
+              {/* Residual Point */}
+              <circle
+                cx="90"
+                cy={100 - (avgResidual / maxY) * 80}
+                r="3"
+                fill="#2e7d32"
+              />
+            </svg>
           </Box>
 
-          {/* X-axis */}
-          <Box sx={{ 
-            position: 'absolute', 
-            left: 50, 
-            right: 0, 
-            bottom: 0,
-            borderTop: '1px solid',
-            borderColor: 'divider'
-          }} />
-        </Box>
-
-        {/* Legend */}
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          gap: 3, 
-          mt: 3,
-          pt: 2,
-          borderTop: '1px solid',
-          borderColor: 'divider'
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Box sx={{ 
-              width: 16, 
-              height: 16, 
-              backgroundColor: 'primary.main',
-              borderRadius: 1 
-            }} />
-            <Typography variant="body2">Inherent Risk</Typography>
-          </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Box sx={{ 
-              width: 16, 
-              height: 16, 
-              backgroundColor: 'success.main',
-              borderRadius: 1 
-            }} />
-            <Typography variant="body2">Residual Risk</Typography>
+          {/* X Axis */}
+          <Box
+            sx={{
+              position: 'absolute',
+              left: 50,
+              right: 20,
+              bottom: 0,
+              display: 'flex',
+              justifyContent: 'space-between'
+            }}
+          >
+            <Typography variant="caption">Inherent</Typography>
+            <Typography variant="caption">Residual</Typography>
           </Box>
         </Box>
 
-        {/* Summary */}
-        <Grid container spacing={2} sx={{ mt: 2 }}>
-          <Grid item xs={6}>
+        {/* SUMMARY */}
+        <Grid container spacing={2} mt={2}>
+          <Grid item xs={4}>
             <Card variant="outlined" sx={{ p: 1 }}>
-              <Typography variant="caption" color="textSecondary">Total Reduction</Typography>
-              <Typography variant="h6" color="success.main">
-                {risks.filter(r => r.inherentLevel && r.residualLevel).length > 0 ? 
-                  `${Math.round((risks.filter(r => {
-                    const inherentIndex = RISK_LEVELS.findIndex(l => l.label === r.inherentLevel);
-                    const residualIndex = RISK_LEVELS.findIndex(l => l.label === r.residualLevel);
-                    return inherentIndex > residualIndex;
-                  }).length / risks.filter(r => r.inherentLevel && r.residualLevel).length) * 100)}%` 
-                  : '0%'
-                }
+              <Typography variant="caption" color="textSecondary">
+                Avg Inherent
+              </Typography>
+              <Typography variant="h6">
+                {avgInherent.toFixed(1)}
               </Typography>
             </Card>
           </Grid>
-          <Grid item xs={6}>
+
+          <Grid item xs={4}>
             <Card variant="outlined" sx={{ p: 1 }}>
-              <Typography variant="caption" color="textSecondary">Avg Risk Score</Typography>
-              <Typography variant="h6">
-                {risks.length > 0 ? 
-                  `${(risks.reduce((sum, r) => sum + (r.inherentScore || 0), 0) / risks.length).toFixed(1)} → 
-                  ${(risks.reduce((sum, r) => sum + (r.residualScore || 0), 0) / risks.length).toFixed(1)}`
-                  : 'N/A'
-                }
+              <Typography variant="caption" color="textSecondary">
+                Avg Residual
+              </Typography>
+              <Typography variant="h6" color="success.main">
+                {avgResidual.toFixed(1)}
+              </Typography>
+            </Card>
+          </Grid>
+
+          <Grid item xs={4}>
+            <Card variant="outlined" sx={{ p: 1 }}>
+              <Typography variant="caption" color="textSecondary">
+                Risk Reduction
+              </Typography>
+              <Typography
+                variant="h6"
+                color={reduction > 0 ? 'success.main' : 'error.main'}
+              >
+                {reduction.toFixed(0)}%
               </Typography>
             </Card>
           </Grid>
         </Grid>
+
+        {/* NARRATIVE */}
+        <Alert severity="info" sx={{ mt: 2 }}>
+          <Typography variant="body2">
+            Rata-rata skor risiko turun dari <strong>{avgInherent.toFixed(1)}</strong> menjadi{' '}
+            <strong>{avgResidual.toFixed(1)}</strong>, atau berkurang sekitar{' '}
+            <strong>{reduction.toFixed(0)}%</strong> setelah treatment dilakukan.
+          </Typography>
+        </Alert>
       </CardContent>
     </Card>
   );
 };
+
 
 // =======================================================================
 // PROFESSIONAL RISK MATRIX
@@ -1223,7 +1191,7 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
 
         {/* LINE CHART COMPARISON */}
         <Grid item xs={12}>
-          <RiskComparisonLineChart risks={risks} />
+          <AverageRiskScoreTrend risks={risks} />
         </Grid>
 
         {/* RIGHT SIDEBAR */}

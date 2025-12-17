@@ -73,6 +73,8 @@ const RiskParameterSettings = () => {
   const [editingParam, setEditingParam] = useState(null);
   const [deletingParam, setDeletingParam] = useState(null);
   const { userData } = useAuth();
+  const [riskTypes, setRiskTypes] = useState([]);
+  const [organizationUnits, setOrganizationUnits] = useState([]);
 
   // State untuk semua parameter
   const [parameters, setParameters] = useState({
@@ -92,7 +94,9 @@ const RiskParameterSettings = () => {
     maxValue: '',
     examples: [],
     color: '#1976d2',
-    actions: ''
+    actions: '',
+    code: '',
+    parent: ''
   });
 
   // Load parameters
@@ -104,8 +108,15 @@ const RiskParameterSettings = () => {
       const paramsQuery = query(collection(db, 'risk_parameters'));
       const paramsSnapshot = await getDocs(paramsQuery);
       const allParams = paramsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // Filter untuk risk_types dan organization_units
+      const riskTypesData = allParams.filter(param => param.type === 'risk_type');
+      const orgUnitsData = allParams.filter(param => param.type === 'organization_unit');
+      
+      setRiskTypes(riskTypesData);
+      setOrganizationUnits(orgUnitsData);
 
-      // Filter di client side
+      // Filter di client side untuk parameter lainnya
       const likelihoodData = allParams
         .filter(param => param.type === 'likelihood')
         .sort((a, b) => (a.level || 0) - (b.level || 0));
@@ -223,7 +234,7 @@ const RiskParameterSettings = () => {
   const handleEdit = (param, type, category = null) => {
     setEditingParam({ ...param, _type: type, _category: category });
     setFormData({
-      type: type,
+      type: type || param.type || '',
       level: param.level || '',
       name: param.name || '',
       description: param.description || '',
@@ -231,7 +242,9 @@ const RiskParameterSettings = () => {
       maxValue: param.maxValue || '',
       examples: param.examples || [],
       color: param.color || '#1976d2',
-      actions: param.actions || ''
+      actions: param.actions || '',
+      code: param.code || '',
+      parent: param.parent || ''
     });
     setEditDialog(true);
   };
@@ -273,7 +286,14 @@ const RiskParameterSettings = () => {
         updatedBy: userData?.name
       };
 
-      if (editingParam.id) {
+      // Hapus field yang kosong
+      Object.keys(paramData).forEach(key => {
+        if (paramData[key] === '' || paramData[key] === null || paramData[key] === undefined) {
+          delete paramData[key];
+        }
+      });
+
+      if (editingParam?.id) {
         // Update existing
         await updateDoc(doc(db, 'risk_parameters', editingParam.id), paramData);
         showSnackbar('Parameter berhasil diupdate!', 'success');
@@ -326,7 +346,9 @@ const RiskParameterSettings = () => {
       'likelihood': 'Likelihood Scale',
       'impact': 'Impact Scale',
       'appetite': 'Risk Appetite',
-      'tolerance': 'Tolerance Matrix'
+      'tolerance': 'Tolerance Matrix',
+      'risk_type': 'Risk Type',
+      'organization_unit': 'Organization Unit'
     };
     return labels[type] || 'Parameter';
   };
@@ -379,6 +401,8 @@ const RiskParameterSettings = () => {
             <Tab icon={<Warning />} label="Impact Scales" />
             <Tab icon={<Assessment />} label="Risk Appetite" />
             <Tab icon={<Business />} label="Tolerance Matrix" />
+            <Tab icon={<Business />} label="Risk Types" />
+            <Tab icon={<Business />} label="Organization Units" />
           </Tabs>
         </CardContent>
       </Card>
@@ -660,6 +684,132 @@ const RiskParameterSettings = () => {
         </Card>
       )}
 
+      {activeTab === 4 && (
+        <Card>
+          <CardContent>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+              <Typography variant="h6" fontWeight="bold">
+                Risk Types (Jenis Risiko)
+              </Typography>
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                onClick={() => handleEdit({}, 'risk_type')}
+              >
+                Tambah Jenis Risiko
+              </Button>
+            </Box>
+
+            <TableContainer component={Paper} variant="outlined">
+              <Table>
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: 'grey.100' }}>
+                    <TableCell><strong>Kode</strong></TableCell>
+                    <TableCell><strong>Nama</strong></TableCell>
+                    <TableCell><strong>Deskripsi</strong></TableCell>
+                    <TableCell><strong>Aksi</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {riskTypes.map((item) => (
+                    <TableRow key={item.id} hover>
+                      <TableCell>
+                        <Typography fontWeight="medium">{item.code || '-'}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography fontWeight="medium">{item.name}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{item.description || '-'}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Box display="flex" gap={1}>
+                          <IconButton 
+                            color="primary"
+                            onClick={() => handleEdit(item, 'risk_type')}
+                          >
+                            <Edit />
+                          </IconButton>
+                          <IconButton 
+                            color="error"
+                            onClick={() => handleDelete(item, 'risk_type')}
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 5 && (
+        <Card>
+          <CardContent>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+              <Typography variant="h6" fontWeight="bold">
+                Organization Units (Departemen)
+              </Typography>
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                onClick={() => handleEdit({}, 'organization_unit')}
+              >
+                Tambah Departemen
+              </Button>
+            </Box>
+
+            <TableContainer component={Paper} variant="outlined">
+              <Table>
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: 'grey.100' }}>
+                    <TableCell><strong>Kode</strong></TableCell>
+                    <TableCell><strong>Nama</strong></TableCell>
+                    <TableCell><strong>Parent Unit</strong></TableCell>
+                    <TableCell><strong>Aksi</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {organizationUnits.map((item) => (
+                    <TableRow key={item.id} hover>
+                      <TableCell>
+                        <Typography fontWeight="medium">{item.code || '-'}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography fontWeight="medium">{item.name}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{item.parent || '-'}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Box display="flex" gap={1}>
+                          <IconButton 
+                            color="primary"
+                            onClick={() => handleEdit(item, 'organization_unit')}
+                          >
+                            <Edit />
+                          </IconButton>
+                          <IconButton 
+                            color="error"
+                            onClick={() => handleDelete(item, 'organization_unit')}
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Edit Dialog */}
       <Dialog 
         open={editDialog} 
@@ -672,6 +822,54 @@ const RiskParameterSettings = () => {
         </DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Type"
+                value={formData.type}
+                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                required
+                disabled={!!editingParam?.id}
+              />
+            </Grid>
+            
+            {/* Field khusus untuk risk_type dan organization_unit */}
+            {(formData.type === 'risk_type' || formData.type === 'organization_unit') && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Kode"
+                  value={formData.code}
+                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                />
+              </Grid>
+            )}
+
+            {formData.type === 'organization_unit' && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Parent Unit"
+                  value={formData.parent}
+                  onChange={(e) => setFormData({ ...formData, parent: e.target.value })}
+                  placeholder="Kosongkan jika unit utama"
+                />
+              </Grid>
+            )}
+
+            {/* Field level untuk likelihood, impact, appetite, tolerance */}
+            {['likelihood', 'impact', 'appetite', 'tolerance'].includes(formData.type) && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Level"
+                  type="number"
+                  value={formData.level}
+                  onChange={(e) => setFormData({ ...formData, level: e.target.value })}
+                />
+              </Grid>
+            )}
+
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -681,16 +879,7 @@ const RiskParameterSettings = () => {
                 required
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Level"
-                type="number"
-                value={formData.level}
-                onChange={(e) => setFormData({ ...formData, level: e.target.value })}
-                required
-              />
-            </Grid>
+
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -699,57 +888,61 @@ const RiskParameterSettings = () => {
                 rows={3}
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                required
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Nilai Minimum"
-                value={formData.minValue}
-                onChange={(e) => setFormData({ ...formData, minValue: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Nilai Maksimum"
-                value={formData.maxValue}
-                onChange={(e) => setFormData({ ...formData, maxValue: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Tindakan yang Direkomendasikan"
-                multiline
-                rows={2}
-                value={formData.actions}
-                onChange={(e) => setFormData({ ...formData, actions: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Warna (Hex)"
-                value={formData.color}
-                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                InputProps={{
-                  startAdornment: (
-                    <Box 
-                      sx={{ 
-                        width: 20, 
-                        height: 20, 
-                        backgroundColor: formData.color,
-                        borderRadius: 1,
-                        mr: 1,
-                        border: '1px solid #ccc'
-                      }} 
-                    />
-                  ),
-                }}
-              />
-            </Grid>
+
+            {['likelihood', 'impact', 'appetite', 'tolerance'].includes(formData.type) && (
+              <>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Nilai Minimum"
+                    value={formData.minValue}
+                    onChange={(e) => setFormData({ ...formData, minValue: e.target.value })}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Nilai Maksimum"
+                    value={formData.maxValue}
+                    onChange={(e) => setFormData({ ...formData, maxValue: e.target.value })}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Tindakan yang Direkomendasikan"
+                    multiline
+                    rows={2}
+                    value={formData.actions}
+                    onChange={(e) => setFormData({ ...formData, actions: e.target.value })}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Warna (Hex)"
+                    value={formData.color}
+                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                    InputProps={{
+                      startAdornment: (
+                        <Box 
+                          sx={{ 
+                            width: 20, 
+                            height: 20, 
+                            backgroundColor: formData.color,
+                            borderRadius: 1,
+                            mr: 1,
+                            border: '1px solid #ccc'
+                          }} 
+                        />
+                      ),
+                    }}
+                  />
+                </Grid>
+              </>
+            )}
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -759,7 +952,7 @@ const RiskParameterSettings = () => {
           <Button 
             variant="contained" 
             onClick={handleSave}
-            disabled={!formData.name || !formData.level || !formData.description}
+            disabled={!formData.name || !formData.type}
           >
             Simpan
           </Button>
