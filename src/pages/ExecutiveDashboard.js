@@ -59,6 +59,10 @@ import {
 import { db } from '../config/firebase';
 import CompositeScoreService from '../services/compositeScoreService';
 import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
+import { migrateRiskData } from '../scripts/migrateRiskData';
+import { fetchRisks } from '../services/riskService';
+
+const risks = await fetchRisks();
 
 // ✅ IMPORT DENGAN METODE YANG SAMA SEPERTI RiskAssessment.js
 const importedConfig = {
@@ -92,26 +96,43 @@ const ExecutiveDashboard = () => {
   const [debugMode, setDebugMode] = useState(false);
   const [debugInfo, setDebugInfo] = useState({});
   const [matrixType, setMatrixType] = useState('inherent');
-  const { assessmentConfig } = useAssessmentConfig();
+  
+  // ✅ TAMBAHKAN: Gunakan context assessment config
+  const { 
+    assessmentConfig, 
+    calculateScore: calculateScoreFromConfig, 
+    calculateRiskLevel,
+    loading: configLoading 
+  } = useAssessmentConfig();
 
-  // ✅ FUNGSI CALCULATE SCORE YANG MENGIKUTI RiskAssessment.js
+  // ✅ FUNGSI CALCULATE SCORE YANG MENGIKUTI CONFIG (REPLACE FUNGSI LAMA)
   const calculateScore = (likelihood, impact) => {
-    // Priority 1: Gunakan metode dari context assessment
+    // Priority 1: Gunakan fungsi dari context jika ada
+    if (calculateScoreFromConfig) {
+      return calculateScoreFromConfig(likelihood, impact);
+    }
+    
+    // Priority 2: Gunakan config method dari assessmentConfig
     const method = assessmentConfig?.assessmentMethod || 'multiplication';
     
-    if (method === 'coordinate') {
-      // Gunakan fungsi dari importedConfig
-      const score = importedConfig.getCoordinateScore(likelihood, impact);
-      return score;
-    } else {
-      // Default: multiplication method
-      return likelihood * impact;
+    if (method === 'coordinate' && assessmentConfig?.coordinateMatrix) {
+      const lIndex = Math.min(Math.max(likelihood - 1, 0), 4);
+      const iIndex = Math.min(Math.max(impact - 1, 0), 4);
+      return assessmentConfig.coordinateMatrix[lIndex][iIndex];
     }
+    
+    // Default: multiplication method
+    return likelihood * impact;
   };
 
-  // ✅ FUNGSI GET RISK LEVEL
+  // ✅ FUNGSI GET RISK LEVEL YANG MENGIKUTI CONFIG (REPLACE FUNGSI LAMA)
   const getRiskLevelInfo = (score) => {
-    // Gunakan konfigurasi langsung
+    // Priority 1: Gunakan fungsi dari context jika ada
+    if (calculateRiskLevel) {
+      return calculateRiskLevel(score);
+    }
+    
+    // Priority 2: Gunakan config langsung dari assessmentConfig
     if (assessmentConfig?.riskLevels?.length > 0) {
       const level = assessmentConfig.riskLevels.find(
         levelItem => score >= levelItem.min && score <= levelItem.max
@@ -134,6 +155,18 @@ const ExecutiveDashboard = () => {
       max: 25 
     };
   };
+
+  const AdminPanel = () => {
+  const handleMigration = async () => {
+    if (window.confirm('Run data migration? This will update Firestore.')) {
+      await migrateRiskData();
+    }
+  };
+  
+  return (
+    <button onClick={handleMigration}>Run Data Migration</button>
+  );
+};
 
   // ✅ DEBUG: VERIFIKASI MATRIX COORDINATE
   const debugCoordinateMatrix = () => {
@@ -571,20 +604,30 @@ const ExecutiveDashboard = () => {
     };
   };
 
-  // ✅ GET TOP 10 RISKS
+  // ✅ GET TOP 10 RISKS YANG MENGIKUTI CONFIG
   const getTopRisks = () => {
-    const sortedRisks = [...risks].sort((a, b) => b.inherentScore - a.inherentScore);
+    const sortedRisks = [...risks].sort((a, b) => {
+      // Gunakan calculateScore untuk sorting yang sesuai config
+      const scoreA = calculateScore(a.likelihood || 1, a.impact || 1);
+      const scoreB = calculateScore(b.likelihood || 1, b.impact || 1);
+      return scoreB - scoreA;
+    });
     
     return sortedRisks.slice(0, 10).map((risk, index) => {
-      const inherentLevelInfo = getRiskLevelInfo(risk.inherentScore || 1);
-      const residualLevelInfo = getRiskLevelInfo(risk.residualScore || risk.inherentScore || 1);
+      // Hitung skor dengan fungsi yang sesuai config
+      const inherentScore = calculateScore(risk.likelihood || 1, risk.impact || 1);
+      const residualScore = calculateScore(risk.residualLikelihood || risk.likelihood || 1, 
+                                         risk.residualImpact || risk.impact || 1);
+      
+      const inherentLevelInfo = getRiskLevelInfo(inherentScore);
+      const residualLevelInfo = getRiskLevelInfo(residualScore);
       
       return {
         id: risk.id,
         title: risk.title || risk.riskDescription || 'Unnamed Risk',
         description: risk.description || risk.riskDescription || risk.title || 'No description',
-        inherentScore: risk.inherentScore || 1,
-        residualScore: risk.residualScore || risk.inherentScore || 1,
+        inherentScore: inherentScore,
+        residualScore: residualScore,
         inherentLevel: inherentLevelInfo.level,
         residualLevel: residualLevelInfo.level,
         department: risk.department || 'Unknown',
@@ -593,6 +636,8 @@ const ExecutiveDashboard = () => {
         hasAssessment: risk.hasAssessment || false,
         likelihood: risk.likelihood || 1,
         impact: risk.impact || 1,
+        residualLikelihood: risk.residualLikelihood || risk.likelihood || 1,
+        residualImpact: risk.residualImpact || risk.impact || 1,
         inherentColor: inherentLevelInfo.color,
         residualColor: residualLevelInfo.color
       };
@@ -1545,7 +1590,9 @@ const ExecutiveDashboard = () => {
               
               <Grid container spacing={3} sx={{ mt: 1 }}>
                 <Grid item xs={12}>
-                  <Typography variant="h6" gutterBottom>Status Distribution</Typography>
+                  <Typography variant="h6" gutterBottom>
+                    Status Distribution
+                  </Typography>
                   <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 2 }}>
                     <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: 'success.light', color: 'white' }}>
                       <CheckCircle sx={{ fontSize: 32, mb: 1 }} />

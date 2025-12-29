@@ -93,6 +93,9 @@ import HeatMapFilters from '../components/HeatMapFilters';
 import RiskCellDetailModal from '../components/RiskCellDetailModal';
 import { exportHeatmapAsPNG, exportHeatmapAsPDF, exportHeatmapAsCSV, exportCellDetailsAsText } from '../utils/heatmapExport';
 import { useApprovalActions } from '../hooks/useApproval';
+import { fetchRisks } from '../services/riskService';
+
+const risks = await fetchRisks();
 
 // =======================================================================
 // DEFAULT CONSTANTS (JIKA IMPORT GAGAL)
@@ -106,11 +109,11 @@ const DEFAULT_RISK_LEVELS = [
 ];
 
 const DEFAULT_COORDINATE_MATRIX = [
-  [1, 2, 3, 4, 5],
-  [6, 7, 8, 9, 10],
-  [11, 12, 13, 14, 15],
-  [16, 17, 18, 19, 20],
-  [21, 22, 23, 24, 25]
+        [1, 3, 5, 8, 20],
+        [2, 7, 11, 13, 21],
+        [4, 10, 14, 17, 22],
+        [6, 12, 16, 19, 24],
+        [9, 15, 18, 23, 25]
 ];
 
 const getCoordinateScoreDefault = (likelihood, impact) => {

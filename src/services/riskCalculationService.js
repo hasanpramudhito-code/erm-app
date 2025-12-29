@@ -5,70 +5,141 @@ class RiskCalculationService {
   
   // ✅ CALCULATE RISK LEVEL BERDASARKAN KOORDINAT 2D
   calculateRiskLevel(likelihood, impact) {
-    // Validasi input
-    likelihood = Math.max(1, Math.min(5, parseInt(likelihood) || 1));
-    impact = Math.max(1, Math.min(5, parseInt(impact) || 1));
+    // Validasi input dengan lebih ketat
+    const validated = this.validateRiskCoordinates(likelihood, impact);
+    if (!validated.isValid) {
+      // Return default jika validasi gagal
+      likelihood = 1;
+      impact = 1;
+    } else {
+      likelihood = Math.max(1, Math.min(5, parseInt(likelihood) || 1));
+      impact = Math.max(1, Math.min(5, parseInt(impact) || 1));
+    }
     
-    // Koordinat heatmap 2D
     const coordinates = {
       likelihood: likelihood,
       impact: impact,
-      x: likelihood,  // X-axis untuk heatmap
-      y: impact       // Y-axis untuk heatmap
+      x: likelihood,
+      y: impact
     };
     
-    // Risk matrix configuration (bisa di-customize)
-    const riskMatrix = this.getRiskMatrixConfiguration();
-    
-    // Cari risk level berdasarkan koordinat
-    const riskLevel = this.findRiskLevelInMatrix(coordinates, riskMatrix);
+    // Gunakan coordinate method untuk konsistensi
+    const riskResult = this.calculateRiskByCoordinate(likelihood, impact);
     
     return {
-      level: riskLevel.level,
-      color: riskLevel.color,
-      score: riskLevel.score,
+      level: riskResult.level,
+      color: riskResult.color,
+      score: riskResult.score,
       coordinates: coordinates,
       position: this.calculateHeatmapPosition(coordinates),
-      description: riskLevel.description
+      description: riskResult.description,
+      scoreLabel: riskResult.scoreLabel,
+      categoryLabel: riskResult.categoryLabel
     };
   }
   
-  // ✅ RISK MATRIX CONFIGURATION (5x5 Grid)
+  // ✅ RISK MATRIX CONFIGURATION (5x5 Grid) - DIKONSISTENKAN
   getRiskMatrixConfiguration() {
+    // Matrix koordinat 5x5 sesuai dengan riskCalculator.js
+    const COORDINATE_MATRIX = [
+      [1, 3, 5, 8, 20],
+      [2, 7, 11, 13, 21],
+      [4, 10, 14, 17, 22],
+      [6, 12, 16, 19, 24],
+      [9, 15, 18, 23, 25]
+    ];
+    
+    // Mapping level berdasarkan score
+    const getLevelFromScore = (score) => {
+      if (score <= 3) return { level: 'Very Low', color: '#1976d2', description: 'Risiko sangat rendah' };
+      if (score <= 5) return { level: 'Low', color: '#388e3c', description: 'Risiko rendah' };
+      if (score <= 8) return { level: 'Low', color: '#388e3c', description: 'Risiko rendah' };
+      if (score <= 15) return { level: 'Medium', color: '#fbc02d', description: 'Risiko medium' };
+      if (score <= 20) return { level: 'High', color: '#f57c00', description: 'Risiko tinggi' };
+      return { level: 'Extreme', color: '#d32f2f', description: 'Risiko sangat tinggi' };
+    };
+    
+    // Generate zones secara dinamis berdasarkan matrix
+    const zones = [];
+    
+    for (let likelihood = 1; likelihood <= 5; likelihood++) {
+      for (let impact = 1; impact <= 5; impact++) {
+        const row = likelihood - 1;
+        const col = impact - 1;
+        const score = COORDINATE_MATRIX[row][col];
+        const levelInfo = getLevelFromScore(score);
+        
+        zones.push([
+          likelihood, // min_likelihood
+          likelihood, // max_likelihood
+          impact,     // min_impact
+          impact,     // max_impact
+          levelInfo.level,
+          levelInfo.color,
+          score,
+          levelInfo.description
+        ]);
+      }
+    }
+    
+    return { zones };
+  }
+  
+  // ✅ METODE COORDINATE YANG KONSISTEN DENGAN riskCalculator.js
+  calculateRiskByCoordinate(likelihood, impact) {
+    const COORDINATE_MATRIX = [
+      [1, 3, 5, 8, 20],
+      [2, 7, 11, 13, 21],
+      [4, 10, 14, 17, 22],
+      [6, 12, 16, 19, 24],
+      [9, 15, 18, 23, 25]
+    ];
+    
+    const row = Math.max(0, Math.min(likelihood - 1, 4));
+    const col = Math.max(0, Math.min(impact - 1, 4));
+    const score = COORDINATE_MATRIX[row][col];
+    
+    // Mapping yang konsisten dengan riskCalculator.js
+    let level, color, description, categoryLabel;
+    
+    if (score <= 3) {
+      level = 'Very Low';
+      color = '#1976d2';
+      categoryLabel = 'SANGAT RENDAH';
+      description = 'Risiko sangat rendah';
+    } else if (score <= 8) {
+      level = 'Low';
+      color = '#388e3c';
+      categoryLabel = 'RENDAH';
+      description = 'Risiko rendah';
+    } else if (score <= 15) {
+      level = 'Medium';
+      color = '#fbc02d';
+      categoryLabel = 'SEDANG';
+      description = 'Risiko medium';
+    } else if (score <= 20) {
+      level = 'High';
+      color = '#f57c00';
+      categoryLabel = 'TINGGI';
+      description = 'Risiko tinggi';
+    } else {
+      level = 'Extreme';
+      color = '#d32f2f';
+      categoryLabel = 'SANGAT TINGGI';
+      description = 'Risiko sangat tinggi';
+    }
+    
     return {
-      // Format: [min_likelihood, max_likelihood, min_impact, max_impact, level, color, score, description]
-      zones: [
-        // EXTREME RISK (Merah) - Sudut kanan atas
-        [4, 5, 4, 5, 'Extreme', '#d32f2f', 25, 'Risiko sangat tinggi, butuh perhatian eksekutif segera'],
-        [5, 5, 3, 5, 'Extreme', '#d32f2f', 24, 'Risiko sangat tinggi, butuh perhatian eksekutif segera'],
-        [3, 5, 5, 5, 'Extreme', '#d32f2f', 23, 'Risiko sangat tinggi, butuh perhatian eksekutif segera'],
-        
-        // HIGH RISK (Oranye) - Area tinggi
-        [4, 5, 3, 3, 'High', '#f57c00', 20, 'Risiko tinggi, butuh rencana aksi manajemen'],
-        [3, 4, 4, 4, 'High', '#f57c00', 19, 'Risiko tinggi, butuh rencana aksi manajemen'],
-        [2, 3, 5, 5, 'High', '#f57c00', 18, 'Risiko tinggi, dampak sangat besar'],
-        [5, 5, 2, 2, 'High', '#f57c00', 17, 'Risiko tinggi, kemungkinan sangat besar'],
-        
-        // MEDIUM RISK (Kuning) - Area tengah
-        [3, 3, 3, 3, 'Medium', '#fbc02d', 15, 'Risiko medium, perlu monitoring rutin'],
-        [2, 3, 4, 4, 'Medium', '#fbc02d', 14, 'Risiko medium, dampak signifikan'],
-        [4, 4, 2, 2, 'Medium', '#fbc02d', 13, 'Risiko medium, kemungkinan signifikan'],
-        [2, 2, 3, 3, 'Medium', '#fbc02d', 12, 'Risiko medium'],
-        
-        // LOW RISK (Hijau) - Area kiri bawah
-        [1, 2, 1, 2, 'Low', '#388e3c', 8, 'Risiko rendah, monitoring standar'],
-        [1, 1, 3, 3, 'Low', '#388e3c', 7, 'Risiko rendah, dampak terbatas'],
-        [3, 3, 1, 1, 'Low', '#388e3c', 6, 'Risiko rendah, kemungkinan terbatas'],
-        
-        // VERY LOW RISK (Biru) - Sudut kiri bawah
-        [1, 1, 1, 2, 'Very Low', '#1976d2', 3, 'Risiko sangat rendah'],
-        [1, 2, 1, 1, 'Very Low', '#1976d2', 2, 'Risiko sangat rendah'],
-        [1, 1, 1, 1, 'Very Low', '#1976d2', 1, 'Risiko dapat diabaikan']
-      ]
+      level,
+      color,
+      score,
+      description,
+      scoreLabel: `L${likelihood}×I${impact}`,
+      categoryLabel
     };
   }
   
-  // ✅ FIND RISK LEVEL BERDASARKAN KOORDINAT
+  // ✅ FIND RISK LEVEL BERDASARKAN KOORDINAT - DISEDERHANAKAN
   findRiskLevelInMatrix(coordinates, riskMatrix) {
     const { likelihood, impact } = coordinates;
     
@@ -77,52 +148,44 @@ class RiskCalculationService {
       
       if (likelihood >= minLikelihood && likelihood <= maxLikelihood &&
           impact >= minImpact && impact <= maxImpact) {
-        return { level, color, score, description };
+        return { 
+          level, 
+          color, 
+          score, 
+          description,
+          scoreLabel: `L${likelihood}×I${impact}`,
+          categoryLabel: this.getCategoryLabelFromLevel(level)
+        };
       }
     }
     
-    // Fallback ke default
-    const fallbackScore = likelihood * impact;
-    let fallbackLevel = 'Medium';
-    let fallbackColor = '#fbc02d';
-    
-    if (fallbackScore >= 20) {
-      fallbackLevel = 'Extreme';
-      fallbackColor = '#d32f2f';
-    } else if (fallbackScore >= 15) {
-      fallbackLevel = 'High';
-      fallbackColor = '#f57c00';
-    } else if (fallbackScore >= 10) {
-      fallbackLevel = 'Medium';
-      fallbackColor = '#fbc02d';
-    } else if (fallbackScore >= 5) {
-      fallbackLevel = 'Low';
-      fallbackColor = '#388e3c';
-    } else {
-      fallbackLevel = 'Very Low';
-      fallbackColor = '#1976d2';
-    }
-    
-    return { 
-      level: fallbackLevel, 
-      color: fallbackColor, 
-      score: fallbackScore,
-      description: 'Risiko perlu assessment lebih lanjut' 
-    };
+    // Fallback ke metode coordinate
+    return this.calculateRiskByCoordinate(likelihood, impact);
   }
   
-  // ✅ CALCULATE HEATMAP POSITION (untuk visualisasi)
+  // ✅ GET CATEGORY LABEL DARI LEVEL
+  getCategoryLabelFromLevel(level) {
+    const mapping = {
+      'Very Low': 'SANGAT RENDAH',
+      'Low': 'RENDAH',
+      'Medium': 'SEDANG',
+      'High': 'TINGGI',
+      'Extreme': 'SANGAT TINGGI'
+    };
+    return mapping[level] || 'TIDAK TERDEFINISI';
+  }
+  
+  // ✅ CALCULATE HEATMAP POSITION (untuk visualisasi) - TETAP SAMA
   calculateHeatmapPosition(coordinates) {
     const { likelihood, impact } = coordinates;
     
-    // Convert ke position dalam grid 5x5 (0-100%)
-    const x = ((likelihood - 1) / 4) * 100; // 0% sampai 100%
-    const y = 100 - ((impact - 1) / 4) * 100; // 100% sampai 0% (invert Y-axis)
+    const x = ((likelihood - 1) / 4) * 100;
+    const y = 100 - ((impact - 1) / 4) * 100;
     
     return { x, y };
   }
   
-  // ✅ GET ALL RISKS WITH HEATMAP COORDINATES
+  // ✅ GET ALL RISKS WITH HEATMAP COORDINATES - DIKONSISTENKAN
   async getAllRisksWithHeatmap(organizationId = null) {
     try {
       let risksQuery;
@@ -142,17 +205,22 @@ class RiskCalculationService {
         ...doc.data()
       }));
       
-      // Add heatmap data untuk setiap risk
+      // Gunakan metode coordinate yang konsisten
       return risks.map(risk => {
         const likelihood = risk.likelihood || 1;
         const impact = risk.impact || 1;
-        const heatmapData = this.calculateRiskLevel(likelihood, impact);
+        const heatmapData = this.calculateRiskByCoordinate(likelihood, impact);
+        const coordinates = { likelihood, impact };
         
         return {
           ...risk,
-          heatmap: heatmapData,
-          // Legacy score untuk compatibility
-          riskScore: likelihood * impact,
+          heatmap: {
+            ...heatmapData,
+            coordinates: coordinates,
+            position: this.calculateHeatmapPosition(coordinates)
+          },
+          // Legacy score untuk compatibility - gunakan score dari coordinate method
+          riskScore: heatmapData.score,
           riskLevel: heatmapData.level
         };
       });
@@ -162,11 +230,10 @@ class RiskCalculationService {
     }
   }
   
-  // ✅ GET HEATMAP DATA UNTUK VISUALISASI
+  // ✅ GET HEATMAP DATA UNTUK VISUALISASI - TETAP SAMA
   async getHeatmapData(organizationId = null) {
     const risks = await this.getAllRisksWithHeatmap(organizationId);
     
-    // Group risks by coordinates
     const heatmapData = {};
     
     risks.forEach(risk => {
@@ -179,7 +246,10 @@ class RiskCalculationService {
           count: 0,
           risks: [],
           level: risk.heatmap.level,
-          color: risk.heatmap.color
+          color: risk.heatmap.color,
+          score: risk.heatmap.score,
+          scoreLabel: risk.heatmap.scoreLabel,
+          categoryLabel: risk.heatmap.categoryLabel
         };
       }
       
@@ -187,7 +257,8 @@ class RiskCalculationService {
       heatmapData[key].risks.push({
         id: risk.id,
         title: risk.title,
-        description: risk.description
+        description: risk.description,
+        level: risk.heatmap.level
       });
     });
     
@@ -198,7 +269,7 @@ class RiskCalculationService {
     };
   }
   
-  // ✅ CALCULATE HEATMAP STATISTICS
+  // ✅ CALCULATE HEATMAP STATISTICS - TETAP SAMA
   calculateHeatmapStatistics(risks) {
     const stats = {
       total: risks.length,
@@ -209,6 +280,13 @@ class RiskCalculationService {
         'Low': 0,
         'Very Low': 0
       },
+      byCategory: {
+        'SANGAT TINGGI': 0,
+        'TINGGI': 0,
+        'SEDANG': 0,
+        'RENDAH': 0,
+        'SANGAT RENDAH': 0
+      },
       byCoordinate: {},
       highestRisk: null
     };
@@ -218,6 +296,9 @@ class RiskCalculationService {
     risks.forEach(risk => {
       // Count by level
       stats.byLevel[risk.heatmap.level] = (stats.byLevel[risk.heatmap.level] || 0) + 1;
+      
+      // Count by category label
+      stats.byCategory[risk.heatmap.categoryLabel] = (stats.byCategory[risk.heatmap.categoryLabel] || 0) + 1;
       
       // Count by coordinate
       const coordKey = `${risk.heatmap.coordinates.likelihood},${risk.heatmap.coordinates.impact}`;
@@ -233,12 +314,11 @@ class RiskCalculationService {
     return stats;
   }
   
-  // ✅ COMPARE TWO RISK POSITIONS
+  // ✅ COMPARE TWO RISK POSITIONS - TETAP SAMA
   compareRiskPositions(risk1, risk2) {
     const pos1 = risk1.heatmap.position;
     const pos2 = risk2.heatmap.position;
     
-    // Calculate Euclidean distance dalam heatmap space
     const distance = Math.sqrt(
       Math.pow(pos1.x - pos2.x, 2) + Math.pow(pos1.y - pos2.y, 2)
     );
@@ -247,11 +327,11 @@ class RiskCalculationService {
       distance: distance,
       risk1Position: `L${risk1.heatmap.coordinates.likelihood}-I${risk1.heatmap.coordinates.impact}`,
       risk2Position: `L${risk2.heatmap.coordinates.likelihood}-I${risk2.heatmap.coordinates.impact}`,
-      similarity: Math.max(0, 100 - (distance * 10)) // 0-100% similarity
+      similarity: Math.max(0, 100 - (distance * 10))
     };
   }
   
-  // ✅ GET RISK CLUSTERS (group risks dengan posisi similar)
+  // ✅ GET RISK CLUSTERS - TETAP SAMA
   getRiskClusters(risks, maxDistance = 20) {
     const clusters = [];
     const processed = new Set();
@@ -263,7 +343,9 @@ class RiskCalculationService {
         center: risk.heatmap.position,
         risks: [risk],
         level: risk.heatmap.level,
-        color: risk.heatmap.color
+        color: risk.heatmap.color,
+        scoreLabel: risk.heatmap.scoreLabel,
+        categoryLabel: risk.heatmap.categoryLabel
       };
       
       // Find similar risks
@@ -284,21 +366,23 @@ class RiskCalculationService {
     return clusters;
   }
 
-  // ✅ GET RISK MATRIX FOR DISPLAY (untuk table view)
+  // ✅ GET RISK MATRIX FOR DISPLAY - DIKONSISTENKAN
   getRiskMatrixForDisplay() {
     const matrix = [];
     
     for (let impact = 5; impact >= 1; impact--) {
       const row = [];
       for (let likelihood = 1; likelihood <= 5; likelihood++) {
-        const riskData = this.calculateRiskLevel(likelihood, impact);
+        const riskData = this.calculateRiskByCoordinate(likelihood, impact);
         row.push({
           likelihood,
           impact,
           level: riskData.level,
           color: riskData.color,
           description: riskData.description,
-          score: riskData.score
+          score: riskData.score,
+          scoreLabel: riskData.scoreLabel,
+          categoryLabel: riskData.categoryLabel
         });
       }
       matrix.push(row);
@@ -307,25 +391,78 @@ class RiskCalculationService {
     return matrix;
   }
 
-  // ✅ VALIDATE RISK COORDINATES
+  // ✅ VALIDATE RISK COORDINATES - DIKONSISTENKAN
   validateRiskCoordinates(likelihood, impact) {
     const errors = [];
     
-    if (likelihood < 1 || likelihood > 5) {
-      errors.push('Likelihood harus antara 1-5');
+    if (likelihood === undefined || impact === undefined) {
+      errors.push('Likelihood dan Impact harus diisi');
     }
     
-    if (impact < 1 || impact > 5) {
-      errors.push('Impact harus antara 1-5');
-    }
+    const likelihoodNum = parseInt(likelihood);
+    const impactNum = parseInt(impact);
     
-    if (isNaN(likelihood) || isNaN(impact)) {
+    if (isNaN(likelihoodNum) || isNaN(impactNum)) {
       errors.push('Likelihood dan Impact harus angka');
+    } else {
+      if (likelihoodNum < 1 || likelihoodNum > 5) {
+        errors.push('Likelihood harus antara 1-5');
+      }
+      
+      if (impactNum < 1 || impactNum > 5) {
+        errors.push('Impact harus antara 1-5');
+      }
     }
     
     return {
       isValid: errors.length === 0,
-      errors: errors
+      errors: errors,
+      validatedValues: errors.length === 0 ? {
+        likelihood: likelihoodNum,
+        impact: impactNum
+      } : null
+    };
+  }
+  
+  // ✅ METODE MULTIPLICATION UNTUK COMPATIBILITY (jika diperlukan)
+  calculateRiskByMultiplication(likelihood, impact) {
+    const score = likelihood * impact;
+    let level, color, description, categoryLabel;
+    
+    if (score <= 3) {
+      level = 'Very Low';
+      color = '#1976d2';
+      categoryLabel = 'SANGAT RENDAH';
+      description = 'Risiko sangat rendah';
+    } else if (score <= 8) {
+      level = 'Low';
+      color = '#388e3c';
+      categoryLabel = 'RENDAH';
+      description = 'Risiko rendah';
+    } else if (score <= 15) {
+      level = 'Medium';
+      color = '#fbc02d';
+      categoryLabel = 'SEDANG';
+      description = 'Risiko medium';
+    } else if (score <= 20) {
+      level = 'High';
+      color = '#f57c00';
+      categoryLabel = 'TINGGI';
+      description = 'Risiko tinggi';
+    } else {
+      level = 'Extreme';
+      color = '#d32f2f';
+      categoryLabel = 'SANGAT TINGGI';
+      description = 'Risiko sangat tinggi';
+    }
+    
+    return {
+      level,
+      color,
+      score,
+      description,
+      scoreLabel: `${score}`,
+      categoryLabel
     };
   }
 }

@@ -51,55 +51,11 @@ import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
 
-// === KONSTANTA YANG AKAN DIEKSPOR - DIPINDAHKAN KE LEVEL MODUL ===
-export const COORDINATE_MATRIX = [
-  [1, 1, 1],   // L1-I1
-  [1, 2, 3],   // L1-I2
-  [1, 3, 5],   // L1-I3
-  [1, 4, 8],   // L1-I4
-  [1, 5, 20],  // L1-I5
-  
-  [2, 1, 2],   // L2-I1
-  [2, 2, 7],   // L2-I2
-  [2, 3, 11],  // L2-I3
-  [2, 4, 13],  // L2-I4
-  [2, 5, 21],  // L2-I5
-  
-  [3, 1, 4],   // L3-I1
-  [3, 2, 10],  // L3-I2
-  [3, 3, 14],  // L3-I3
-  [3, 4, 17],  // L3-I4
-  [3, 5, 22],  // L3-I5
-  
-  [4, 1, 6],   // L4-I1
-  [4, 2, 12],  // L4-I2
-  [4, 3, 16],  // L4-I3
-  [4, 4, 19],  // L4-I4
-  [4, 5, 24],  // L4-I5
-  
-  [5, 1, 9],   // L5-I1
-  [5, 2, 15],  // L5-I2
-  [5, 3, 18],  // L5-I3
-  [5, 4, 23],  // L5-I4
-  [5, 5, 25]   // L5-I5
-];
 
-export const RISK_LEVELS = [
-  { min: 1, max: 3, label: 'Sangat Rendah', color: '#4caf50' },
-  { min: 4, max: 6, label: 'Rendah', color: '#81c784' },
-  { min: 7, max: 10, label: 'Sedang', color: '#ffeb3b' },
-  { min: 11, max: 15, label: 'Tinggi', color: '#f57c00' },
-  { min: 16, max: 20, label: 'Sangat Tinggi', color: '#d32f2f' },
-  { min: 21, max: 25, label: 'Ekstrim', color: '#7b1fa2' }
-];
+ // Import konstanta & helper dari modul config
+  import { COORDINATE_MATRIX, getCoordinateScore } from '../config/riskMatrix';
+  import { RISK_LEVELS } from '../config/riskLevels';
 
-// Fungsi untuk mendapatkan score berdasarkan koordinat
-export const getCoordinateScore = (likelihood, impact) => {
-  const entry = COORDINATE_MATRIX.find(
-    ([l, i]) => l === likelihood && i === impact
-  );
-  return entry ? entry[2] : likelihood * impact;
-};
 
 // === KOMPONEN UTAMA ===
 const Configuration = () => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react'; // TETAP useMemo saja
 import {
   Box,
   Typography,
@@ -90,6 +90,15 @@ import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
 import { useLocation } from 'react-router-dom';
+import { calculateRisk } from '../utils/riskCalculator';
+import { 
+  exportRiskRegisterPDF, 
+  exportRiskRegisterExcel 
+} from '../services/reporting/exportRiskRegister';
+import { fetchRisks } from '../services/riskService';
+
+const risks = await fetchRisks();
+import { simpleExportRiskRegisterPDF } from './simple-export';
 
 const RiskRegister = () => {
   const [risks, setRisks] = useState([]);
@@ -105,6 +114,10 @@ const RiskRegister = () => {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [exportLoading, setExportLoading] = useState({
+    pdf: false,
+    excel: false
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [codeError, setCodeError] = useState('');
   const [expandedRows, setExpandedRows] = useState({});
@@ -142,7 +155,7 @@ const RiskRegister = () => {
   
   const { userData } = useAuth();
   const { 
-    config: assessmentConfig, 
+    assessmentConfig, 
     loading: configLoading,
     calculateScore, 
     calculateRiskLevel,
@@ -150,8 +163,113 @@ const RiskRegister = () => {
     getRiskLevelColor,
     getRiskLevelLabel,
     getRatingOptions,
-    getRatingLabel
+    getRatingLabel,
+    refreshConfig
   } = useAssessmentConfig();
+
+  // ========== FUNGSI BARU UNTUK MENGHITUNG SCORE SESUAI KONFIGURASI ==========
+  
+  // 1. Fungsi calculateRiskScore baru
+  const calculateRiskScore = (impact, probability, riskMethod = null) => {
+    if (!impact || !probability) {
+      console.log('⚠️ calculateRiskScore: Missing impact or probability, returning 1');
+      return 1;
+    }
+    
+    const impactNum = parseInt(impact) || 1;
+    const probNum = parseInt(probability) || 1;
+    
+    // Gunakan method dari risk data jika ada, jika tidak gunakan config
+    const method = riskMethod || assessmentConfig?.assessmentMethod || 'multiplication';
+    const methodLower = method.toLowerCase();
+    
+    console.log('🔄 calculateRiskScore:', { 
+      impact: impactNum, 
+      probability: probNum,
+      method: methodLower,
+      configMethod: assessmentConfig?.assessmentMethod
+    });
+    
+    // Jika method coordinate dan calculateScore ada
+    if (methodLower === 'coordinate' && calculateScore) {
+      try {
+        const result = calculateScore(probNum, impactNum); // Note: calculateScore expects (likelihood, impact)
+        console.log('📊 Coordinate result:', result);
+        return result;
+      } catch (error) {
+        console.error('❌ Coordinate calculation error:', error);
+        // Fallback ke perkalian
+        const fallbackResult = impactNum * probNum;
+        console.log('📊 Fallback to multiplication:', fallbackResult);
+        return fallbackResult;
+      }
+    } else {
+      // Multiplication method
+      const result = impactNum * probNum;
+      console.log('📊 Multiplication result:', result);
+      return result;
+    }
+  };
+
+  // 2. Debug useEffect untuk config
+  useEffect(() => {
+    console.log('🔍 RiskRegister Config Status:', {
+      configExists: !!assessmentConfig,
+      method: assessmentConfig?.assessmentMethod,
+      loading: configLoading,
+      hasCalculateScore: !!calculateScore
+    });
+    
+    if (assessmentConfig) {
+      console.log('✅ Config loaded:', assessmentConfig);
+    }
+  }, [assessmentConfig, configLoading]);
+
+  // ========== FUNGSI UNTUK INHERENT DAN RESIDUAL RISK LEVEL ==========
+  
+  // Fungsi getInherentRiskLevelInfo BARU
+  const getInherentRiskLevelInfo = (risk) => {
+    console.log('🔍 getInherentRiskLevelInfo for:', risk.riskCode, {
+      impact: risk.initialImpact,
+      probability: risk.initialProbability,
+      storedMethod: risk.scoreMethod,
+      configMethod: assessmentConfig?.assessmentMethod
+    });
+    
+    const method = risk.scoreMethod || assessmentConfig?.assessmentMethod || 'multiplication';
+    const methodLower = method.toLowerCase();
+    
+    const score = calculateRiskScore(risk.initialImpact, risk.initialProbability, methodLower);
+    
+    console.log('✅ Inherent Score (method:', methodLower, '):', score);
+    
+    const levelInfo = calculateRiskLevel(score);
+    console.log('✅ Inherent Level Info:', levelInfo);
+    
+    return levelInfo;
+  };
+
+  // Fungsi getResidualRiskLevelInfo BARU
+  const getResidualRiskLevelInfo = (risk) => {
+    console.log('🔍 getResidualRiskLevelInfo for:', risk.riskCode, {
+      impact: risk.residualImpact,
+      probability: risk.residualProbability,
+      storedMethod: risk.scoreMethod,
+      configMethod: assessmentConfig?.assessmentMethod
+    });
+    
+    const method = risk.scoreMethod || assessmentConfig?.assessmentMethod || 'multiplication';
+    const methodLower = method.toLowerCase();
+    
+    const score = calculateRiskScore(risk.residualImpact, risk.residualProbability, methodLower);
+    
+    console.log('✅ Residual Score (method:', methodLower, '):', score);
+    
+    const levelInfo = calculateRiskLevel(score);
+    console.log('✅ Residual Level Info:', levelInfo);
+    
+    return levelInfo;
+  };
 
   // Helper function untuk mendapatkan warna Chip yang valid
   const getValidChipColor = (color, fallback = 'default') => {
@@ -380,33 +498,78 @@ const RiskRegister = () => {
     );
   }, [departments, departmentSearch]);
 
-  // Calculate risk level
-  const getRiskLevelInfo = (risk) => {
-    let score;
-    
-    if (assessmentConfig?.assessmentMethod === 'coordinate') {
-      score = calculateScore(risk.likelihood || 1, risk.impact || 1);
-    } else {
-      score = (risk.likelihood || 1) * (risk.impact || 1);
+  // Render inherent risk level
+  const renderInherentRiskLevel = (risk) => {
+    try {
+      const riskLevelInfo = getInherentRiskLevelInfo(risk);
+      const validColor = getValidChipColor(riskLevelInfo.color, 'default');
+      
+      // Debug output
+      console.log('🎨 Rendering Inherent:', {
+        code: risk.riskCode,
+        impact: risk.initialImpact,
+        prob: risk.initialProbability,
+        score: riskLevelInfo.score,
+        level: riskLevelInfo.level,
+        color: riskLevelInfo.color
+      });
+      
+      return (
+        <Chip 
+          label={`${riskLevelInfo.level} (${riskLevelInfo.score})`}
+          size="small" 
+          color={validColor}
+        />
+      );
+    } catch (error) {
+      console.error('Error rendering inherent risk:', error);
+      return (
+        <Chip 
+          label="Error"
+          size="small" 
+          color="error"
+        />
+      );
     }
-    
-    return calculateRiskLevel(score);
   };
 
-  // Render risk level in table
-  const renderRiskLevel = (risk) => {
-    const riskLevelInfo = getRiskLevelInfo(risk);
-    const validColor = getValidChipColor(riskLevelInfo.color, 'default');
-    
-    return (
-      <Chip 
-        label={`${riskLevelInfo.level} (${riskLevelInfo.score})`}
-        size="small" 
-        color={validColor}
-      />
-    );
+  // Render residual risk level
+  const renderResidualRiskLevel = (risk) => {
+    try {
+      const riskLevelInfo = getResidualRiskLevelInfo(risk);
+      const validColor = getValidChipColor(riskLevelInfo.color, 'default');
+      
+      // Debug output
+      console.log('🎨 Rendering Residual:', {
+        code: risk.riskCode,
+        impact: risk.residualImpact,
+        prob: risk.residualProbability,
+        score: riskLevelInfo.score,
+        level: riskLevelInfo.level,
+        color: riskLevelInfo.color
+      });
+      
+      return (
+        <Chip 
+          label={`${riskLevelInfo.level} (${riskLevelInfo.score})`}
+          size="small" 
+          color={validColor}
+          variant="outlined"
+        />
+      );
+    } catch (error) {
+      console.error('Error rendering residual risk:', error);
+      return (
+        <Chip 
+          label="Error"
+          size="small" 
+          color="error"
+          variant="outlined"
+        />
+      );
+    }
   };
-
+    
   // Load data risiko
   const loadData = async () => {
     try {
@@ -573,19 +736,19 @@ const RiskRegister = () => {
         return false;
       }
 
-      // Inherent Risk Level
+      // Inherent Risk Level menggunakan fungsi baru
       if (filters.inherentLevels.length > 0) {
-        const inherentLevel = risk.initialRiskLevel?.level?.toLowerCase() || '';
+        const inherentLevelInfo = getInherentRiskLevelInfo(risk);
         if (!filters.inherentLevels.some(level =>
-          inherentLevel.includes(level.toLowerCase())
+          inherentLevelInfo.level?.toLowerCase().includes(level.toLowerCase())
         )) return false;
       }
 
-      // Residual Risk Level
+      // Residual Risk Level menggunakan fungsi baru
       if (filters.residualLevels.length > 0) {
-        const residualLevel = risk.residualRiskLevel?.level?.toLowerCase() || '';
+        const residualLevelInfo = getResidualRiskLevelInfo(risk);
         if (!filters.residualLevels.some(level =>
-          residualLevel.includes(level.toLowerCase())
+          residualLevelInfo.level?.toLowerCase().includes(level.toLowerCase())
         )) return false;
       }
 
@@ -657,6 +820,7 @@ const RiskRegister = () => {
     return changes;
   };
 
+  
   // Clean data for Firestore
   const cleanDataForFirestore = (data) => {
     const cleaned = {};
@@ -671,6 +835,7 @@ const RiskRegister = () => {
   // Handle form submit
   const handleSubmit = async () => {
     try {
+      console.log('[DEBUG] assessmentMethod =', assessmentConfig?.assessmentMethod)
       if (!formData.riskCode || !formData.riskDescription || !formData.riskSource) {
         showSnackbar('Kode Risiko, Deskripsi risiko dan sumber risiko harus diisi!', 'error');
         return;
@@ -717,28 +882,49 @@ const RiskRegister = () => {
         updatedBy: userData?.name || 'System'
       };
 
-      // Hitung score jika ada probability dan impact
+      // Tentukan metode aktif dari Configuration (via context)
+      const method = assessmentConfig?.assessmentMethod || 'multiplication';
+
+      // Hitung score jika ada probability dan impact (Inherent)
       if (formData.initialProbability && formData.initialImpact) {
         const likelihood = parseInt(formData.initialProbability) || 1;
         const impact = parseInt(formData.initialImpact) || 1;
-        const inherentScore = calculateScore(likelihood, impact);
-        
+
+        // GUNAKAN FUNGSI BARU yang mengikuti config
+        const inhScore = calculateRiskScore(impact, likelihood, method);
+        const inhLevel = calculateRiskLevel(inhScore);
+
+        // Simpan nilai mentah
+        riskDataToSave.initialProbability = likelihood;
+        riskDataToSave.initialImpact = impact;
         riskDataToSave.likelihood = likelihood;
         riskDataToSave.impact = impact;
-        riskDataToSave.inherentScore = inherentScore;
-        riskDataToSave.initialRiskLevel = calculateRiskLevel(inherentScore);
+
+        // Simpan hasil akhir ke Firestore
+        riskDataToSave.inherentScore = inhScore;
+        riskDataToSave.initialRiskLevel = inhLevel;
       }
 
+      // Hitung score untuk Residual (jika ada)
       if (formData.residualProbability && formData.residualImpact) {
         const residualLikelihood = parseInt(formData.residualProbability) || 1;
         const residualImpact = parseInt(formData.residualImpact) || 1;
-        const residualScore = calculateScore(residualLikelihood, residualImpact);
-        
+
+        // GUNAKAN FUNGSI BARU yang mengikuti config
+        const resScore = calculateRiskScore(residualImpact, residualLikelihood, method);
+        const resLevel = calculateRiskLevel(resScore);
+
+        riskDataToSave.residualProbability = residualLikelihood;
+        riskDataToSave.residualImpact = residualImpact;
         riskDataToSave.residualLikelihood = residualLikelihood;
         riskDataToSave.residualImpact = residualImpact;
-        riskDataToSave.residualScore = residualScore;
-        riskDataToSave.residualRiskLevel = calculateRiskLevel(residualScore);
+
+        riskDataToSave.residualScore = resScore;
+        riskDataToSave.residualRiskLevel = resLevel;
       }
+
+      // Simpan jejak metode yang dipakai (untuk audit & ekspor)
+      riskDataToSave.scoreMethod = assessmentConfig?.assessmentMethod || 'multiplication';
 
       const cleanedRiskData = cleanDataForFirestore(riskDataToSave);
 
@@ -872,6 +1058,60 @@ const RiskRegister = () => {
     });
     setAssessmentDialog(true);
   };
+  
+  // Handle Export PDF
+  const handleExportPDF = async () => {
+    if (filteredRisks.length === 0) {
+      showSnackbar('Tidak ada data untuk di-export!', 'warning');
+      return;
+    }
+
+    try {
+      setExportLoading(prev => ({ ...prev, pdf: true }));
+      
+      await exportRiskRegisterPDF({
+        risks: filteredRisks,
+        reportConfig: { 
+          dateRange: `${new Date().getFullYear()}-Q${Math.floor((new Date().getMonth() + 3) / 3)}`,
+          company: 'PT Odira Energy Karang Agung'
+        },
+        userData,
+        assessmentConfig, // INI PENTING - kirim konfigurasi
+      });
+      
+      showSnackbar('Export PDF berhasil!', 'success');
+    } catch (error) {
+      console.error('Export PDF error:', error);
+      showSnackbar(`Error export PDF: ${error.message}`, 'error');
+    } finally {
+      setExportLoading(prev => ({ ...prev, pdf: false }));
+    }
+  };
+
+  // Handle Export Excel
+  const handleExportExcel = async () => {
+    if (filteredRisks.length === 0) {
+      showSnackbar('Tidak ada data untuk di-export!', 'warning');
+      return;
+    }
+
+    try {
+      setExportLoading(prev => ({ ...prev, excel: true }));
+      
+      await exportRiskRegisterExcel({
+        risks: filteredRisks,
+        userData,
+        assessmentConfig, // INI PENTING - kirim konfigurasi
+      });
+      
+      showSnackbar('Export Excel berhasil!', 'success');
+    } catch (error) {
+      console.error('Export Excel error:', error);
+      showSnackbar(`Error export Excel: ${error.message}`, 'error');
+    } finally {
+      setExportLoading(prev => ({ ...prev, excel: false }));
+    }
+  };
 
   // Handle view detail
   const handleViewDetail = (risk) => {
@@ -881,22 +1121,48 @@ const RiskRegister = () => {
 
   // Handle assessment submit
   const handleAssessmentSubmit = async () => {
+    console.log('[DEBUG] assessmentMethod =', assessmentConfig?.assessmentMethod)
     if (!assessingRisk) return;
 
     try {
       setLoading(true);
-      
-      const residualScore = assessmentData.residualLikelihood * assessmentData.residualImpact;
-      const inherentScore = assessmentData.likelihood * assessmentData.impact;
-      
+
+      // Ambil metode aktif dari Configuration (via context)
+      const method = assessmentConfig?.assessmentMethod || 'multiplication';
+
+      // Pastikan nilai numerik
+      const L  = parseInt(assessmentData.likelihood) || 1;
+      const I  = parseInt(assessmentData.impact) || 1;
+      const RL = parseInt(assessmentData.residualLikelihood) || 1;
+      const RI = parseInt(assessmentData.residualImpact) || 1;
+
+      // Hitung skor dengan fungsi baru yang mengikuti config
+      const inhScore = calculateRiskScore(I, L, method);
+      const resScore = calculateRiskScore(RI, RL, method);
+
+      const inhLevel = calculateRiskLevel(inhScore);
+      const resLevel = calculateRiskLevel(resScore);
+
+      // SATU objek update saja (tidak duplikasi)
       const assessmentUpdate = {
-        likelihood: assessmentData.likelihood || 1,
-        impact: assessmentData.impact || 1,
+        // nilai mentah
+        likelihood: L,
+        impact: I,
         controlEffectiveness: assessmentData.controlEffectiveness || 3,
-        residualLikelihood: assessmentData.residualLikelihood || 1,
-        residualImpact: assessmentData.residualImpact || 1,
-        residualScore: residualScore || 0,
-        inherentScore: inherentScore || 0,
+        residualLikelihood: RL,
+        residualImpact: RI,
+
+        // hasil util (angka + level)
+        inherentScore: inhScore,
+        initialRiskLevel: inhLevel,
+
+        residualScore: resScore,
+        residualRiskLevel: resLevel,
+
+        // jejak metode
+        scoreMethod: method,
+
+        // metadata lain
         treatmentPriority: assessmentData.treatmentPriority || 'Medium - Sedang (Penanganan < 1 Bulan)',
         assessmentNotes: assessmentData.assessmentNotes || '',
         assessedAt: new Date(),
@@ -906,6 +1172,7 @@ const RiskRegister = () => {
         updatedBy: userData?.name || 'System'
       };
 
+      // Bersihkan nilai undefined/null sebelum kirim
       const cleanAssessmentData = {};
       Object.keys(assessmentUpdate).forEach(key => {
         if (assessmentUpdate[key] !== undefined && assessmentUpdate[key] !== null) {
@@ -914,7 +1181,7 @@ const RiskRegister = () => {
       });
 
       await updateDoc(doc(db, "risks", assessingRisk.id), cleanAssessmentData);
-      
+
       showSnackbar('Assessment risiko berhasil disimpan!', 'success');
       setAssessmentDialog(false);
       setAssessingRisk(null);
@@ -928,7 +1195,7 @@ const RiskRegister = () => {
         assessmentNotes: ''
       });
       loadData();
-      
+
     } catch (error) {
       console.error('Error saving assessment:', error);
       showSnackbar('Error menyimpan assessment: ' + error.message, 'error');
@@ -1157,12 +1424,12 @@ const RiskRegister = () => {
                 <Box>
                   <Typography variant="body1">{dept.name}</Typography>
                   {dept.code && (
-                    <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
+                    <Typography variant="caption" color="textSecondary" sx={{ mr: 1 }}>
                       Kode: {dept.code}
                     </Typography>
                   )}
                   {dept.parent && (
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="textSecondary">
                       Parent: {dept.parent}
                     </Typography>
                   )}
@@ -1177,6 +1444,29 @@ const RiskRegister = () => {
       </FormControl>
     );
   };
+
+  // Debug log untuk melihat konfigurasi
+  console.log('⚙️ Current Assessment Config:', {
+    method: assessmentConfig?.assessmentMethod,
+    config: assessmentConfig,
+    hasCalculateScore: !!calculateScore,
+    configLoading
+  });
+
+  // Jika config belum loading, tampilkan loading state
+  if (configLoading) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+        <CircularProgress />
+        <Typography variant="h6" sx={{ mt: 2 }}>
+          Memuat konfigurasi assessment...
+        </Typography>
+        <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+          Method: {assessmentConfig?.assessmentMethod || 'Loading...'}
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3, backgroundColor: 'grey.50', minHeight: '100vh' }}>
@@ -1217,6 +1507,73 @@ const RiskRegister = () => {
           </Box>
         </CardContent>
       </Card>
+
+      {/* Config Status Panel - TAMBAHAN BARU */}
+      <Card sx={{ mb: 2, backgroundColor: assessmentConfig ? '#e8f5e9' : '#ffebee' }}>
+        <CardContent sx={{ py: 1 }}>
+          <Box display="flex" alignItems="center" justifyContent="space-between">
+            <Box display="flex" alignItems="center" gap={1}>
+              <Typography variant="body2" fontWeight="bold">
+                ⚙️ Assessment Configuration
+              </Typography>
+              {assessmentConfig ? (
+                <Chip 
+                  label={assessmentConfig.assessmentMethod || 'multiplication'} 
+                  size="small" 
+                  color={assessmentConfig.assessmentMethod === 'coordinate' ? 'primary' : 'default'}
+                  sx={{ textTransform: 'capitalize' }}
+                />
+              ) : (
+                <Chip 
+                  label="Not Loaded" 
+                  size="small" 
+                  color="warning"
+                />
+              )}
+            </Box>
+            {refreshConfig && (
+              <Button 
+                size="small" 
+                variant="outlined"
+                onClick={() => {
+                  refreshConfig();
+                  showSnackbar('Configuration refreshed!', 'info');
+                }}
+                disabled={configLoading}
+                startIcon={configLoading ? <CircularProgress size={16} /> : <RestartAlt fontSize="small" />}
+              >
+                {configLoading ? 'Loading...' : 'Refresh'}
+              </Button>
+            )}
+          </Box>
+          <Typography variant="caption" color="textSecondary">
+            {assessmentConfig 
+              ? `Using: ${assessmentConfig.assessmentMethod === 'coordinate' ? 'Coordinate Matrix' : 'Multiplication'}`
+              : 'Loading configuration...'}
+          </Typography>
+        </CardContent>
+      </Card>
+
+      {/* Debug Panel - Hanya di development */}
+      {process.env.NODE_ENV === 'development' && (
+        <Card sx={{ mb: 2, backgroundColor: '#fff3cd', borderColor: '#ffeaa7' }}>
+          <CardContent sx={{ py: 1 }}>
+            <Box display="flex" alignItems="center" justifyContent="space-between">
+              <Typography variant="body2" fontWeight="bold">
+                🔧 Debug Assessment Method
+              </Typography>
+              <Chip 
+                label={assessmentConfig?.assessmentMethod || 'multiplication'} 
+                size="small" 
+                color={assessmentConfig?.assessmentMethod === 'coordinate' ? 'primary' : 'default'}
+              />
+            </Box>
+            <Typography variant="caption">
+              Hitung skor dengan: {assessmentConfig?.assessmentMethod === 'coordinate' ? 'Coordinate Matrix (IxL)' : 'Multiplication (I*L)'}
+            </Typography>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Search and Filter Box */}
       <Card sx={{ mb: 3, boxShadow: 2 }}>
@@ -1611,6 +1968,30 @@ const RiskRegister = () => {
         </Card>
       )}
 
+      {/* Export Buttons */}
+      <Card sx={{ mb: 3, boxShadow: 2 }}>
+        <CardContent>
+          <Box display="flex" justifyContent="flex-end" gap={2}>
+            <Button
+              variant="outlined"
+              startIcon={exportLoading.pdf ? <CircularProgress size={20} /> : <Description />}
+              onClick={handleExportPDF}
+              disabled={exportLoading.pdf || filteredRisks.length === 0}
+            >
+              Export PDF
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={exportLoading.excel ? <CircularProgress size={20} /> : <Description />}
+              onClick={handleExportExcel}
+              disabled={exportLoading.excel || filteredRisks.length === 0}
+            >
+              Export Excel
+            </Button>
+          </Box>
+        </CardContent>
+      </Card>
+
       {/* Risks Table */}
       <Card sx={{ boxShadow: 3 }}>
         <CardContent>
@@ -1658,8 +2039,6 @@ const RiskRegister = () => {
                   </TableHead>
                   <TableBody>
                     {paginatedRisks.map((risk) => {
-                      const initialLevel = risk.initialRiskLevel || {};
-                      const residualLevel = risk.residualRiskLevel || {};
                       const isExpanded = expandedRows[risk.id];
                       const statusChipColor = getValidChipColor(
                         risk.status?.includes('Critical') || risk.status?.includes('Extreme') ? 'error' :
@@ -1757,32 +2136,12 @@ const RiskRegister = () => {
                                 color={statusChipColor}
                               />
                             </TableCell>
+                            {/* GUNAKAN FUNGSI BARU */}
                             <TableCell>
-                              {initialLevel.level ? (
-                                <Chip 
-                                  label={`${initialLevel.level} (${initialLevel.score})`}
-                                  size="small" 
-                                  color={getValidChipColor(initialLevel.color, 'default')}
-                                />
-                              ) : (
-                                <Typography variant="body2" color="textSecondary" fontSize="0.75rem">
-                                  Belum
-                                </Typography>
-                              )}
+                              {renderInherentRiskLevel(risk)}
                             </TableCell>
                             <TableCell>
-                              {residualLevel.level ? (
-                                <Chip 
-                                  label={`${residualLevel.level} (${residualLevel.score})`}
-                                  size="small" 
-                                  color={getValidChipColor(residualLevel.color, 'default')}
-                                  variant="outlined"
-                                />
-                              ) : (
-                                <Typography variant="body2" color="textSecondary" fontSize="0.75rem">
-                                  Belum
-                                </Typography>
-                              )}
+                              {renderResidualRiskLevel(risk)}
                             </TableCell>
                             <TableCell>
                               {risk.treatmentPriority ? (
@@ -2218,14 +2577,18 @@ const RiskRegister = () => {
                     }}
                   />
                 </Grid>
-                {formData.initialProbability && formData.initialImpact && (
-                  <Grid item xs={12}>
-                    <Alert severity="info">
-                      Risk Score: {formData.initialProbability * formData.initialImpact} - 
-                      Level: {calculateRiskLevel(parseInt(formData.initialProbability) * parseInt(formData.initialImpact)).level}
-                    </Alert>
-                  </Grid>
-                )}
+
+              {formData.initialProbability && formData.initialImpact && (
+                <Grid item xs={12}>
+                  <Alert severity="info">
+                    {(() => {
+                      const score = calculateRiskScore(formData.initialImpact, formData.initialProbability);
+                      const level = calculateRiskLevel(score);
+                      return <>Risk Score: {score} • Level: {level.level}</>;
+                    })()}
+                  </Alert>
+                </Grid>
+              )}
               </Grid>
             </Paper>
 
@@ -2322,14 +2685,18 @@ const RiskRegister = () => {
                     }}
                   />
                 </Grid>
-                {formData.residualProbability && formData.residualImpact && (
-                  <Grid item xs={12}>
-                    <Alert severity="info">
-                      Risk Score: {formData.residualProbability * formData.residualImpact} - 
-                      Level: {calculateRiskLevel(parseInt(formData.residualProbability) * parseInt(formData.residualImpact)).level}
-                    </Alert>
-                  </Grid>
-                )}
+
+            {formData.residualProbability && formData.residualImpact && (
+              <Grid item xs={12}>
+                <Alert severity="info">
+                  {(() => {
+                    const score = calculateRiskScore(formData.residualImpact, formData.residualProbability);
+                    const level = calculateRiskLevel(score);
+                    return <>Risk Score: {score} • Level: {level.level}</>;
+                  })()}
+                </Alert>
+              </Grid>
+            )}
               </Grid>
             </Paper>
 
@@ -2567,30 +2934,39 @@ const RiskRegister = () => {
                 <Grid item xs={12}>
                   <Card variant="outlined" sx={{ backgroundColor: 'grey.50', p: 2 }}>
                     <Grid container spacing={2}>
+                      {/* Inherent preview */}
                       <Grid item xs={6}>
-                        <Typography variant="body2" color="textSecondary">
-                          Inherent Score
-                        </Typography>
-                        <Typography variant="h4" color="primary">
-                          {assessmentData.likelihood * assessmentData.impact}
-                        </Typography>
-                        <Chip 
-                          label={calculateRiskLevel(assessmentData.likelihood * assessmentData.impact).level}
-                          color={getValidChipColor(calculateRiskLevel(assessmentData.likelihood * assessmentData.impact).color, 'default')}
-                        />
+                        {(() => {
+                          const inhScore = calculateRiskScore(assessmentData.impact, assessmentData.likelihood);
+                          const inhLevel = calculateRiskLevel(inhScore);
+                          return (
+                            <>
+                              <Typography variant="h4" color="primary">{inhScore}</Typography>
+                              <Chip
+                                label={inhLevel.level}
+                                color={getValidChipColor(inhLevel.color, 'default')}
+                              />
+                            </>
+                          );
+                        })()}
                       </Grid>
+
+                      {/* Residual preview */}
                       <Grid item xs={6}>
-                        <Typography variant="body2" color="textSecondary">
-                          Residual Score
-                        </Typography>
-                        <Typography variant="h4" color="secondary">
-                          {assessmentData.residualLikelihood * assessmentData.residualImpact}
-                        </Typography>
-                        <Chip 
-                          label={calculateRiskLevel(assessmentData.residualLikelihood * assessmentData.residualImpact).level}
-                          color={getValidChipColor(calculateRiskLevel(assessmentData.residualLikelihood * assessmentData.residualImpact).color, 'default')}
-                          variant="outlined"
-                        />
+                        {(() => {
+                          const resScore = calculateRiskScore(assessmentData.residualImpact, assessmentData.residualLikelihood);
+                          const resLevel = calculateRiskLevel(resScore);
+                          return (
+                            <>
+                              <Typography variant="h4" color="secondary">{resScore}</Typography>
+                              <Chip
+                                label={resLevel.level}
+                                color={getValidChipColor(resLevel.color, 'default')}
+                                variant="outlined"
+                              />
+                            </>
+                          );
+                        })()}
                       </Grid>
                     </Grid>
                   </Card>
@@ -2763,7 +3139,7 @@ const RiskRegister = () => {
 
                 {/* Kolom Kanan - Penilaian & Assessment */}
                 <Grid item xs={12} md={6}>
-                  {/* Penilaian Risiko Inheren */}
+                  {/* Penilaian Risiko Inheren - GUNAKAN FUNGSI BARU */}
                   <Card sx={{ mb: 3 }}>
                     <CardContent>
                       <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -2783,11 +3159,23 @@ const RiskRegister = () => {
                           <Typography variant="subtitle2" fontWeight="bold">Kuantifikasi Risiko Inherent</Typography>
                           <Typography variant="body1">{selectedRisk.inherentRiskQuantification || '-'}</Typography>
                         </Grid>
-                        {selectedRisk.initialRiskLevel && (
+                        {selectedRisk.initialProbability && selectedRisk.initialImpact && (
                           <Grid item xs={12}>
                             <Alert severity="info">
-                              <strong>Risk Score: {selectedRisk.initialRiskLevel.score}</strong> - 
-                              Level: {selectedRisk.initialRiskLevel.level}
+                              {(() => {
+                                const inherentInfo = getInherentRiskLevelInfo(selectedRisk);
+                                return (
+                                  <Box>
+                                    <strong>Risk Score: {inherentInfo.score}</strong> - 
+                                    Level: {inherentInfo.level}
+                                    {selectedRisk.scoreMethod && (
+                                      <Typography variant="caption" display="block">
+                                        Method: {selectedRisk.scoreMethod}
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                );
+                              })()}
                             </Alert>
                           </Grid>
                         )}
@@ -2795,7 +3183,7 @@ const RiskRegister = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Penilaian Risiko Residual */}
+                  {/* Penilaian Risiko Residual - GUNAKAN FUNGSI BARU */}
                   <Card sx={{ mb: 3 }}>
                     <CardContent>
                       <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -2815,11 +3203,23 @@ const RiskRegister = () => {
                           <Typography variant="subtitle2" fontWeight="bold">Kuantifikasi Risiko Residual</Typography>
                           <Typography variant="body1">{selectedRisk.residualRiskQuantification || '-'}</Typography>
                         </Grid>
-                        {selectedRisk.residualRiskLevel && (
+                        {selectedRisk.residualProbability && selectedRisk.residualImpact && (
                           <Grid item xs={12}>
                             <Alert severity="info">
-                              <strong>Risk Score: {selectedRisk.residualRiskLevel.score}</strong> - 
-                              Level: {selectedRisk.residualRiskLevel.level}
+                              {(() => {
+                                const residualInfo = getResidualRiskLevelInfo(selectedRisk);
+                                return (
+                                  <Box>
+                                    <strong>Risk Score: {residualInfo.score}</strong> - 
+                                    Level: {residualInfo.level}
+                                    {selectedRisk.scoreMethod && (
+                                      <Typography variant="caption" display="block">
+                                        Method: {selectedRisk.scoreMethod}
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                );
+                              })()}
                             </Alert>
                           </Grid>
                         )}

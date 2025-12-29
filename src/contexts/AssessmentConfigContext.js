@@ -10,7 +10,7 @@ export const AssessmentConfigProvider = ({ children }) => {
   const [assessmentConfig, setAssessmentConfig] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load configuration
+  // Load configuration - TETAP SAMA
   const loadConfig = async () => {
     try {
       setLoading(true);
@@ -61,7 +61,7 @@ export const AssessmentConfigProvider = ({ children }) => {
     loadConfig();
   }, []);
 
-  // Helper function untuk mendapatkan rating options
+  // Helper function untuk mendapatkan rating options - TETAP SAMA
   const getRatingOptions = (type = 'likelihood') => {
     if (!assessmentConfig) return [1, 2, 3, 4, 5];
     
@@ -72,7 +72,7 @@ export const AssessmentConfigProvider = ({ children }) => {
     }
   };
 
-  // Helper function untuk mendapatkan rating label
+  // Helper function untuk mendapatkan rating label - TETAP SAMA
   const getRatingLabel = (value, type = 'likelihood') => {
     if (!assessmentConfig) {
       // Default labels
@@ -94,7 +94,7 @@ export const AssessmentConfigProvider = ({ children }) => {
     }
   };
 
-  // Helper function untuk mendapatkan risk level options
+  // Helper function untuk mendapatkan risk level options - TETAP SAMA
   const getRiskLevelOptions = () => {
     if (!assessmentConfig?.riskLevels) {
       return [
@@ -116,7 +116,7 @@ export const AssessmentConfigProvider = ({ children }) => {
     }));
   };
 
-  // Helper function untuk mendapatkan warna berdasarkan level label
+  // Helper function untuk mendapatkan warna berdasarkan level label - TETAP SAMA
   const getRiskLevelColor = (levelLabel) => {
     if (!assessmentConfig?.riskLevels) {
       const colors = {
@@ -134,25 +134,25 @@ export const AssessmentConfigProvider = ({ children }) => {
     return level?.color || 'default';
   };
 
-  // Helper function untuk mendapatkan label level risiko
+  // Helper function untuk mendapatkan label level risiko - TETAP SAMA
   const getRiskLevelLabel = (levelValue) => {
     const options = getRiskLevelOptions();
     const level = options.find(opt => opt.value === levelValue);
     return level?.label || levelValue;
   };
 
-  // Calculate risk score berdasarkan metode
+  // HANYA PERBAIKI FUNGSI calculateScore DENGAN MATRIKS ANDA:
   const calculateScore = (likelihood, impact) => {
     if (!assessmentConfig) return likelihood * impact;
     
     if (assessmentConfig.assessmentMethod === 'coordinate') {
-      // Matriks koordinat 5x5
+      // MATRIKS KOORDINAT 5x5 SESUAI PERMINTAAN ANDA
       const matrix = [
-        [1, 2, 3, 4, 5],
-        [2, 4, 6, 8, 10],
-        [3, 6, 9, 12, 15],
-        [4, 8, 12, 16, 20],
-        [5, 10, 15, 20, 25]
+        [1, 3, 5, 8, 20],
+        [2, 7, 11, 13, 21],
+        [4, 10, 14, 17, 22],
+        [6, 12, 16, 19, 24],
+        [9, 15, 18, 23, 25]
       ];
       
       const lIndex = Math.min(Math.max(likelihood - 1, 0), 4);
@@ -164,7 +164,7 @@ export const AssessmentConfigProvider = ({ children }) => {
     return likelihood * impact;
   };
 
-  // Calculate risk level berdasarkan score
+  // Calculate risk level berdasarkan score - TETAP SAMA
   const calculateRiskLevel = (score) => {
     const options = getRiskLevelOptions();
     const riskLevel = options.find(level => 
@@ -181,7 +181,7 @@ export const AssessmentConfigProvider = ({ children }) => {
   const value = {
     assessmentConfig,
     loading,
-    calculateScore,
+    calculateScore, // menggunakan matriks baru
     calculateRiskLevel,
     getRatingOptions,
     getRatingLabel,

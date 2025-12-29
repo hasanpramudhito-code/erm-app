@@ -44,6 +44,9 @@ import {
   limit 
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { fetchRisks } from '../services/riskService';
+
+const risks = await fetchRisks();
 
 const Dashboard = () => {
   const { userData, currentUser } = useAuth();
