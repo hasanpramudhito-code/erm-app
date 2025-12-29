@@ -45,4 +45,3 @@ export function getCoordinateScore(likelihood, impact, fallbackProduct) {
   const product = L * I;
   return typeof fallbackProduct === 'number' ? fallbackProduct : product;
 }
-``

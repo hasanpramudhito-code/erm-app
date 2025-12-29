@@ -1,4 +1,6 @@
 // scripts/migrateRiskData.js
+const { collection, getDocs, writeBatch } = require('firebase/firestore');
+const { db } = require('../config/firebase');
 export const migrateRiskData = async (db) => {
   const risksRef = collection(db, 'risks');
   const snapshot = await getDocs(risksRef);
