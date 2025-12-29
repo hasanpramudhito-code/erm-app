@@ -96,7 +96,6 @@ import {
   exportRiskRegisterExcel 
 } from '../services/reporting/exportRiskRegister';
 import { fetchRisks } from '../services/riskService';
-const risks = await fetchRisks();
 import { simpleExportRiskRegisterPDF } from './simple-export';
 
 const RiskRegister = () => {
