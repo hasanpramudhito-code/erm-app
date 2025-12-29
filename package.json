@@ -52,5 +52,12 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+
+  "eslintConfig": {
+    "rules": {
+      "import/first": "off",
+      "no-undef": "off"
+    }
   }
 }
