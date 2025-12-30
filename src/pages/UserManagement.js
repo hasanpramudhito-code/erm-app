@@ -38,6 +38,7 @@ import {
 import {
   collection,
   getDocs,
+  getDoc,
   doc,
   updateDoc,
   deleteDoc,
@@ -53,7 +54,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { ROLES } from '../config/roles';
 
 const normalizeRole = (role) => role?.toUpperCase() || '';
-
+const isAdmin = normalizeRole(userData?.role) === 'ADMIN';
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
   const [organizationUnits, setOrganizationUnits] = useState([]);
@@ -81,35 +82,36 @@ const loadData = async () => {
   try {
     setLoading(true);
 
-    let usersSnapshot;
+    let usersList = [];
 
     if (isAdmin) {
-      // ADMIN: boleh lihat semua user
-      usersSnapshot = await getDocs(collection(db, 'users'));
-    } else {
-      // NON-ADMIN: hanya boleh lihat data sendiri
-      const q = query(
-        collection(db, 'users'),
-        where('uid', '==', auth.currentUser.uid)
-      );
-      usersSnapshot = await getDocs(q);
-    }
-
-    const usersList = [];
-
-    usersSnapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      usersList.push({
-        id: docSnap.id,
-        uid: data.uid || docSnap.id,
-        ...data,
-        role: normalizeRole(data.role)
+      // ✅ ADMIN: ambil semua user
+      const snapshot = await getDocs(collection(db, 'users'));
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        usersList.push({
+          id: docSnap.id,
+          ...data,
+          role: normalizeRole(data.role)
+        });
       });
-    });
+    } else {
+      // ✅ NON-ADMIN: ambil 1 dokumen saja (docId = uid)
+      const docRef = doc(db, 'users', auth.currentUser.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        usersList.push({
+          id: docSnap.id,
+          ...docSnap.data(),
+          role: normalizeRole(docSnap.data().role)
+        });
+      }
+    }
 
     setUsers(usersList);
 
-    // ===== ORGANIZATION UNITS (TIDAK DIUBAH) =====
+    // ===== ORGANIZATION UNITS (AMAN) =====
     try {
       const unitsSnapshot = await getDocs(collection(db, 'organizationUnits'));
       const unitsList = [];
