@@ -1,8 +1,12 @@
 // src/config/firebase.js
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAuth } from 'firebase/auth';
+import { 
+  getFirestore, 
+  enableLogging,  // ✅ TAMBAHKAN INI
+  connectFirestoreEmulator  // Optional untuk debug
+} from 'firebase/firestore';
 
 
 // TEMPORARY CONFIG - nanti diganti dengan config asli dari Firebase Console
@@ -20,7 +24,6 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app); // Pastikan ini ada
-
 
 
 export default app;

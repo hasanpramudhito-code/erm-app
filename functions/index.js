@@ -1,84 +1,111 @@
-// functions/index.js
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 admin.initializeApp();
 
-exports.createUserWithRole = functions.https.onCall(async (data, context) => {
-  // Cek apakah admin yang memanggil
-  if (!context.auth || context.auth.token.role !== 'ADMIN') {
-    throw new functions.https.HttpsError(
-      'permission-denied',
-      'Hanya admin yang bisa membuat user'
-    );
-  }
-
-  const { email, password, name, role, department, position, phone } = data;
-
+// Function 1: Set claims saat user dibuat
+exports.onUserCreated = functions.auth.user().onCreate(async (user) => {
   try {
-    // 1. Create user di Authentication
-    const userRecord = await admin.auth().createUser({
-      email,
-      password,
-      displayName: name,
-      emailVerified: false,
-      disabled: false
+    // Default role: STAFF
+    await admin.auth().setCustomUserClaims(user.uid, {
+      role: 'STAFF',
+      staff: true,
+      created: Date.now()
     });
-
-    // 2. Set custom claims
-    await admin.auth().setCustomUserClaims(userRecord.uid, {
-      role: role.toUpperCase()
-    });
-
-    // 3. Create user document di Firestore
-    await admin.firestore().collection('users').doc(userRecord.uid).set({
-      uid: userRecord.uid,
-      email: email.toLowerCase(),
-      name,
-      role: role.toUpperCase(),
-      department: department || '',
-      position: position || '',
-      phone: phone || '',
+    
+    // Create user document di Firestore
+    await admin.firestore().collection('users').doc(user.uid).set({
+      uid: user.uid,
+      email: user.email,
+      name: user.displayName || '',
+      role: 'STAFF',
       status: 'active',
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
-
-    return {
-      success: true,
-      message: 'User created successfully',
-      uid: userRecord.uid
-    };
+    
+    console.log(`✅ User ${user.email} created with STAFF role`);
   } catch (error) {
     console.error('Error creating user:', error);
+  }
+});
+
+// Function 2: Update role (dipanggil dari admin panel)
+exports.updateUserRole = functions.https.onCall(async (data, context) => {
+  // Cek apakah admin
+  if (!context.auth || context.auth.token.role !== 'ADMIN') {
+    throw new functions.https.HttpsError(
+      'permission-denied', 
+      'Hanya admin yang bisa update role'
+    );
+  }
+  
+  const { uid, role } = data;
+  
+  if (!uid || !role) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'UID dan Role diperlukan'
+    );
+  }
+  
+  try {
+    // Update custom claims
+    const claims = { role: role };
+    claims[role.toLowerCase()] = true;
+    
+    await admin.auth().setCustomUserClaims(uid, claims);
+    
+    // Update Firestore
+    await admin.firestore().collection('users').doc(uid).update({
+      role: role,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: context.auth.uid
+    });
+    
+    return { 
+      success: true, 
+      message: `Role updated to ${role}`,
+      uid: uid
+    };
+    
+  } catch (error) {
+    console.error('Error updating role:', error);
     throw new functions.https.HttpsError('internal', error.message);
   }
 });
 
-exports.setUserRole = functions.https.onCall(async (data, context) => {
-  if (!context.auth || context.auth.token.role !== 'ADMIN') {
-    throw new functions.https.HttpsError(
-      'permission-denied',
-      'Hanya admin yang bisa mengubah role'
-    );
+// Function 3: Set admin claims (ONE-TIME untuk user existing)
+exports.setAdminClaims = functions.https.onRequest(async (req, res) => {
+  // Simple security: check secret key
+  const secret = req.query.secret;
+  if (secret !== 'YOUR_SECRET_KEY') {
+    return res.status(403).send('Forbidden');
   }
-
-  const { uid, role } = data;
-
+  
+  const uid = req.query.uid || 'jkAff3bfO2ZnbznEkCDXBZM6DJq1';
+  
   try {
-    // Update custom claims
     await admin.auth().setCustomUserClaims(uid, {
-      role: role.toUpperCase()
+      role: 'ADMIN',
+      admin: true,
+      accessLevel: 10
     });
-
-    // Update Firestore
+    
     await admin.firestore().collection('users').doc(uid).update({
-      role: role.toUpperCase(),
+      role: 'ADMIN',
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
-
-    return { success: true };
+    
+    res.send(`
+      <h1>✅ Custom Claims Set Successfully!</h1>
+      <p>User UID: ${uid}</p>
+      <p>Role: ADMIN</p>
+      <p>Claims: {"role":"ADMIN","admin":true}</p>
+      <br>
+      <p>Now refresh your app and login again.</p>
+    `);
+    
   } catch (error) {
-    console.error('Error updating role:', error);
-    throw new functions.https.HttpsError('internal', error.message);
+    res.status(500).send(`Error: ${error.message}`);
   }
 });
