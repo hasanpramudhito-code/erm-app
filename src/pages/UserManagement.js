@@ -77,47 +77,58 @@ const UserManagement = () => {
   });
 
   // Load users and organization units
-  const loadData = async () => {
-    try {
-      setLoading(true);
+const loadData = async () => {
+  try {
+    setLoading(true);
 
-      const usersSnapshot = await getDocs(collection(db, 'users'));
-      const usersList = [];
-      
-      usersSnapshot.forEach((doc) => {
-        const data = doc.data();
-        
-        const userObj = {
-          id: doc.id,
-          uid: data.uid || doc.id,
-          ...data,
-          role: normalizeRole(data.role)
-        };
-        
-        usersList.push(userObj);
-      });
-      
-      setUsers(usersList);
-      
-      // Load organization units
-      try {
-        const unitsSnapshot = await getDocs(collection(db, 'organizationUnits'));
-        const unitsList = [];
-        unitsSnapshot.forEach((doc) => {
-          unitsList.push({ id: doc.id, ...doc.data() });
-        });
-        setOrganizationUnits(unitsList);
-      } catch (unitsError) {
-        console.warn('Could not load organization units:', unitsError);
-      }
-      
-    } catch (error) {
-      console.error('Error loading data:', error);
-      setError('Gagal memuat data');
-    } finally {
-      setLoading(false);
+    let usersSnapshot;
+
+    if (isAdmin) {
+      // ADMIN: boleh lihat semua user
+      usersSnapshot = await getDocs(collection(db, 'users'));
+    } else {
+      // NON-ADMIN: hanya boleh lihat data sendiri
+      const q = query(
+        collection(db, 'users'),
+        where('uid', '==', auth.currentUser.uid)
+      );
+      usersSnapshot = await getDocs(q);
     }
-  };
+
+    const usersList = [];
+
+    usersSnapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      usersList.push({
+        id: docSnap.id,
+        uid: data.uid || docSnap.id,
+        ...data,
+        role: normalizeRole(data.role)
+      });
+    });
+
+    setUsers(usersList);
+
+    // ===== ORGANIZATION UNITS (TIDAK DIUBAH) =====
+    try {
+      const unitsSnapshot = await getDocs(collection(db, 'organizationUnits'));
+      const unitsList = [];
+      unitsSnapshot.forEach((docSnap) => {
+        unitsList.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setOrganizationUnits(unitsList);
+    } catch (unitsError) {
+      console.warn('Could not load organization units:', unitsError);
+    }
+
+  } catch (error) {
+    console.error('Error loading data:', error);
+    setError('Gagal memuat data');
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   useEffect(() => {
     loadData();
@@ -134,16 +145,8 @@ const UserManagement = () => {
 
       if (editingUser) {
         // UPDATE USER (Firestore only)
-        await updateDoc(doc(db, 'users', editingUser.id), {
-          name: formData.name,
-          role: upperRole,
-          department: formData.department,
-          position: formData.position,
-          unitId: formData.unitId,
-          phone: formData.phone,
-          status: formData.status,
-          updatedAt: new Date(),
-          updatedBy: userData?.name || 'System'
+        await admin.auth().setCustomUserClaims(uid, {
+          role: 'ADMIN'
         });
         
         setSuccess('User berhasil diupdate!');

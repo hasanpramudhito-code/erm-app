@@ -1,3 +1,4 @@
+
 // File: src/pages/RiskAssessment.js
 import React, { useState, useEffect } from 'react';
 import {
@@ -14,10 +15,6 @@ import {
   TableHead,
   TableRow,
   Chip,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Button,
   Dialog,
   DialogTitle,
@@ -29,7 +26,6 @@ import {
   LinearProgress,
   CircularProgress,
   Snackbar,
-  Menu,
   Popover,
   DialogActions,
   Stepper,
@@ -43,13 +39,11 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
   Accordion,
   AccordionSummary,
   AccordionDetails,
   ButtonGroup
 } from '@mui/material';
-
 import {
   Warning,
   TrendingUp,
@@ -65,24 +59,16 @@ import {
   Cancel,
   ExpandMore,
   Settings,
-  Link,
   CompareArrows,
   Delete,
   Add,
   Timeline,
   ShowChart
 } from '@mui/icons-material';
-
 import {
   collection,
   getDocs,
-  doc,
-  updateDoc,
-  getDoc,
-  setDoc,
-  addDoc
 } from 'firebase/firestore';
-
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -93,37 +79,35 @@ import HeatMapFilters from '../components/HeatMapFilters';
 import RiskCellDetailModal from '../components/RiskCellDetailModal';
 import { exportHeatmapAsPNG, exportHeatmapAsPDF, exportHeatmapAsCSV, exportCellDetailsAsText } from '../utils/heatmapExport';
 import { useApprovalActions } from '../hooks/useApproval';
-import { fetchRisks } from '../services/riskService';
-
-const risks = await fetchRisks();
+// import { fetchRisks } from '../services/riskService'; // Dihapus pemanggilan top-level await untuk menghindari gangguan build
 
 // =======================================================================
 // DEFAULT CONSTANTS (JIKA IMPORT GAGAL)
 // =======================================================================
-
 const DEFAULT_RISK_LEVELS = [
-  { label: 'Rendah', min: 1, max: 5, color: '#4caf50' },
-  { label: 'Sedang', min: 6, max: 12, color: '#ff9800' },
-  { label: 'Tinggi', min: 13, max: 20, color: '#f44336' },
+  { label: 'Rendah',  min: 1,  max: 5,  color: '#4caf50' },
+  { label: 'Sedang',  min: 6,  max: 12, color: '#ff9800' },
+  { label: 'Tinggi',  min: 13, max: 20, color: '#f44336' },
   { label: 'Ekstrim', min: 21, max: 25, color: '#7b1fa2' }
 ];
 
 const DEFAULT_COORDINATE_MATRIX = [
-        [1, 3, 5, 8, 20],
-        [2, 7, 11, 13, 21],
-        [4, 10, 14, 17, 22],
-        [6, 12, 16, 19, 24],
-        [9, 15, 18, 23, 25]
+  [1, 3, 5, 8, 20],
+  [2, 7, 11, 13, 21],
+  [4, 10, 14, 17, 22],
+  [6, 12, 16, 19, 24],
+  [9, 15, 18, 23, 25]
 ];
 
+// Perbaikan logika range check: gunakan matrix untuk 1..5, jika di luar gunakan perkalian
 const getCoordinateScoreDefault = (likelihood, impact) => {
-  if (likelihood < 1 || likelihood > 5 || impact < 1 || impact > 5) {
-    return likelihood * impact;
-  }
+  const outOfRange =
+    likelihood < 1 || likelihood > 5 || impact < 1 || impact > 5;
+  if (outOfRange) return likelihood * impact;
   return DEFAULT_COORDINATE_MATRIX[likelihood - 1][impact - 1];
 };
 
-// Coba import Configuration
+// Coba import Configuration (dipertahankan dengan require agar tidak mengganggu environment yang sudah jalan)
 let importedConfig = {
   RISK_LEVELS: DEFAULT_RISK_LEVELS,
   COORDINATE_MATRIX: DEFAULT_COORDINATE_MATRIX,
@@ -131,11 +115,20 @@ let importedConfig = {
 };
 
 try {
+  // Jika bundler mendukung CommonJS interop, ini aman; jika file tidak ada, fallback ke defaults
+  // eslint-disable-next-line global-require, import/no-commonjs
   const configModule = require('./Configuration');
-  if (configModule.RISK_LEVELS) importedConfig.RISK_LEVELS = configModule.RISK_LEVELS;
-  if (configModule.COORDINATE_MATRIX) importedConfig.COORDINATE_MATRIX = configModule.COORDINATE_MATRIX;
-  if (configModule.getCoordinateScore) importedConfig.getCoordinateScore = configModule.getCoordinateScore;
+  if (configModule && configModule.RISK_LEVELS) {
+    importedConfig.RISK_LEVELS = configModule.RISK_LEVELS;
+  }
+  if (configModule && configModule.COORDINATE_MATRIX) {
+    importedConfig.COORDINATE_MATRIX = configModule.COORDINATE_MATRIX;
+  }
+  if (configModule && configModule.getCoordinateScore) {
+    importedConfig.getCoordinateScore = configModule.getCoordinateScore;
+  }
 } catch (error) {
+  // Tetap fallback ke default
   console.warn('Configuration.js not found, using defaults');
 }
 
@@ -144,12 +137,10 @@ const { RISK_LEVELS, COORDINATE_MATRIX, getCoordinateScore } = importedConfig;
 // =======================================================================
 // AVERAGE RISK SCORE TREND (RECOMMENDED)
 // =======================================================================
-
 const AverageRiskScoreTrend = ({ risks }) => {
   const inherentScores = risks
     .filter(r => typeof r.inherentScore === 'number')
     .map(r => r.inherentScore);
-
   const residualScores = risks
     .filter(r => typeof r.residualScore === 'number')
     .map(r => r.residualScore);
@@ -158,16 +149,13 @@ const AverageRiskScoreTrend = ({ risks }) => {
     inherentScores.length > 0
       ? inherentScores.reduce((a, b) => a + b, 0) / inherentScores.length
       : 0;
-
   const avgResidual =
     residualScores.length > 0
       ? residualScores.reduce((a, b) => a + b, 0) / residualScores.length
       : 0;
 
   const reduction =
-    avgInherent > 0
-      ? ((avgInherent - avgResidual) / avgInherent) * 100
-      : 0;
+    avgInherent > 0 ? ((avgInherent - avgResidual) / avgInherent) * 100 : 0;
 
   const maxY = Math.max(avgInherent, avgResidual, 1);
 
@@ -181,7 +169,6 @@ const AverageRiskScoreTrend = ({ risks }) => {
             Average Risk Score Trend
           </Typography>
         </Box>
-
         <Typography variant="body2" color="textSecondary" mb={3}>
           Perbandingan rata-rata skor risiko sebelum dan sesudah treatment
         </Typography>
@@ -226,25 +213,12 @@ const AverageRiskScoreTrend = ({ risks }) => {
                 fill="none"
                 stroke="#1976d2"
                 strokeWidth="2"
-                points={`10,${100 - (avgInherent / maxY) * 80}
-                         90,${100 - (avgResidual / maxY) * 80}`}
+                points={`10,${100 - (avgInherent / maxY) * 80} 90,${100 - (avgResidual / maxY) * 80}`}
               />
-
               {/* Inherent Point */}
-              <circle
-                cx="10"
-                cy={100 - (avgInherent / maxY) * 80}
-                r="3"
-                fill="#1976d2"
-              />
-
+              <circle cx="10" cy={100 - (avgInherent / maxY) * 80} r="3" fill="#1976d2" />
               {/* Residual Point */}
-              <circle
-                cx="90"
-                cy={100 - (avgResidual / maxY) * 80}
-                r="3"
-                fill="#2e7d32"
-              />
+              <circle cx="90" cy={100 - (avgResidual / maxY) * 80} r="3" fill="#2e7d32" />
             </svg>
           </Box>
 
@@ -271,12 +245,9 @@ const AverageRiskScoreTrend = ({ risks }) => {
               <Typography variant="caption" color="textSecondary">
                 Avg Inherent
               </Typography>
-              <Typography variant="h6">
-                {avgInherent.toFixed(1)}
-              </Typography>
+              <Typography variant="h6">{avgInherent.toFixed(1)}</Typography>
             </Card>
           </Grid>
-
           <Grid item xs={4}>
             <Card variant="outlined" sx={{ p: 1 }}>
               <Typography variant="caption" color="textSecondary">
@@ -287,7 +258,6 @@ const AverageRiskScoreTrend = ({ risks }) => {
               </Typography>
             </Card>
           </Grid>
-
           <Grid item xs={4}>
             <Card variant="outlined" sx={{ p: 1 }}>
               <Typography variant="caption" color="textSecondary">
@@ -316,14 +286,12 @@ const AverageRiskScoreTrend = ({ risks }) => {
   );
 };
 
-
 // =======================================================================
 // PROFESSIONAL RISK MATRIX
 // =======================================================================
-
-const ProfessionalRiskMatrix = ({ 
-  risks, 
-  onCellClick, 
+const ProfessionalRiskMatrix = ({
+  risks,
+  onCellClick,
   assessmentMethod,
   riskLevels,
   onHeatmapClick,
@@ -331,20 +299,17 @@ const ProfessionalRiskMatrix = ({
   id
 }) => {
   const navigate = useNavigate();
-
   const matrix = Array(5).fill().map(() => Array(5).fill(0));
-  
+
   risks.forEach(risk => {
     let likelihood, impact;
-    
     if (viewMode === 'inherent') {
-      likelihood = risk.likelihood || risk.inherentLikelihood || 1;
-      impact = risk.impact || risk.inherentImpact || 1;
+      likelihood = risk.likelihood ?? risk.inherentLikelihood ?? 1;
+      impact    = risk.impact    ?? risk.inherentImpact    ?? 1;
     } else {
-      likelihood = risk.residualLikelihood || risk.likelihood || risk.inherentLikelihood || 1;
-      impact = risk.residualImpact || risk.impact || risk.inherentImpact || 1;
+      likelihood = risk.residualLikelihood ?? risk.likelihood ?? risk.inherentLikelihood ?? 1;
+      impact    = risk.residualImpact     ?? risk.impact    ?? risk.inherentImpact     ?? 1;
     }
-    
     if (likelihood >= 1 && likelihood <= 5 && impact >= 1 && impact <= 5) {
       matrix[likelihood - 1][impact - 1]++;
     }
@@ -356,58 +321,46 @@ const ProfessionalRiskMatrix = ({
       : likelihood * impact;
   };
 
+  const effectiveRiskLevels =
+    Array.isArray(riskLevels) && riskLevels.length ? riskLevels : RISK_LEVELS;
+
   const getCellColor = (likelihood, impact) => {
-    let score = getScore(likelihood, impact);
-    
-    if (!riskLevels || !Array.isArray(riskLevels) || riskLevels.length === 0) {
-      if (score <= 5) return '#4caf50';
-      if (score <= 12) return '#ff9800';
-      if (score <= 20) return '#f44336';
-      return '#7b1fa2';
-    }
-    
-    const riskLevel = riskLevels.find(level => score >= level.min && score <= level.max);
-    return riskLevel ? riskLevel.color : '#cccccc';
+    const score = getScore(likelihood, impact);
+    const riskLevel = effectiveRiskLevels.find(level => score >= level.min && score <= level.max);
+    if (riskLevel) return riskLevel.color;
+    // default fallback
+    if (score <= 5) return '#4caf50';
+    if (score <= 12) return '#ff9800';
+    if (score <= 20) return '#f44336';
+    return '#7b1fa2';
   };
 
   const getRiskLevel = (likelihood, impact) => {
-    let score = getScore(likelihood, impact);
-    
-    if (!riskLevels || !Array.isArray(riskLevels) || riskLevels.length === 0) {
-      if (score <= 5) return 'Rendah';
-      if (score <= 12) return 'Sedang';
-      if (score <= 20) return 'Tinggi';
-      return 'Ekstrim';
-    }
-    
-    const riskLevel = riskLevels.find(level => score >= level.min && score <= level.max);
+    const score = getScore(likelihood, impact);
+    const riskLevel = effectiveRiskLevels.find(level => score >= level.min && score <= level.max);
     return riskLevel ? riskLevel.label : 'Unknown';
   };
 
   const handleCellClickLocal = (likelihood, impact) => {
     const cellRisks = risks.filter(risk => {
-      let L =
+      const L =
         viewMode === 'inherent'
-          ? (risk.likelihood || risk.inherentLikelihood)
-          : (risk.residualLikelihood || risk.likelihood || risk.inherentLikelihood);
-
-      let I =
+          ? (risk.likelihood ?? risk.inherentLikelihood)
+          : (risk.residualLikelihood ?? risk.likelihood ?? risk.inherentLikelihood);
+      const I =
         viewMode === 'inherent'
-          ? (risk.impact || risk.inherentImpact)
-          : (risk.residualImpact || risk.impact || risk.inherentImpact);
-
+          ? (risk.impact ?? risk.inherentImpact)
+          : (risk.residualImpact ?? risk.impact ?? risk.inherentImpact);
       return L === likelihood && I === impact;
     });
 
     if (cellRisks.length > 0 && onHeatmapClick) {
       const score = getScore(likelihood, impact);
-      const riskLevel = riskLevels?.find(level => score >= level.min && score <= level.max);
-      
-      if (riskLevel) {
-        onHeatmapClick(riskLevel.label, likelihood, impact, viewMode);
+      const rl = effectiveRiskLevels.find(level => score >= level.min && score <= level.max);
+      if (rl) {
+        onHeatmapClick(rl.label, likelihood, impact, viewMode);
       }
     }
-
     onCellClick?.(likelihood, impact);
   };
 
@@ -435,29 +388,29 @@ const ProfessionalRiskMatrix = ({
           <Box display="flex" alignItems="center" gap={2}>
             <BarChart sx={{ fontSize: 32, color: 'primary.main' }} />
             <Box>
-              <Typography variant="h5" fontWeight="bold" color="primary">
-                {viewMode === 'inherent' ? 'Inherent Risk Matrix' : 'Residual Risk Matrix'}
-                <Chip 
+              <Box display="flex" alignItems="center" flexWrap="wrap" gap={1}>
+                <Typography variant="h5" fontWeight="bold" color="primary">
+                  {viewMode === 'inherent' ? 'Inherent Risk Matrix' : 'Residual Risk Matrix'}
+                </Typography>
+                <Chip
                   label={assessmentMethod === 'coordinate' ? 'Koordinat' : 'Perkalian'}
                   size="small"
                   sx={{
-                    ml: 1,
                     border: '1px solid',
                     borderColor: 'primary.main',
                     color: 'primary.main',
                     backgroundColor: 'transparent'
                   }}
                 />
-                <Chip 
-                  label={viewMode === 'inherent' ? 'Inherent' : 'Residual'} 
+                <Chip
+                  label={viewMode === 'inherent' ? 'Inherent' : 'Residual'}
                   size="small"
                   sx={{
-                    ml: 1,
                     backgroundColor: viewMode === 'inherent' ? 'secondary.main' : 'success.main',
                     '& .MuiChip-label': { color: 'white' }
                   }}
                 />
-              </Typography>
+              </Box>
               <Typography variant="body2" color="textSecondary">
                 {viewMode === 'inherent'
                   ? 'Distribusi risiko inherent sebelum treatment'
@@ -465,8 +418,10 @@ const ProfessionalRiskMatrix = ({
               </Typography>
             </Box>
           </Box>
-          <Tooltip title="Klik sel untuk lihat risiko terkait">
-            <Link color="action" />
+          <Tooltip title="Klik sel matriks untuk melihat risiko terkait">
+            <Typography variant="caption" color="textSecondary">
+              Tips: klik sel untuk detail
+            </Typography>
           </Tooltip>
         </Box>
 
@@ -475,12 +430,10 @@ const ProfessionalRiskMatrix = ({
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell colSpan={2} align="center"
-                  sx={{
-                    backgroundColor: '#1976d2',
-                    color: 'white',
-                    fontWeight: 'bold'
-                  }}
+                <TableCell
+                  colSpan={2}
+                  align="center"
+                  sx={{ backgroundColor: '#1976d2', color: 'white', fontWeight: 'bold' }}
                 >
                   DAMPAK (IMPACT) →
                 </TableCell>
@@ -488,11 +441,7 @@ const ProfessionalRiskMatrix = ({
                   <TableCell
                     key={impact.level}
                     align="center"
-                    sx={{
-                      backgroundColor: '#1976d2',
-                      color: 'white',
-                      fontWeight: 'bold'
-                    }}
+                    sx={{ backgroundColor: '#1976d2', color: 'white', fontWeight: 'bold' }}
                   >
                     <Box>
                       <Typography variant="subtitle2">I{impact.level}</Typography>
@@ -502,32 +451,24 @@ const ProfessionalRiskMatrix = ({
                 ))}
               </TableRow>
             </TableHead>
-
             <TableBody>
-              {likelihoodLabels.map((likelihood) => (
+              {likelihoodLabels.map(likelihood => (
                 <TableRow key={likelihood.level}>
-                  <TableCell 
+                  <TableCell
                     align="center"
-                    sx={{
-                      backgroundColor: '#1976d2',
-                      color: 'white',
-                      fontWeight: 'bold'
-                    }}
+                    sx={{ backgroundColor: '#1976d2', color: 'white', fontWeight: 'bold' }}
                   >
                     <Typography variant="subtitle2">L{likelihood.level}</Typography>
                     <Typography variant="caption">{likelihood.label}</Typography>
                   </TableCell>
-
                   <TableCell align="center" sx={{ backgroundColor: 'grey.100' }}>
                     {likelihood.level}
                   </TableCell>
-
                   {impactLabels.map((impact, index) => {
                     const count = matrix[likelihood.level - 1][index];
                     const cellColor = getCellColor(likelihood.level, impact.level);
                     const score = getScore(likelihood.level, impact.level);
-                    const riskLevel = getRiskLevel(likelihood.level, impact.level);
-
+                    const riskLevelName = getRiskLevel(likelihood.level, impact.level);
                     return (
                       <Tooltip
                         key={impact.level}
@@ -537,7 +478,7 @@ const ProfessionalRiskMatrix = ({
                               {impact.label} Impact, {likelihood.label}
                             </Typography>
                             <Typography variant="caption">
-                              {count} risks | Score: {score} | Level: {riskLevel}
+                              {count} risks • Score: {score} • Level: {riskLevelName}
                             </Typography>
                           </Box>
                         }
@@ -559,7 +500,7 @@ const ProfessionalRiskMatrix = ({
                         >
                           <Typography variant="h6">{count}</Typography>
                           <Typography variant="caption" display="block">
-                            {riskLevel}
+                            {riskLevelName}
                           </Typography>
                           <Typography variant="caption" display="block">
                             Score: {score}
@@ -580,7 +521,7 @@ const ProfessionalRiskMatrix = ({
             Risk Level Legend:
           </Typography>
           <Grid container spacing={1}>
-            {(riskLevels || RISK_LEVELS).map((level, idx) => (
+            {(effectiveRiskLevels || RISK_LEVELS).map((level, idx) => (
               <Grid item xs={6} sm={3} key={idx}>
                 <Box display="flex" alignItems="center" gap={1}>
                   <Box
@@ -607,9 +548,10 @@ const ProfessionalRiskMatrix = ({
 // =======================================================================
 // CONFIGURATION DIALOG
 // =======================================================================
-
 const RiskAssessmentConfigDialog = ({ open, onClose, config }) => {
   if (!config) return null;
+  const effectiveRiskLevels =
+    Array.isArray(config.riskLevels) && config.riskLevels.length ? config.riskLevels : RISK_LEVELS;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -621,19 +563,16 @@ const RiskAssessmentConfigDialog = ({ open, onClose, config }) => {
           </Typography>
         </Box>
       </DialogTitle>
-
       <DialogContent>
         <Typography variant="body2" paragraph color="textSecondary">
           Konfigurasi penentuan level risiko sudah dikelola secara terpusat di
-          <strong> configuration.js</strong>. Untuk mengubah konfigurasi,
-          silakan edit file tersebut.
+          <strong> configuration.js</strong>. Untuk mengubah konfigurasi, silakan edit file tersebut.
         </Typography>
 
         <Accordion defaultExpanded>
           <AccordionSummary expandIcon={<ExpandMore />}>
             <Typography variant="h6">📊 Metode Penilaian Risiko</Typography>
           </AccordionSummary>
-
           <AccordionDetails>
             <Grid container spacing={3}>
               {/* Assessment Method */}
@@ -670,13 +609,13 @@ const RiskAssessmentConfigDialog = ({ open, onClose, config }) => {
                           Tingkat Risiko
                         </Typography>
                         <Typography variant="body2" color="textSecondary">
-                          {config.riskLevels?.length || 0} level risiko
+                          {(effectiveRiskLevels || []).length} level risiko
                         </Typography>
                       </Box>
                     </Box>
 
                     <Box sx={{ maxHeight: 200, overflowY: 'auto' }}>
-                      {(config.riskLevels || RISK_LEVELS).map((level, index) => (
+                      {(effectiveRiskLevels || RISK_LEVELS).map((level, index) => (
                         <Box key={index} display="flex" alignItems="center" gap={1} mb={1}>
                           <Box
                             sx={{
@@ -715,7 +654,6 @@ const RiskAssessmentConfigDialog = ({ open, onClose, config }) => {
           </Typography>
         </Alert>
       </DialogContent>
-
       <DialogActions sx={{ p: 3 }}>
         <Button onClick={onClose} variant="contained">
           Tutup
@@ -728,7 +666,6 @@ const RiskAssessmentConfigDialog = ({ open, onClose, config }) => {
 // =======================================================================
 // EXPORT MENU
 // =======================================================================
-
 const CustomExportMenu = ({
   anchorEl,
   open,
@@ -750,34 +687,18 @@ const CustomExportMenu = ({
       <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
         Export Options
       </Typography>
-
       <List dense>
         <ListItem button disabled={loading} onClick={() => { onExportPNG(); onClose(); }}>
-          <ListItemText 
-            primary="Export as PNG" 
-            secondary="Gambar heatmap" 
-          />
+          <ListItemText primary="Export as PNG" secondary="Gambar heatmap" />
         </ListItem>
-
         <ListItem button disabled={loading} onClick={() => { onExportPDF(); onClose(); }}>
-          <ListItemText 
-            primary="Export as PDF" 
-            secondary="Laporan lengkap" 
-          />
+          <ListItemText primary="Export as PDF" secondary="Laporan lengkap" />
         </ListItem>
-
         <ListItem button disabled={loading} onClick={() => { onExportCSV(); onClose(); }}>
-          <ListItemText 
-            primary="Export as CSV" 
-            secondary="Data spreadsheet" 
-          />
+          <ListItemText primary="Export as CSV" secondary="Data spreadsheet" />
         </ListItem>
-
         <ListItem button disabled={loading} onClick={() => { onExportText(); onClose(); }}>
-          <ListItemText 
-            primary="Export as Text" 
-            secondary="Laporan teks" 
-          />
+          <ListItemText primary="Export as Text" secondary="Laporan teks" />
         </ListItem>
       </List>
     </Box>
@@ -787,7 +708,6 @@ const CustomExportMenu = ({
 // =======================================================================
 // MAIN COMPONENT
 // =======================================================================
-
 const RiskAssessment = () => {
   const { currentUser, userData } = useAuth();
   const { settings } = useSettings();
@@ -811,11 +731,9 @@ const RiskAssessment = () => {
   // ===================================================================
   // STATES
   // ===================================================================
-
   const [risks, setRisks] = useState([]);
   const [organizationUnits, setOrganizationUnits] = useState([]);
   const [filteredRisks, setFilteredRisks] = useState([]);
-
   const [heatmapFilters, setHeatmapFilters] = useState({
     department: 'all',
     category: 'all',
@@ -823,53 +741,47 @@ const RiskAssessment = () => {
     riskLevel: 'all',
     search: ''
   });
-
   const [selectedCell, setSelectedCell] = useState(null);
   const [cellDetailOpen, setCellDetailOpen] = useState(false);
-
   const [selectedUnit, setSelectedUnit] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
-
   const [configDialog, setConfigDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [exportMenuAnchor, setExportMenuAnchor] = useState(null);
-
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: '',
     severity: 'success'
   });
-
   const [viewMode, setViewMode] = useState('inherent');
 
   // ===================================================================
   // EXPORT HANDLERS
   // ===================================================================
-
   const prepareHeatmapData = () => {
     const heatmapData = [];
-    
     for (let likelihood = 1; likelihood <= 5; likelihood++) {
       for (let impact = 1; impact <= 5; impact++) {
         const cellRisks = filteredRisks.filter(risk => {
-          const L = viewMode === 'inherent'
-            ? (risk.likelihood || risk.inherentLikelihood)
-            : (risk.residualLikelihood || risk.likelihood || risk.inherentLikelihood);
-          
-          const I = viewMode === 'inherent'
-            ? (risk.impact || risk.inherentImpact)
-            : (risk.residualImpact || risk.impact || risk.inherentImpact);
-          
+          const L =
+            viewMode === 'inherent'
+              ? (risk.likelihood ?? risk.inherentLikelihood)
+              : (risk.residualLikelihood ?? risk.likelihood ?? risk.inherentLikelihood);
+          const I =
+            viewMode === 'inherent'
+              ? (risk.impact ?? risk.inherentImpact)
+              : (risk.residualImpact ?? risk.impact ?? risk.inherentImpact);
           return L === likelihood && I === impact;
         });
-        
+
         const score = safeCalculateScore(likelihood, impact);
-        const riskLevel = config.riskLevels.find(
+        const rl = (config.riskLevels || RISK_LEVELS).find(
           level => score >= level.min && score <= level.max
-        )?.label || 'Unknown';
-        
+        );
+        const riskLevel = rl?.label ?? 'Unknown';
+
         heatmapData.push({
           likelihood,
           impact,
@@ -880,14 +792,16 @@ const RiskAssessment = () => {
         });
       }
     }
-    
     return heatmapData;
   };
 
   const handleExportPNG = async () => {
     setExportLoading(true);
     try {
-      await exportHeatmapAsPNG('heatmap-container', `risk-matrix-${viewMode}-${new Date().toISOString().slice(0,10)}.png`);
+      await exportHeatmapAsPNG(
+        'heatmap-container',
+        `risk-matrix-${viewMode}-${new Date().toISOString().slice(0, 10)}.png`
+      );
       showSnackbar('Export PNG berhasil!', 'success');
     } catch (error) {
       showSnackbar(`Gagal export PNG: ${error.message}`, 'error');
@@ -904,7 +818,7 @@ const RiskAssessment = () => {
         heatmapData,
         heatmapFilters,
         viewMode,
-        `risk-report-${viewMode}-${new Date().toISOString().slice(0,10)}.pdf`
+        `risk-report-${viewMode}-${new Date().toISOString().slice(0, 10)}.pdf`
       );
       showSnackbar('Export PDF berhasil!', 'success');
     } catch (error) {
@@ -920,7 +834,7 @@ const RiskAssessment = () => {
       const heatmapData = prepareHeatmapData();
       exportHeatmapAsCSV(
         heatmapData,
-        `risk-data-${viewMode}-${new Date().toISOString().slice(0,10)}.csv`
+        `risk-data-${viewMode}-${new Date().toISOString().slice(0, 10)}.csv`
       );
       showSnackbar('Export CSV berhasil!', 'success');
     } catch (error) {
@@ -936,7 +850,7 @@ const RiskAssessment = () => {
       if (selectedCell) {
         await exportCellDetailsAsText(
           selectedCell,
-          `risk-cell-details-${selectedCell.likelihood}-${selectedCell.impact}-${new Date().toISOString().slice(0,10)}.txt`
+          `risk-cell-details-${selectedCell.likelihood}-${selectedCell.impact}-${new Date().toISOString().slice(0, 10)}.txt`
         );
         showSnackbar('Export Text berhasil!', 'success');
       } else {
@@ -948,17 +862,18 @@ View Mode: ${viewMode}
 Total Risks: ${filteredRisks.length}
 Assessment Method: ${config.assessmentMethod}
 Filter: ${JSON.stringify(heatmapFilters, null, 2)}
-        `;
-        
+`;
         const blob = new Blob([summaryText], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = url;
-        link.download = `risk-summary-${viewMode}-${new Date().toISOString().slice(0,10)}.txt`;
-        link.click();
-        URL.revokeObjectURL(url);
-        
-        showSnackbar('Export Text berhasil!', 'success');
+        try {
+          link.href = url;
+          link.download = `risk-summary-${viewMode}-${new Date().toISOString().slice(0, 10)}.txt`;
+          link.click();
+          showSnackbar('Export Text berhasil!', 'success');
+        } finally {
+          URL.revokeObjectURL(url);
+        }
       }
     } catch (error) {
       showSnackbar(`Gagal export Text: ${error.message}`, 'error');
@@ -973,29 +888,27 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
   const showSnackbar = (message, severity) => {
     setSnackbar({ open: true, message, severity });
   };
-
-  const handleCloseSnackbar = () =>
-    setSnackbar({ ...snackbar, open: false });
+  const handleCloseSnackbar = () => setSnackbar({ ...snackbar, open: false });
 
   const handleCellClick = (likelihood, impact) => {
     const cellRisks = filteredRisks.filter(risk => {
-      const L = viewMode === 'inherent'
-        ? (risk.likelihood || risk.inherentLikelihood)
-        : (risk.residualLikelihood || risk.likelihood);
-
-      const I = viewMode === 'inherent'
-        ? (risk.impact || risk.inherentImpact)
-        : (risk.residualImpact || risk.impact);
-
+      const L =
+        viewMode === 'inherent'
+          ? (risk.likelihood ?? risk.inherentLikelihood)
+          : (risk.residualLikelihood ?? risk.likelihood);
+      const I =
+        viewMode === 'inherent'
+          ? (risk.impact ?? risk.inherentImpact)
+          : (risk.residualImpact ?? risk.impact);
       return L === likelihood && I === impact;
     });
-
     if (cellRisks.length === 0) return;
 
     const score = safeCalculateScore(likelihood, impact);
-    const riskLevel = config.riskLevels.find(
+    const rl = (config.riskLevels || RISK_LEVELS).find(
       level => score >= level.min && score <= level.max
-    )?.label || 'Unknown';
+    );
+    const riskLevel = rl?.label ?? 'Unknown';
 
     setSelectedCell({
       likelihood,
@@ -1004,7 +917,6 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
       score,
       riskLevel
     });
-
     setCellDetailOpen(true);
   };
 
@@ -1016,25 +928,27 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
       viewMode: mode,
       assessmentMethod: config.assessmentMethod
     });
-
     navigate(`/risk-register?${params.toString()}`);
   };
 
   const loadData = async () => {
     try {
       setLoading(true);
+
+      // Ambil dari Firestore sebagai sumber data utama
       const riskSnap = await getDocs(collection(db, 'risks'));
       const risksList = riskSnap.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        likelihood: doc.data().likelihood || doc.data().inherentLikelihood || 1,
-        impact: doc.data().impact || doc.data().inherentImpact || 1,
-        inherentScore: doc.data().inherentScore || doc.data().riskScore || 1,
-        inherentLevel: doc.data().inherentLevel || doc.data().riskLevel || 'Rendah',
+        // Fallback menggunakan nullish coalescing agar 0 tidak dianggap falsy
+        likelihood:      doc.data().likelihood      ?? doc.data().inherentLikelihood ?? 1,
+        impact:          doc.data().impact          ?? doc.data().inherentImpact     ?? 1,
+        inherentScore:   doc.data().inherentScore   ?? doc.data().riskScore          ?? null,
+        inherentLevel:   doc.data().inherentLevel   ?? doc.data().riskLevel          ?? null,
         residualLikelihood: doc.data().residualLikelihood,
-        residualImpact: doc.data().residualImpact,
-        residualScore: doc.data().residualScore,
-        residualLevel: doc.data().residualLevel
+        residualImpact:     doc.data().residualImpact,
+        residualScore:      doc.data().residualScore,
+        residualLevel:      doc.data().residualLevel
       }));
 
       const unitSnap = await getDocs(collection(db, 'organization_units'));
@@ -1057,19 +971,20 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
 
   useEffect(() => {
     let filtered = risks;
-    if (selectedUnit !== 'all') filtered = filtered.filter(r => r.unitId === selectedUnit);
-    if (selectedCategory !== 'all') filtered = filtered.filter(r => r.category === selectedCategory);
-    if (selectedStatus !== 'all') filtered = filtered.filter(r => r.status === selectedStatus);
+    if (selectedUnit !== 'all')      filtered = filtered.filter(r => (r.unitId ?? '') === selectedUnit);
+    if (selectedCategory !== 'all')  filtered = filtered.filter(r => (r.category ?? '') === selectedCategory);
+    if (selectedStatus !== 'all')    filtered = filtered.filter(r => (r.status ?? '') === selectedStatus);
     setFilteredRisks(filtered);
   }, [selectedUnit, selectedCategory, selectedStatus, risks]);
 
   const stats = {
     totalRisks: risks.length,
-    assessedRisks: risks.filter(r => r.inherentScore).length,
-    hasResidualData: risks.filter(r => r.residualScore).length,
-    assessmentProgress: risks.length === 0
-      ? 0
-      : (risks.filter(r => r.inherentScore).length / risks.length) * 100
+    assessedRisks: risks.filter(r => typeof r.inherentScore === 'number').length,
+    hasResidualData: risks.filter(r => typeof r.residualScore === 'number').length,
+    assessmentProgress:
+      risks.length === 0
+        ? 0
+        : (risks.filter(r => typeof r.inherentScore === 'number').length / risks.length) * 100
   };
 
   return (
@@ -1079,24 +994,24 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center">
             <Box display="flex" gap={2}>
-              <Box sx={{
-                p: 2,
-                backgroundColor: 'primary.main',
-                borderRadius: 2,
-                color: 'white'
-              }}>
+              <Box
+                sx={{
+                  p: 2,
+                  backgroundColor: 'primary.main',
+                  borderRadius: 2,
+                  color: 'white'
+                }}
+              >
                 <Assessment sx={{ fontSize: 40 }} />
               </Box>
-
               <Box>
                 <Typography variant="h4" fontWeight="bold">
                   Risk Assessment Dashboard
                 </Typography>
                 <Typography variant="caption" color="textSecondary">
-                  Metode: {config.assessmentMethod === 'coordinate' ? 'Koordinat' : 'Perkalian'}
-                  {' '}| Total Risks: {stats.totalRisks}
+                  Metode: {config.assessmentMethod === 'coordinate' ? 'Koordinat' : 'Perkalian'}{' '}
+                  • Total Risks: {stats.totalRisks}
                 </Typography>
-
                 <Box mt={1}>
                   <ButtonGroup size="small">
                     <Button
@@ -1125,7 +1040,6 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
               >
                 Konfigurasi
               </Button>
-
               <Button
                 variant="contained"
                 startIcon={<Download />}
@@ -1135,7 +1049,6 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
               >
                 {exportLoading ? 'Exporting...' : 'Export'}
               </Button>
-
               <CustomExportMenu
                 anchorEl={exportMenuAnchor}
                 open={Boolean(exportMenuAnchor)}
@@ -1167,9 +1080,9 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
         onFilterChange={(newFilters) => {
           setHeatmapFilters(newFilters);
           let filtered = risks;
-          if (newFilters.department !== 'all') filtered = filtered.filter(r => r.unitId === newFilters.department);
-          if (newFilters.category !== 'all') filtered = filtered.filter(r => r.category === newFilters.category);
-          if (newFilters.riskLevel !== 'all') filtered = filtered.filter(r => r.inherentLevel === newFilters.riskLevel);
+          if (newFilters.department !== 'all') filtered = filtered.filter(r => (r.unitId ?? '') === newFilters.department);
+          if (newFilters.category !== 'all')   filtered = filtered.filter(r => (r.category ?? '') === newFilters.category);
+          if (newFilters.riskLevel !== 'all')  filtered = filtered.filter(r => (r.inherentLevel ?? '') === newFilters.riskLevel);
           setFilteredRisks(filtered);
         }}
         organizationUnits={organizationUnits}
@@ -1204,35 +1117,39 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
             <CardContent>
               <Typography variant="h6">Konfigurasi Saat Ini</Typography>
               <Typography variant="caption" color="textSecondary">Metode:</Typography>
-              <Typography variant="body2" sx={{ 
-                display: 'inline-block', 
-                ml: 1,
-                px: 1,
-                py: 0.5,
-                borderRadius: 1,
-                backgroundColor: 'primary.light',
-                color: 'primary.contrastText'
-              }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  display: 'inline-block',
+                  ml: 1,
+                  px: 1,
+                  py: 0.5,
+                  borderRadius: 1,
+                  backgroundColor: 'primary.light',
+                  color: 'primary.contrastText'
+                }}
+              >
                 {config.assessmentMethod === 'coordinate' ? 'Koordinat' : 'Perkalian'}
               </Typography>
 
               <Divider sx={{ my: 2 }} />
-
               <Typography variant="caption" color="textSecondary">View Mode:</Typography>
-              <Typography variant="body2" sx={{ 
-                display: 'inline-block', 
-                ml: 1,
-                px: 1,
-                py: 0.5,
-                borderRadius: 1,
-                backgroundColor: viewMode === 'inherent' ? 'primary.main' : 'success.main',
-                color: 'white'
-              }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  display: 'inline-block',
+                  ml: 1,
+                  px: 1,
+                  py: 0.5,
+                  borderRadius: 1,
+                  backgroundColor: viewMode === 'inherent' ? 'primary.main' : 'success.main',
+                  color: 'white'
+                }}
+              >
                 {viewMode === 'inherent' ? 'Inherent' : 'Residual'}
               </Typography>
 
               <Divider sx={{ my: 2 }} />
-
               <Typography variant="caption">Level Risiko:</Typography>
               {(config.riskLevels || RISK_LEVELS).map((level, idx) => (
                 <Box key={idx} display="flex" alignItems="center" gap={1} mt={1}>
@@ -1249,26 +1166,22 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
           <Card sx={{ mb: 3 }}>
             <CardContent>
               <Typography variant="h6">Data Summary</Typography>
-
               <Box display="flex" justifyContent="space-between" mt={1}>
                 <Typography>Total Risks:</Typography>
                 <Typography variant="body2" fontWeight="bold">{stats.totalRisks}</Typography>
               </Box>
-
               <Box display="flex" justifyContent="space-between" mt={1}>
                 <Typography>Assessed:</Typography>
                 <Typography variant="body2" fontWeight="bold" color="primary">
                   {stats.assessedRisks}
                 </Typography>
               </Box>
-
               <Box display="flex" justifyContent="space-between" mt={1}>
                 <Typography>Residual:</Typography>
                 <Typography variant="body2" fontWeight="bold" color="success.main">
                   {stats.hasResidualData}
                 </Typography>
               </Box>
-
               <Box display="flex" justifyContent="space-between" mt={1}>
                 <Typography>Progress:</Typography>
                 <Typography variant="body2" fontWeight="bold">
@@ -1282,7 +1195,6 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
           <Card>
             <CardContent>
               <Typography variant="h6">Quick Actions</Typography>
-
               <Button
                 fullWidth
                 variant="contained"
@@ -1292,7 +1204,6 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
               >
                 Buka Risk Register
               </Button>
-
               <Button
                 fullWidth
                 variant="outlined"
