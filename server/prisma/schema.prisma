@@ -1,0 +1,915 @@
+// Skema database ERM. Konvensi: nama tabel/kolom snake_case Bahasa Indonesia,
+// setiap tabel punya id, dibuat_pada, diubah_pada. Lihat HANDOFF_spesifikasi_aplikasi_risiko.md bagian 9.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ============ ENUM ============
+
+enum JenisUnit {
+  PUSAT
+  CABANG
+}
+
+enum StatusPeriode {
+  TERBUKA
+  DITUTUP
+}
+
+enum StatusPersetujuan {
+  DRAF
+  DIAJUKAN
+  DISETUJUI_PIMPINAN
+  FINAL
+  DIKEMBALIKAN
+}
+
+enum EntitasPersetujuan {
+  RISIKO
+  PEMANTAUAN
+  REVISI
+}
+
+enum JenisPenilaian {
+  INHEREN
+  TARGET
+}
+
+// Siklus hidup risiko, terpisah dari status persetujuan.
+enum StatusRisiko {
+  BARU
+  DALAM_PENILAIAN
+  DINILAI
+  DALAM_PENANGANAN
+  DIPANTAU
+  DITUTUP
+  DITOLAK
+}
+
+enum SumberRisiko {
+  INTERNAL
+  EKSTERNAL
+}
+
+enum Prioritas {
+  PEMANTAUAN
+  RENDAH
+  SEDANG
+  TINGGI
+  KRITIS
+}
+
+enum JenisMitigasi {
+  MITIGASI
+  HINDARI
+  TRANSFER
+  TERIMA
+}
+
+enum StatusMitigasi {
+  DIRENCANAKAN
+  BERJALAN
+  SELESAI
+  TERLAMBAT
+  DIBATALKAN
+}
+
+enum PeranRaci {
+  R
+  A
+  C
+  I
+}
+
+enum StatusKri {
+  NONAKTIF
+  HIJAU
+  KUNING
+  MERAH
+}
+
+enum ArahTarget {
+  LEBIH_RENDAH
+  LEBIH_TINGGI
+}
+
+enum Frekuensi {
+  HARIAN
+  MINGGUAN
+  BULANAN
+  TRIWULANAN
+  SEMESTERAN
+  TAHUNAN
+}
+
+enum TrenKri {
+  STABIL
+  NAIK
+  TURUN
+}
+
+enum StatusInsiden {
+  DILAPORKAN
+  INVESTIGASI
+  TINDAKAN_DIAMBIL
+  SELESAI
+  DITUTUP
+}
+
+enum JenisKontrol {
+  PREVENTIF
+  DETEKTIF
+  KOREKTIF
+}
+
+enum JenisPengujian {
+  DESAIN
+  OPERASIONAL
+  KEDUANYA
+}
+
+enum StatusJadwal {
+  DIJADWALKAN
+  SELESAI
+  DIBATALKAN
+}
+
+enum HasilPengujian {
+  EFEKTIF
+  SEBAGIAN_EFEKTIF
+  TIDAK_EFEKTIF
+}
+
+enum StatusDefisiensi {
+  TERBUKA
+  BERJALAN
+  SELESAI
+  DITUTUP
+}
+
+enum StatusSurvei {
+  DRAF
+  TERBIT
+  DITUTUP
+}
+
+// ============ A. ORGANISASI & PENGGUNA ============
+
+model direktorat {
+  id                    Int            @id @default(autoincrement())
+  kode                  String         @unique @db.VarChar(20)
+  nama                  String         @db.VarChar(150)
+  nama_jabatan_direktur String         @db.VarChar(150)
+  unit                  unit[]
+  risiko_utama          risiko_utama[]
+  dibuat_pada           DateTime       @default(now())
+  diubah_pada           DateTime       @updatedAt
+}
+
+model unit {
+  id                      Int         @id @default(autoincrement())
+  kode                    String      @unique @db.VarChar(20)
+  nama                    String      @db.VarChar(150)
+  deskripsi               String?     @db.Text
+  jenis                   JenisUnit
+  direktorat_id           Int?
+  direktorat              direktorat? @relation(fields: [direktorat_id], references: [id])
+  // Sub-unit (bagian/seksi di bawah unit atau cabang).
+  parent_id               Int?
+  parent                  unit?       @relation("sub_unit", fields: [parent_id], references: [id])
+  sub_unit                unit[]      @relation("sub_unit")
+  adalah_pengelola_risiko Boolean     @default(false)
+  aktif                   Boolean     @default(true)
+  pengguna                pengguna[]
+  risiko                  risiko[]
+  kri                     kri[]
+  insiden                 insiden[]
+  kontrol                 kontrol[]
+  dibuat_pada             DateTime    @default(now())
+  diubah_pada             DateTime    @updatedAt
+
+  @@index([direktorat_id])
+  @@index([parent_id])
+}
+
+model pengguna {
+  id                  Int                   @id @default(autoincrement())
+  nama                String                @db.VarChar(150)
+  email               String                @unique @db.VarChar(191)
+  kata_sandi_hash     String                @db.VarChar(255)
+  unit_id             Int?
+  unit                unit?                 @relation(fields: [unit_id], references: [id])
+  jabatan             String?               @db.VarChar(150)
+  telepon             String?               @db.VarChar(30)
+  aktif               Boolean               @default(true)
+  login_terakhir      DateTime?
+  peran               pengguna_peran[]
+  risiko              risiko[]
+  mitigasi            mitigasi[]
+  revisi_risiko       revisi_risiko[]
+  raci                raci[]
+  riwayat_persetujuan riwayat_persetujuan[]
+  notifikasi          notifikasi[]
+  jejak_audit         jejak_audit[]
+  lampiran            lampiran[]
+  kri                 kri[]
+  peringatan_kri      peringatan_kri[]
+  insiden             insiden[]
+  kontrol             kontrol[]
+  jadwal_pengujian    jadwal_pengujian[]
+  hasil_pengujian     hasil_pengujian[]
+  defisiensi          defisiensi[]
+  respons_budaya      respons_budaya[]
+  dibuat_pada         DateTime              @default(now())
+  diubah_pada         DateTime              @updatedAt
+
+  @@index([unit_id])
+}
+
+model peran {
+  id          Int              @id @default(autoincrement())
+  kode        String           @unique @db.VarChar(40)
+  nama        String           @db.VarChar(100)
+  pengguna    pengguna_peran[]
+  dibuat_pada DateTime         @default(now())
+  diubah_pada DateTime         @updatedAt
+}
+
+model pengguna_peran {
+  id          Int      @id @default(autoincrement())
+  pengguna_id Int
+  pengguna    pengguna @relation(fields: [pengguna_id], references: [id], onDelete: Cascade)
+  peran_id    Int
+  peran       peran    @relation(fields: [peran_id], references: [id])
+  dibuat_pada DateTime @default(now())
+  diubah_pada DateTime @updatedAt
+
+  @@unique([pengguna_id, peran_id])
+}
+
+// ============ B. PARAMETER ============
+
+model periode {
+  id              Int           @id @default(autoincrement())
+  nama            String        @db.VarChar(100)
+  tanggal_mulai   DateTime      @db.Date
+  tanggal_selesai DateTime      @db.Date
+  status          StatusPeriode @default(TERBUKA)
+  risiko          risiko[]
+  dibuat_pada     DateTime      @default(now())
+  diubah_pada     DateTime      @updatedAt
+}
+
+model skala_kemungkinan {
+  id           Int      @id @default(autoincrement())
+  nilai        Int      @unique
+  label        String   @db.VarChar(100)
+  deskripsi    String?  @db.Text
+  probabilitas String?  @db.VarChar(50)
+  dibuat_pada  DateTime @default(now())
+  diubah_pada  DateTime @updatedAt
+}
+
+// Kriteria dampak per kategori (FINANSIAL, OPERASIONAL, REPUTASI, LEGAL, HSE) x nilai 1-5.
+model skala_dampak {
+  id          Int      @id @default(autoincrement())
+  kategori    String   @db.VarChar(30)
+  nilai       Int
+  label       String   @db.VarChar(100)
+  deskripsi   String?  @db.Text
+  nilai_min   String?  @db.Text
+  nilai_maks  String?  @db.Text
+  warna       String?  @db.VarChar(20)
+  dibuat_pada DateTime @default(now())
+  diubah_pada DateTime @updatedAt
+
+  @@unique([kategori, nilai])
+}
+
+model level_risiko {
+  id                 Int                  @id @default(autoincrement())
+  nama               String               @unique @db.VarChar(50)
+  skor_min           Int
+  skor_maks          Int
+  warna              String               @db.VarChar(20)
+  urutan             Int
+  penilaian          penilaian[]
+  pemantauan_bulanan pemantauan_bulanan[]
+  dibuat_pada        DateTime             @default(now())
+  diubah_pada        DateTime             @updatedAt
+}
+
+model kategori_risiko {
+  id                       Int                        @id @default(autoincrement())
+  kode                     String                     @unique @db.VarChar(20)
+  nama                     String                     @db.VarChar(100)
+  deskripsi                String?                    @db.Text
+  warna                    String?                    @db.VarChar(20)
+  risiko_utama             risiko_utama[]
+  risiko                   risiko[]
+  pernyataan_selera_risiko pernyataan_selera_risiko[]
+  dibuat_pada              DateTime                   @default(now())
+  diubah_pada              DateTime                   @updatedAt
+}
+
+model level_selera_risiko {
+  id          Int      @id @default(autoincrement())
+  kode        String   @unique @db.VarChar(20)
+  nama        String   @db.VarChar(100)
+  warna       String   @db.VarChar(20)
+  deskripsi   String?  @db.Text
+  urutan      Int
+  dibuat_pada DateTime @default(now())
+  diubah_pada DateTime @updatedAt
+}
+
+model pernyataan_selera_risiko {
+  id              Int              @id @default(autoincrement())
+  kategori_id     Int?
+  kategori        kategori_risiko? @relation(fields: [kategori_id], references: [id])
+  pernyataan      String           @db.Text
+  // {rendah:{min,maks}, sedang:{min,maks}, tinggi:{min,maks}}
+  batas_toleransi Json
+  proses_eskalasi String?          @db.Text
+  aktif           Boolean          @default(true)
+  dibuat_pada     DateTime         @default(now())
+  diubah_pada     DateTime         @updatedAt
+
+  @@index([kategori_id])
+}
+
+// Pengaturan sistem key-value (metode penilaian, ambang toleransi, UI, notifikasi).
+model pengaturan {
+  id          Int      @id @default(autoincrement())
+  kunci       String   @unique @db.VarChar(100)
+  nilai       Json
+  dibuat_pada DateTime @default(now())
+  diubah_pada DateTime @updatedAt
+}
+
+// ============ C. RISIKO UTAMA & PUSTAKA ============
+
+model risiko_utama {
+  id                    Int                @id @default(autoincrement())
+  kode                  String             @unique @db.VarChar(30)
+  nama                  String             @db.VarChar(255)
+  deskripsi             String?            @db.Text
+  kategori_id           Int?
+  kategori              kategori_risiko?   @relation(fields: [kategori_id], references: [id])
+  berlaku_untuk         JenisUnit
+  direktorat_pemilik_id Int?
+  direktorat_pemilik    direktorat?        @relation(fields: [direktorat_pemilik_id], references: [id])
+  aktif                 Boolean            @default(true)
+  pustaka_penyebab      pustaka_penyebab[]
+  pustaka_dampak        pustaka_dampak[]
+  risiko                risiko[]
+  dibuat_pada           DateTime           @default(now())
+  diubah_pada           DateTime           @updatedAt
+
+  @@index([berlaku_untuk, aktif])
+}
+
+model pustaka_penyebab {
+  id              Int               @id @default(autoincrement())
+  risiko_utama_id Int
+  risiko_utama    risiko_utama      @relation(fields: [risiko_utama_id], references: [id])
+  uraian          String            @db.Text
+  aktif           Boolean           @default(true)
+  risiko_penyebab risiko_penyebab[]
+  dibuat_pada     DateTime          @default(now())
+  diubah_pada     DateTime          @updatedAt
+
+  @@index([risiko_utama_id])
+}
+
+model pustaka_dampak {
+  id              Int             @id @default(autoincrement())
+  risiko_utama_id Int
+  risiko_utama    risiko_utama    @relation(fields: [risiko_utama_id], references: [id])
+  uraian          String          @db.Text
+  aktif           Boolean         @default(true)
+  risiko_dampak   risiko_dampak[]
+  dibuat_pada     DateTime        @default(now())
+  diubah_pada     DateTime        @updatedAt
+
+  @@index([risiko_utama_id])
+}
+
+// ============ D. RISK REGISTER ============
+
+model risiko {
+  id                    Int                  @id @default(autoincrement())
+  periode_id            Int
+  periode               periode              @relation(fields: [periode_id], references: [id])
+  unit_id               Int
+  unit                  unit                 @relation(fields: [unit_id], references: [id])
+  // Null = risiko spesifik unit.
+  risiko_utama_id       Int?
+  risiko_utama          risiko_utama?        @relation(fields: [risiko_utama_id], references: [id])
+  kode                  String               @db.VarChar(50)
+  nama                  String               @db.VarChar(255)
+  deskripsi             String?              @db.Text
+  kategori_id           Int?
+  kategori              kategori_risiko?     @relation(fields: [kategori_id], references: [id])
+  sumber                SumberRisiko         @default(INTERNAL)
+  klasifikasi           Prioritas?
+  status                StatusRisiko         @default(BARU)
+  status_persetujuan    StatusPersetujuan    @default(DRAF)
+  versi_aktif           Int                  @default(1)
+  diubah_direksi        Boolean              @default(false)
+  penanggung_jawab_id   Int?
+  penanggung_jawab      pengguna?            @relation(fields: [penanggung_jawab_id], references: [id])
+  kontrol_eksisting     String?              @db.Text
+  efektivitas_kontrol   String?              @db.VarChar(50)
+  kontrol_tambahan      String?              @db.Text
+  biaya_kontrol         Decimal?             @db.Decimal(18, 2)
+  kuantifikasi_inheren  Decimal?             @db.Decimal(18, 2)
+  kuantifikasi_residual Decimal?             @db.Decimal(18, 2)
+  prioritas_penanganan  Prioritas?
+  target_selesai        DateTime?            @db.Date
+  catatan_penilaian     String?              @db.Text
+  penyebab              risiko_penyebab[]
+  dampak                risiko_dampak[]
+  penilaian             penilaian[]
+  pemantauan_bulanan    pemantauan_bulanan[]
+  mitigasi              mitigasi[]
+  revisi                revisi_risiko[]
+  raci                  raci[]
+  kri                   kri[]
+  insiden               insiden[]
+  dibuat_pada           DateTime             @default(now())
+  diubah_pada           DateTime             @updatedAt
+
+  // MySQL membolehkan banyak NULL pada unique, jadi risiko spesifik tidak terkena.
+  @@unique([periode_id, unit_id, risiko_utama_id])
+  @@unique([periode_id, kode])
+  @@index([unit_id, status_persetujuan])
+  @@index([risiko_utama_id, status_persetujuan])
+}
+
+model risiko_penyebab {
+  id                  Int               @id @default(autoincrement())
+  risiko_id           Int
+  risiko              risiko            @relation(fields: [risiko_id], references: [id], onDelete: Cascade)
+  pustaka_penyebab_id Int?
+  pustaka_penyebab    pustaka_penyebab? @relation(fields: [pustaka_penyebab_id], references: [id])
+  uraian              String            @db.Text
+  dibuat_pada         DateTime          @default(now())
+  diubah_pada         DateTime          @updatedAt
+
+  @@index([risiko_id])
+  @@index([pustaka_penyebab_id])
+}
+
+model risiko_dampak {
+  id                Int             @id @default(autoincrement())
+  risiko_id         Int
+  risiko            risiko          @relation(fields: [risiko_id], references: [id], onDelete: Cascade)
+  pustaka_dampak_id Int?
+  pustaka_dampak    pustaka_dampak? @relation(fields: [pustaka_dampak_id], references: [id])
+  uraian            String          @db.Text
+  dibuat_pada       DateTime        @default(now())
+  diubah_pada       DateTime        @updatedAt
+
+  @@index([risiko_id])
+  @@index([pustaka_dampak_id])
+}
+
+model penilaian {
+  id          Int            @id @default(autoincrement())
+  risiko_id   Int
+  risiko      risiko         @relation(fields: [risiko_id], references: [id], onDelete: Cascade)
+  jenis       JenisPenilaian
+  kemungkinan Int
+  dampak      Int
+  skor        Int
+  level_id    Int
+  level       level_risiko   @relation(fields: [level_id], references: [id])
+  dibuat_pada DateTime       @default(now())
+  diubah_pada DateTime       @updatedAt
+
+  @@unique([risiko_id, jenis])
+}
+
+model pemantauan_bulanan {
+  id                   Int                  @id @default(autoincrement())
+  risiko_id            Int
+  risiko               risiko               @relation(fields: [risiko_id], references: [id], onDelete: Cascade)
+  tahun                Int
+  bulan                Int
+  kemungkinan_residual Int
+  dampak_residual      Int
+  skor                 Int
+  level_id             Int
+  level                level_risiko         @relation(fields: [level_id], references: [id])
+  catatan              String?              @db.Text
+  status_persetujuan   StatusPersetujuan    @default(DRAF)
+  realisasi_mitigasi   realisasi_mitigasi[]
+  dibuat_pada          DateTime             @default(now())
+  diubah_pada          DateTime             @updatedAt
+
+  @@unique([risiko_id, tahun, bulan])
+  @@index([tahun, bulan, status_persetujuan])
+}
+
+model mitigasi {
+  id                  Int                  @id @default(autoincrement())
+  risiko_id           Int
+  risiko              risiko               @relation(fields: [risiko_id], references: [id], onDelete: Cascade)
+  uraian              String               @db.Text
+  jenis               JenisMitigasi        @default(MITIGASI)
+  penanggung_jawab_id Int?
+  penanggung_jawab    pengguna?            @relation(fields: [penanggung_jawab_id], references: [id])
+  target_waktu        DateTime?            @db.Date
+  anggaran            Decimal?             @db.Decimal(18, 2)
+  prioritas           Prioritas            @default(SEDANG)
+  status              StatusMitigasi       @default(DIRENCANAKAN)
+  progres             Int                  @default(0)
+  efektivitas         String?              @db.VarChar(50)
+  realisasi           realisasi_mitigasi[]
+  dibuat_pada         DateTime             @default(now())
+  diubah_pada         DateTime             @updatedAt
+
+  @@index([risiko_id])
+  @@index([status, target_waktu])
+}
+
+model realisasi_mitigasi {
+  id                    Int                 @id @default(autoincrement())
+  mitigasi_id           Int
+  mitigasi              mitigasi            @relation(fields: [mitigasi_id], references: [id], onDelete: Cascade)
+  pemantauan_bulanan_id Int?
+  pemantauan_bulanan    pemantauan_bulanan? @relation(fields: [pemantauan_bulanan_id], references: [id])
+  tanggal               DateTime            @db.Date
+  uraian                String              @db.Text
+  progres               Int
+  dibuat_pada           DateTime            @default(now())
+  diubah_pada           DateTime            @updatedAt
+
+  @@index([mitigasi_id])
+  @@index([pemantauan_bulanan_id])
+}
+
+model revisi_risiko {
+  id                 Int               @id @default(autoincrement())
+  risiko_id          Int
+  risiko             risiko            @relation(fields: [risiko_id], references: [id], onDelete: Cascade)
+  nomor_revisi       Int
+  alasan_revisi      String            @db.Text
+  salinan_data       Json
+  status_persetujuan StatusPersetujuan @default(DRAF)
+  diajukan_oleh_id   Int
+  diajukan_oleh      pengguna          @relation(fields: [diajukan_oleh_id], references: [id])
+  dibuat_pada        DateTime          @default(now())
+  diubah_pada        DateTime          @updatedAt
+
+  @@unique([risiko_id, nomor_revisi])
+}
+
+model raci {
+  id          Int       @id @default(autoincrement())
+  risiko_id   Int
+  risiko      risiko    @relation(fields: [risiko_id], references: [id], onDelete: Cascade)
+  peran       PeranRaci
+  pengguna_id Int
+  pengguna    pengguna  @relation(fields: [pengguna_id], references: [id])
+  dibuat_pada DateTime  @default(now())
+  diubah_pada DateTime  @updatedAt
+
+  @@unique([risiko_id, peran])
+}
+
+// ============ E. PERSETUJUAN, AUDIT, LAMPIRAN ============
+
+model riwayat_persetujuan {
+  id          Int                @id @default(autoincrement())
+  entitas     EntitasPersetujuan
+  entitas_id  Int
+  dari_status StatusPersetujuan
+  ke_status   StatusPersetujuan
+  pengguna_id Int
+  pengguna    pengguna           @relation(fields: [pengguna_id], references: [id])
+  catatan     String?            @db.Text
+  dibuat_pada DateTime           @default(now())
+  diubah_pada DateTime           @updatedAt
+
+  @@index([entitas, entitas_id])
+}
+
+model notifikasi {
+  id          Int      @id @default(autoincrement())
+  penerima_id Int
+  penerima    pengguna @relation(fields: [penerima_id], references: [id], onDelete: Cascade)
+  jenis       String   @db.VarChar(50)
+  pesan       String   @db.Text
+  tautan      String?  @db.VarChar(255)
+  dibaca      Boolean  @default(false)
+  dibuat_pada DateTime @default(now())
+  diubah_pada DateTime @updatedAt
+
+  @@index([penerima_id, dibaca])
+}
+
+model jejak_audit {
+  id          Int       @id @default(autoincrement())
+  nama_tabel  String    @db.VarChar(64)
+  id_data     String    @db.VarChar(64)
+  aksi        String    @db.VarChar(50)
+  nilai_lama  Json?
+  nilai_baru  Json?
+  pengguna_id Int?
+  pengguna    pengguna? @relation(fields: [pengguna_id], references: [id])
+  alamat_ip   String?   @db.VarChar(45)
+  dibuat_pada DateTime  @default(now())
+  diubah_pada DateTime  @updatedAt
+
+  @@index([nama_tabel, id_data])
+  @@index([dibuat_pada])
+  @@index([pengguna_id])
+}
+
+model lampiran {
+  id               Int      @id @default(autoincrement())
+  // Nama tabel pemilik, mis. "mitigasi", "insiden", "pemantauan_bulanan".
+  entitas          String   @db.VarChar(64)
+  entitas_id       Int
+  nama_file        String   @db.VarChar(255)
+  lokasi_file      String   @db.VarChar(500)
+  tipe_mime        String?  @db.VarChar(100)
+  ukuran           Int?
+  diunggah_oleh_id Int
+  diunggah_oleh    pengguna @relation(fields: [diunggah_oleh_id], references: [id])
+  dibuat_pada      DateTime @default(now())
+  diubah_pada      DateTime @updatedAt
+
+  @@index([entitas, entitas_id])
+}
+
+// ============ F. KRI ============
+
+model kri {
+  id               Int              @id @default(autoincrement())
+  kode             String?          @unique @db.VarChar(30)
+  nama             String           @db.VarChar(255)
+  deskripsi        String?          @db.Text
+  kategori         String?          @db.VarChar(100)
+  unit_id          Int?
+  unit             unit?            @relation(fields: [unit_id], references: [id])
+  risiko_id        Int?
+  risiko           risiko?          @relation(fields: [risiko_id], references: [id])
+  satuan           String?          @db.VarChar(50)
+  jenis_metrik     String?          @db.VarChar(30)
+  // MANUAL, JUMLAH_RISIKO, PROGRES_MITIGASI, JUMLAH_RISIKO_TINGGI, MITIGASI_TERLAMBAT, JUMLAH_INSIDEN, API
+  sumber_data      String           @default("MANUAL") @db.VarChar(30)
+  ambang_hijau     Decimal          @db.Decimal(18, 4)
+  ambang_kuning    Decimal          @db.Decimal(18, 4)
+  ambang_merah     Decimal          @db.Decimal(18, 4)
+  nilai_target     Decimal?         @db.Decimal(18, 4)
+  arah_target      ArahTarget       @default(LEBIH_RENDAH)
+  frekuensi        Frekuensi        @default(BULANAN)
+  nilai_sekarang   Decimal?         @db.Decimal(18, 4)
+  nilai_sebelumnya Decimal?         @db.Decimal(18, 4)
+  status           StatusKri        @default(NONAKTIF)
+  tren             TrenKri          @default(STABIL)
+  pemilik_id       Int?
+  pemilik          pengguna?        @relation(fields: [pemilik_id], references: [id])
+  aktif            Boolean          @default(true)
+  pengukuran       pengukuran_kri[]
+  peringatan       peringatan_kri[]
+  dibuat_pada      DateTime         @default(now())
+  diubah_pada      DateTime         @updatedAt
+
+  @@index([unit_id])
+  @@index([risiko_id])
+}
+
+model pengukuran_kri {
+  id          Int       @id @default(autoincrement())
+  kri_id      Int
+  kri         kri       @relation(fields: [kri_id], references: [id], onDelete: Cascade)
+  nilai       Decimal   @db.Decimal(18, 4)
+  status      StatusKri
+  catatan     String?   @db.Text
+  diukur_pada DateTime
+  dibuat_pada DateTime  @default(now())
+  diubah_pada DateTime  @updatedAt
+
+  @@index([kri_id, diukur_pada])
+}
+
+model peringatan_kri {
+  id                Int       @id @default(autoincrement())
+  kri_id            Int
+  kri               kri       @relation(fields: [kri_id], references: [id], onDelete: Cascade)
+  nilai_sebelumnya  Decimal?  @db.Decimal(18, 4)
+  nilai_sekarang    Decimal   @db.Decimal(18, 4)
+  status_sebelumnya StatusKri
+  status_sekarang   StatusKri
+  diakui            Boolean   @default(false)
+  diakui_oleh_id    Int?
+  diakui_oleh       pengguna? @relation(fields: [diakui_oleh_id], references: [id])
+  diakui_pada       DateTime?
+  dibuat_pada       DateTime  @default(now())
+  diubah_pada       DateTime  @updatedAt
+
+  @@index([kri_id])
+  @@index([diakui])
+}
+
+// ============ G. INSIDEN ============
+
+model insiden {
+  id                  Int           @id @default(autoincrement())
+  judul               String?       @db.VarChar(255)
+  risiko_id           Int?
+  risiko              risiko?       @relation(fields: [risiko_id], references: [id])
+  unit_id             Int?
+  unit                unit?         @relation(fields: [unit_id], references: [id])
+  tanggal_kejadian    DateTime
+  deskripsi           String        @db.Text
+  dampak              String?       @db.Text
+  tindakan_segera     String?       @db.Text
+  tindak_lanjut       String?       @db.Text
+  perlu_tindak_lanjut Boolean       @default(false)
+  tingkat_keparahan   Prioritas     @default(SEDANG)
+  status              StatusInsiden @default(DILAPORKAN)
+  // MANUAL atau API
+  sumber              String        @default("MANUAL") @db.VarChar(20)
+  pelapor_id          Int?
+  pelapor             pengguna?     @relation(fields: [pelapor_id], references: [id])
+  dibuat_pada         DateTime      @default(now())
+  diubah_pada         DateTime      @updatedAt
+
+  @@index([tanggal_kejadian])
+  @@index([risiko_id])
+  @@index([unit_id])
+}
+
+// ============ H. CONTROL TESTING ============
+
+model kontrol {
+  id                 Int                @id @default(autoincrement())
+  kode               String?            @unique @db.VarChar(30)
+  nama               String             @db.VarChar(255)
+  deskripsi          String?            @db.Text
+  kategori           String?            @db.VarChar(100)
+  jenis              JenisKontrol
+  frekuensi          Frekuensi          @default(TRIWULANAN)
+  tujuan             String?            @db.Text
+  prosedur_pengujian String?            @db.Text
+  unit_id            Int?
+  unit               unit?              @relation(fields: [unit_id], references: [id])
+  pemilik_id         Int?
+  pemilik            pengguna?          @relation(fields: [pemilik_id], references: [id])
+  aktif              Boolean            @default(true)
+  jadwal_pengujian   jadwal_pengujian[]
+  hasil_pengujian    hasil_pengujian[]
+  defisiensi         defisiensi[]
+  dibuat_pada        DateTime           @default(now())
+  diubah_pada        DateTime           @updatedAt
+
+  @@index([unit_id])
+}
+
+model jadwal_pengujian {
+  id              Int               @id @default(autoincrement())
+  kontrol_id      Int
+  kontrol         kontrol           @relation(fields: [kontrol_id], references: [id], onDelete: Cascade)
+  tanggal_jadwal  DateTime          @db.Date
+  penguji_id      Int?
+  penguji         pengguna?         @relation(fields: [penguji_id], references: [id])
+  jenis_pengujian JenisPengujian
+  catatan         String?           @db.Text
+  status          StatusJadwal      @default(DIJADWALKAN)
+  hasil_pengujian hasil_pengujian[]
+  dibuat_pada     DateTime          @default(now())
+  diubah_pada     DateTime          @updatedAt
+
+  @@index([kontrol_id, tanggal_jadwal])
+}
+
+model hasil_pengujian {
+  id                    Int               @id @default(autoincrement())
+  kontrol_id            Int
+  kontrol               kontrol           @relation(fields: [kontrol_id], references: [id], onDelete: Cascade)
+  jadwal_id             Int?
+  jadwal                jadwal_pengujian? @relation(fields: [jadwal_id], references: [id])
+  tanggal_uji           DateTime          @db.Date
+  penguji_id            Int?
+  penguji               pengguna?         @relation(fields: [penguji_id], references: [id])
+  jenis_pengujian       JenisPengujian
+  hasil                 HasilPengujian
+  peringkat_efektivitas Int
+  ukuran_sampel         Int?
+  jumlah_pengecualian   Int               @default(0)
+  catatan               String?           @db.Text
+  defisiensi            defisiensi[]
+  dibuat_pada           DateTime          @default(now())
+  diubah_pada           DateTime          @updatedAt
+
+  @@index([kontrol_id, tanggal_uji])
+}
+
+model defisiensi {
+  id                   Int              @id @default(autoincrement())
+  kontrol_id           Int?
+  kontrol              kontrol?         @relation(fields: [kontrol_id], references: [id])
+  hasil_pengujian_id   Int?
+  hasil_pengujian      hasil_pengujian? @relation(fields: [hasil_pengujian_id], references: [id])
+  judul                String           @db.VarChar(255)
+  deskripsi            String?          @db.Text
+  kategori             String?          @db.VarChar(100)
+  dampak_risiko        String?          @db.Text
+  akar_masalah         String?          @db.Text
+  rekomendasi          String?          @db.Text
+  ditugaskan_ke_id     Int?
+  ditugaskan_ke        pengguna?        @relation(fields: [ditugaskan_ke_id], references: [id])
+  tingkat_keparahan    Prioritas        @default(SEDANG)
+  status               StatusDefisiensi @default(TERBUKA)
+  tanggal_identifikasi DateTime         @db.Date
+  tanggal_target       DateTime?        @db.Date
+  dibuat_pada          DateTime         @default(now())
+  diubah_pada          DateTime         @updatedAt
+
+  @@index([kontrol_id])
+  @@index([status, tanggal_identifikasi])
+}
+
+// ============ I. BUDAYA RISIKO ============
+
+model survei_budaya {
+  id          Int              @id @default(autoincrement())
+  judul       String           @db.VarChar(255)
+  deskripsi   String?          @db.Text
+  // [{id, kategori, pertanyaan, deskripsi, opsi:[{nilai,label}]}]
+  pertanyaan  Json
+  status      StatusSurvei     @default(DRAF)
+  respons     respons_budaya[]
+  dibuat_pada DateTime         @default(now())
+  diubah_pada DateTime         @updatedAt
+}
+
+model respons_budaya {
+  id              Int           @id @default(autoincrement())
+  survei_id       Int
+  survei          survei_budaya @relation(fields: [survei_id], references: [id], onDelete: Cascade)
+  responden_id    Int?
+  responden       pengguna?     @relation(fields: [responden_id], references: [id])
+  nama_responden  String?       @db.VarChar(150)
+  peran_responden String?       @db.VarChar(100)
+  // {id_pertanyaan: nilai}
+  jawaban         Json
+  skor            Decimal       @db.Decimal(5, 2)
+  dibuat_pada     DateTime      @default(now())
+  diubah_pada     DateTime      @updatedAt
+
+  @@index([survei_id, dibuat_pada])
+}
+
+// ============ J. SKOR KOMPOSIT & INTEGRASI API ============
+
+model skor_komposit {
+  id          Int      @id @default(autoincrement())
+  skor        Decimal  @db.Decimal(6, 2)
+  level       String   @db.VarChar(30)
+  tren        String   @db.VarChar(20)
+  // {risiko_inheren, risiko_residual, kinerja_kri, progres_mitigasi}
+  komponen    Json
+  metadata    Json?
+  dibuat_pada DateTime @default(now())
+  diubah_pada DateTime @updatedAt
+
+  @@index([dibuat_pada])
+}
+
+model koneksi_api {
+  id                     Int       @id @default(autoincrement())
+  nama                   String    @db.VarChar(150)
+  deskripsi              String?   @db.Text
+  url_dasar              String    @db.VarChar(500)
+  // REST, SOAP, GRAPHQL
+  jenis                  String    @default("REST") @db.VarChar(20)
+  // NONE, BASIC, BEARER, API_KEY
+  jenis_auth             String    @default("NONE") @db.VarChar(20)
+  // Kredensial dienkripsi AES-256-GCM di aplikasi; jangan simpan teks polos.
+  kredensial_terenkripsi String?   @db.Text
+  header_api_key         String?   @db.VarChar(100)
+  // RISIKO, INSIDEN, KRI, SKOR_KOMPOSIT
+  jenis_data             String    @db.VarChar(30)
+  endpoint_sinkron       String?   @db.VarChar(500)
+  endpoint_kirim         String?   @db.VarChar(500)
+  frekuensi_sinkron      String    @default("MANUAL") @db.VarChar(20)
+  aktif                  Boolean   @default(false)
+  status_uji             String?   @db.VarChar(20)
+  error_terakhir         String?   @db.Text
+  sinkron_terakhir       DateTime?
+  jumlah_sinkron         Int       @default(0)
+  jumlah_error           Int       @default(0)
+  dibuat_pada            DateTime  @default(now())
+  diubah_pada            DateTime  @updatedAt
+}
