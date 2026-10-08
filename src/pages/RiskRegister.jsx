@@ -82,6 +82,7 @@ import { api } from '../services/api';
 import { muatRisiko, keBodyApi, usePeriode, LABEL_PERSETUJUAN } from '../services/risiko';
 import MitigasiEditor from '../components/risk/MitigasiEditor';
 import KriEditor from '../components/risk/KriEditor';
+import AksiPersetujuan from '../components/persetujuan/AksiPersetujuan';
 import { useAuth } from '../contexts/AuthContext';
 import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
 import { useLocation } from 'react-router-dom';
@@ -2927,11 +2928,21 @@ const RiskRegister = () => {
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
+        <DialogActions sx={{ p: 3, justifyContent: 'space-between' }}>
+          {selectedRisk ? (
+            <AksiPersetujuan
+              entitas="risiko"
+              id={selectedRisk.id}
+              status={selectedRisk.approvalStatus}
+              unitId={selectedRisk.department}
+              onSelesai={() => { setDetailDialog(false); loadData(); }}
+            />
+          ) : <span />}
+          <Box display="flex" gap={1}>
           <Button onClick={() => setDetailDialog(false)}>
             Tutup
           </Button>
-          {selectedRisk && (
+          {selectedRisk && ['DRAF', 'DIKEMBALIKAN'].includes(selectedRisk.approvalStatus) && (
             <Button
               variant="contained"
               startIcon={<Edit2 size={18} />}
@@ -2943,6 +2954,7 @@ const RiskRegister = () => {
               Edit Risiko
             </Button>
           )}
+          </Box>
         </DialogActions>
       </Dialog>
 

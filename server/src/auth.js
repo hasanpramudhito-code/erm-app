@@ -42,6 +42,7 @@ const profil = (p) => ({
   email: p.email,
   unit: p.unit && { id: p.unit.id, kode: p.unit.kode, nama: p.unit.nama, jenis: p.unit.jenis },
   peran: p.peran.map((x) => x.peran.kode),
+  unit_id: p.unit_id,
 });
 
 const sertakan = { unit: true, peran: { include: { peran: true } } };
@@ -56,7 +57,6 @@ async function sesi(req, res, next) {
   });
   if (s && s.kedaluwarsa > new Date() && s.pengguna.aktif) {
     req.pengguna = profil(s.pengguna);
-    req.pengguna.unit_id = s.pengguna.unit_id;
   }
   next();
 }

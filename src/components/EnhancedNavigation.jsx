@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import LoncengNotifikasi from './persetujuan/LoncengNotifikasi';
 
 const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
   const { currentUser, logout, userData, loading } = useAuth();
@@ -245,32 +246,9 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             path: '/reporting'
           },
           {
-            text: 'Approval Workflow',
-            icon: <Workflow size={20} />,
-            hasChildren: true,
-            badge: 'new',
-            children: [
-              {
-                text: 'Dashboard',
-                icon: <LayoutDashboard size={20} />,
-                path: '/approval'
-              },
-              {
-                text: 'Pending Approvals',
-                icon: <CheckSquare size={20} />,
-                path: '/approval/pending'
-              },
-              {
-                text: 'Workflow Configuration',
-                icon: <Settings size={20} />,
-                path: '/approval/workflows'
-              },
-              {
-                text: 'Approval History',
-                icon: <History size={20} />,
-                path: '/approval/history'
-              }
-            ]
+            text: 'Antrean Verifikasi',
+            icon: <CheckSquare size={20} />,
+            path: '/approval'
           }
         ]
       }
@@ -391,27 +369,9 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             path: '/reporting'
           },
           {
-            text: 'Approval Workflow',
-            icon: <Workflow size={20} />,
-            hasChildren: true,
-            badge: 'new',
-            children: [
-              {
-                text: 'Dashboard',
-                icon: <LayoutDashboard size={20} />,
-                path: '/approval'
-              },
-              {
-                text: 'Pending Approvals',
-                icon: <CheckSquare size={20} />,
-                path: '/approval/pending'
-              },
-              {
-                text: 'Approval History',
-                icon: <History size={20} />,
-                path: '/approval/history'
-              }
-            ]
+            text: 'Antrean Verifikasi',
+            icon: <CheckSquare size={20} />,
+            path: '/approval'
           }
         ]
       }
@@ -536,32 +496,9 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             path: '/reporting'
           },
           {
-            text: 'Approval Workflow',
-            icon: <Workflow size={20} />,
-            hasChildren: true,
-            badge: 'new',
-            children: [
-              {
-                text: 'Dashboard',
-                icon: <LayoutDashboard size={20} />,
-                path: '/approval'
-              },
-              {
-                text: 'Pending Approvals',
-                icon: <CheckSquare size={20} />,
-                path: '/approval/pending'
-              },
-              {
-                text: 'Workflow Configuration',
-                icon: <Settings size={20} />,
-                path: '/approval/workflows'
-              },
-              {
-                text: 'Approval History',
-                icon: <History size={20} />,
-                path: '/approval/history'
-              }
-            ]
+            text: 'Antrean Verifikasi',
+            icon: <CheckSquare size={20} />,
+            path: '/approval'
           }
         ]
       }
@@ -643,26 +580,9 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             path: '/incident-reporting'
           },
           {
-            text: 'Approval Workflow',
-            icon: <Workflow size={20} />,
-            hasChildren: true,
-            children: [
-              {
-                text: 'Dashboard',
-                icon: <LayoutDashboard size={20} />,
-                path: '/approval'
-              },
-              {
-                text: 'Pending Approvals',
-                icon: <CheckSquare size={20} />,
-                path: '/approval/pending'
-              },
-              {
-                text: 'Approval History',
-                icon: <History size={20} />,
-                path: '/approval/history'
-              }
-            ]
+            text: 'Antrean Verifikasi',
+            icon: <CheckSquare size={20} />,
+            path: '/approval'
           }
         ]
       }
@@ -744,26 +664,9 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             path: '/incident-reporting'
           },
           {
-            text: 'Approval Workflow',
-            icon: <Workflow size={20} />,
-            hasChildren: true,
-            children: [
-              {
-                text: 'Dashboard',
-                icon: <LayoutDashboard size={20} />,
-                path: '/approval'
-              },
-              {
-                text: 'Pending Approvals',
-                icon: <CheckSquare size={20} />,
-                path: '/approval/pending'
-              },
-              {
-                text: 'Approval History',
-                icon: <History size={20} />,
-                path: '/approval/history'
-              }
-            ]
+            text: 'Antrean Verifikasi',
+            icon: <CheckSquare size={20} />,
+            path: '/approval'
           }
         ]
       }
@@ -825,21 +728,9 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             path: '/incident-reporting'
           },
           {
-            text: 'Approval Workflow',
-            icon: <Workflow size={20} />,
-            hasChildren: true,
-            children: [
-              {
-                text: 'Dashboard',
-                icon: <LayoutDashboard size={20} />,
-                path: '/approval'
-              },
-              {
-                text: 'Approval History',
-                icon: <History size={20} />,
-                path: '/approval/history'
-              }
-            ]
+            text: 'Antrean Verifikasi',
+            icon: <CheckSquare size={20} />,
+            path: '/approval'
           }
         ]
       }
@@ -1096,6 +987,7 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
               />
             </Box>
           </Box>
+          <LoncengNotifikasi sx={{ color: theme.palette.common.white }} />
           <IconButton
             onClick={onDrawerToggle}
             sx={{
@@ -1163,6 +1055,7 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
                 }}
               />
             </Box>
+            <LoncengNotifikasi sx={{ ml: 'auto', color: theme.palette.common.white }} />
           </Box>
 
           {/* Quick Actions */}

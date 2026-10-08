@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import { CalendarCheck, Plus, Trash2, Edit2 } from 'lucide-react';
 import { api } from '../services/api';
+import AksiPersetujuan from '../components/persetujuan/AksiPersetujuan';
 import { usePeriode, LABEL_PERSETUJUAN, LABEL_STATUS_MITIGASI, LABEL_STATUS_KRI, LABEL_FREKUENSI } from '../services/risiko';
 
 const NAMA_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
@@ -203,9 +204,15 @@ const FormLaporan = ({ risikoId, tahun, bulan, onTutup, onTersimpan }) => {
           </fieldset>
         )}
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ justifyContent: 'space-between' }}>
+        {data?.laporan ? (
+          <AksiPersetujuan entitas="pemantauan" id={data.laporan.id} status={data.laporan.status_persetujuan}
+            unitId={data.risiko.unit_id} onSelesai={onTersimpan} />
+        ) : <span />}
+        <Box>
         <Button onClick={onTutup}>Tutup</Button>
         {!terkunci && <Button variant="contained" onClick={simpan} disabled={!form || menyimpan}>{menyimpan ? 'Menyimpan...' : 'Simpan'}</Button>}
+        </Box>
       </DialogActions>
     </Dialog>
   );

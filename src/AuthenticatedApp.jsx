@@ -9,7 +9,6 @@ import { ADMIN_PAGE_ROLES, EXECUTIVE_PAGE_ROLES } from './config/securityConfig'
 
 
 import { AssessmentConfigProvider } from './contexts/AssessmentConfigContext';
-import { ApprovalProvider } from './contexts/ApprovalContext';
 
 /* PAGES - LAZY LOADED */
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -36,7 +35,7 @@ const ControlRegister = lazy(() => import('./pages/ControlTesting/ControlRegiste
 const TestingSchedule = lazy(() => import('./pages/ControlTesting/TestingSchedule'));
 const TestResults = lazy(() => import('./pages/ControlTesting/TestResults'));
 const DeficiencyTracking = lazy(() => import('./pages/ControlTesting/DeficiencyTracking'));
-const ApprovalDashboard = lazy(() => import('./pages/ApprovalDashboard'));
+const AntreanVerifikasi = lazy(() => import('./pages/AntreanVerifikasi'));
 const RACIChart = lazy(() => import('./components/RACIChart'));
 
 function PageLoader() {
@@ -52,7 +51,7 @@ export default function AuthenticatedApp() {
     <ProtectedRoute>
 
       <AssessmentConfigProvider>
-        <ApprovalProvider>
+        <>
 
           <AppLayout>
             <Suspense fallback={<PageLoader />}>
@@ -109,14 +108,14 @@ export default function AuthenticatedApp() {
                 <Route path="/test-results" element={<TestResults />} />
                 <Route path="/deficiency-tracking" element={<DeficiencyTracking />} />
 
-                <Route path="/approval" element={<ApprovalDashboard />} />
+                <Route path="/approval" element={<AntreanVerifikasi />} />
                 <Route path="/raci-chart" element={<RACIChart />} />
 
               </Routes>
             </Suspense>
           </AppLayout>
 
-        </ApprovalProvider>
+        </>
       </AssessmentConfigProvider>
 
     </ProtectedRoute>
