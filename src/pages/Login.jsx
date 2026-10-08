@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -26,6 +26,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { muatIdentitas } from '../services/identitas';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -35,6 +36,8 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
 
   const { login } = useAuth();
+  const [perusahaan, setPerusahaan] = useState('');
+  useEffect(() => { muatIdentitas().then((d) => setPerusahaan(d.nama_perusahaan)); }, []);
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -128,7 +131,7 @@ const Login = () => {
                 </Typography>
 
                 <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.8)', mb: 6, maxWidth: 350 }}>
-                  PT Solusi Kelola Risiko
+                  {perusahaan}
                 </Typography>              </Box>
             </Grid>
           )}

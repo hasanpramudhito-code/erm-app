@@ -35,19 +35,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  orderBy,
-  limit
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
-import { fetchRisks } from '../services/riskService';
+import { api } from '../services/api';
+import { usePeriode } from '../services/risiko';
+import { useIdentitas } from '../services/identitas';
 
-// Hapus fetchRisks top-level
-// const risks = await fetchRisks();
 
 const Dashboard = () => {
   const { userData, currentUser } = useAuth();
@@ -68,244 +59,44 @@ const Dashboard = () => {
     systemStatus: 'normal'
   });
 
-  // Di React component, coba akses collection 'test'
+  const { periodeId } = usePeriode();
+  const identitas = useIdentitas();
+
   useEffect(() => {
-
-    const testFirestoreAccess = async () => {
-      if (!currentUser) {
-        return;
-      }
-
-
-      try {
-        // Coba baca collection 'users' (atau collection lain yang ada)
-        const snapshot = await getDocs(collection(db, "users"));
-
-
-        // Tampilkan data dokumen (jika ada)
-        if (snapshot.docs.length > 0) {
-        }
-
-      } catch (error) {
-
-        // Analisis error
-        if (error.code === 'permission-denied') {
-        }
-      }
-    };
-
-    testFirestoreAccess();
-
-  }, [currentUser]);
-
-  // Fetch dashboard data
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-
-        // 1. Total Risks Count (Tetap sama dengan error handling)
-        let totalRisks = 0;
-        try {
-          const risksQuery = query(collection(db, 'risks'));
-          const risksSnapshot = await getDocs(risksQuery);
-          totalRisks = risksSnapshot.size;
-        } catch (err) {
-          console.warn("Failed to fetch total risks count:", err);
-        }
-
-        // 2. Active RTP Count - DIPERBAIKI: ganti nama koleksi sesuai dengan halaman RTP
-        let activeRTP = 0;
-        try {
-          // Mencoba berbagai nama koleksi yang mungkin
-          const possibleCollections = [
-            'treatment_plans',  // ← INI YANG DIPAKAI DI HALAMAN RTP
-            'risk_treatment_plans',
-            'rtp',
-            'risk_treatments'
-          ];
-
-          for (const collectionName of possibleCollections) {
-            try {
-              // Debug: Cek koleksi
-              const testCollection = collection(db, collectionName);
-              const testSnapshot = await getDocs(testCollection);
-
-
-              if (testSnapshot.size > 0) {
-                // Coba query dengan berbagai status
-                const statusOptions = ['in_progress', 'In Progress', 'active', 'Active', 'ACTIVE', 'aktif'];
-
-                for (const statusOption of statusOptions) {
-                  try {
-                    const rtpQuery = query(
-                      collection(db, collectionName),
-                      where('status', '==', statusOption)
-                    );
-                    const rtpSnapshot = await getDocs(rtpQuery);
-                    const count = rtpSnapshot.size;
-
-                    if (count > 0) {
-                      activeRTP += count;
-                    }
-                  } catch (queryError) {
-                    // Skip query error
-                  }
-                }
-
-                // Jika masih 0, hitung manual
-                if (activeRTP === 0) {
-                  const allRtpData = testSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                  }));
-
-                  // Cari yang statusnya aktif/progress (case insensitive)
-                  const activeCount = allRtpData.filter(rtp => {
-                    const status = rtp.status?.toString().toLowerCase() || '';
-                    return status.includes('progress') ||
-                      status.includes('active') ||
-                      status.includes('in progress') ||
-                      status === 'in_progress';
-                  }).length;
-
-                  activeRTP += activeCount;
-                }
-              }
-            } catch (collectionError) {
-              // Collection tidak ada, lanjut ke yang berikutnya
-              continue;
-            }
-          }
-
-
-        } catch (rtpError) {
-          activeRTP = 0;
-        }
-        // 3. High & Extreme Risks (MODIFIKASI: Ambil dari residualRiskLevel.level dengan error handling)
-        let highRisks = 0;
-        try {
-          const highRisksQuery = query(
-            collection(db, 'risks'),
-            where('residualRiskLevel.level', 'in', ['Tinggi', 'Ekstrim', 'High', 'Extreme'])
-          );
-          const highRisksSnapshot = await getDocs(highRisksQuery);
-          highRisks = highRisksSnapshot.size;
-        } catch (err) {
-          console.warn("Failed to fetch high risks count:", err);
-        }
-
-        // 4. Risk Owners (Tetap sama, tapi pastikan role di user benar dengan error handling)
-        let riskOwners = 0;
-        try {
-          const ownersQuery = query(
-            collection(db, 'users'),
-            where('role', '==', 'risk_owner')
-          );
-          const ownersSnapshot = await getDocs(ownersQuery);
-          riskOwners = ownersSnapshot.size;
-        } catch (err) {
-          console.warn("Failed to fetch risk owners count:", err);
-        }
-
-        // 5. Risk Distribution (MODIFIKASI: Ambil dari residualRiskLevel.level dengan error handling)
-        let riskDistribution = {
-          extreme: 0,
-          high: 0,
-          medium: 0,
-          low: 0
-        };
-        try {
-          const extremeQuery = query(collection(db, 'risks'), where('residualRiskLevel.level', 'in', ['Ekstrim', 'Extreme']));
-          const highQuery = query(collection(db, 'risks'), where('residualRiskLevel.level', 'in', ['Tinggi', 'High']));
-          const mediumQuery = query(collection(db, 'risks'), where('residualRiskLevel.level', 'in', ['Sedang', 'Medium']));
-          const lowQuery = query(collection(db, 'risks'), where('residualRiskLevel.level', 'in', ['Rendah', 'Sangat Rendah', 'Low', 'Very Low']));
-
-          const [extremeSnap, highSnap, mediumSnap, lowSnap] = await Promise.all([
-            getDocs(extremeQuery),
-            getDocs(highQuery),
-            getDocs(mediumQuery),
-            getDocs(lowQuery)
-          ]);
-
-          riskDistribution = {
-            extreme: extremeSnap.size,
-            high: highSnap.size,
-            medium: mediumSnap.size,
-            low: lowSnap.size
-          };
-        } catch (err) {
-          console.warn("Failed to fetch risk distribution:", err);
-        }
-
-        // 6. Recent Activities (from audit_logs or activities collection)
-        const activitiesQuery = query(
-          collection(db, 'activities'),
-          orderBy('timestamp', 'desc'),
-          limit(5)
-        );
-        const activitiesSnapshot = await getDocs(activitiesQuery);
-        const recentActivities = activitiesSnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            time: formatTimestamp(data.timestamp), // Keep original time formatting
-            timestamp: data.timestamp?.toDate ? data.timestamp.toDate() : (data.timestamp ? new Date(data.timestamp) : new Date()) // Add safe timestamp
-          };
-        });
-
-        // Fallback activities if no activities found
-        const fallbackActivities = [
-          {
-            action: 'Sistem ERM diinisialisasi',
-            time: 'Baru saja',
-            status: 'completed',
-            id: '1'
-          },
-          {
-            action: `User ${userData?.name || 'admin'} berhasil login`,
-            time: '2 menit lalu',
-            status: 'completed',
-            id: '2'
-          },
-          {
-            action: totalRisks > 0 ? `${totalRisks} risiko teridentifikasi` : 'Belum ada risiko teridentifikasi',
-            time: 'Sistem',
-            status: totalRisks > 0 ? 'completed' : 'pending',
-            id: '3'
-          },
-        ];
-
+    if (!currentUser || !periodeId) return;
+    setLoading(true);
+    api.get(`/ringkasan/dashboard?periode_id=${periodeId}`)
+      .then((d) => {
+        const jumlah = (nama) => d.sebaran.find((x) => x.level === nama)?.jumlah || 0;
         setDashboardData({
-          totalRisks,
-          activeRTP,
-          highRisks,
-          riskOwners,
-          riskDistribution,
-          recentActivities: recentActivities.length > 0 ? recentActivities : fallbackActivities,
-          systemStatus: 'normal'
+          totalRisks: d.total_risiko,
+          activeRTP: d.mitigasi_aktif,
+          highRisks: d.risiko_tinggi,
+          riskOwners: d.pemilik_risiko,
+          // Kartu lama 4 kelompok: Ekstrim | Tinggi+Sangat Tinggi | Sedang | Rendah+Sangat Rendah.
+          riskDistribution: {
+            extreme: jumlah('Ekstrim'),
+            high: jumlah('Tinggi') + jumlah('Sangat Tinggi'),
+            medium: jumlah('Sedang'),
+            low: jumlah('Rendah') + jumlah('Sangat Rendah'),
+          },
+          recentActivities: d.aktivitas.length ? d.aktivitas.map((a) => ({
+            id: a.id,
+            action: `${a.pengguna?.nama || 'Sistem'}: ${a.aksi.toLowerCase().replace(/_/g, ' ')} ${a.nama_tabel.replace(/_/g, ' ')}`,
+            time: formatTimestamp(a.dibuat_pada),
+            timestamp: new Date(a.dibuat_pada),
+            status: 'completed',
+          })) : [{ id: 'kosong', action: 'Belum ada aktivitas', time: '-', status: 'pending' }],
+          systemStatus: 'normal',
         });
-
-      } catch (error) {
-        // Set fallback data on error
-        setDashboardData(prev => ({
-          ...prev,
-          recentActivities: [
-            { action: 'Error loading data', time: 'Just now', status: 'error', id: 'error' },
-            { action: 'Sistem tetap berjalan', time: 'Sistem', status: 'completed', id: 'system' }
-          ],
-          systemStatus: 'warning'
-        }));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (currentUser) {
-      fetchDashboardData();
-    }
-  }, [currentUser, userData]);
+      })
+      .catch(() => setDashboardData((prev) => ({
+        ...prev,
+        recentActivities: [{ action: 'Gagal memuat data', time: 'Baru saja', status: 'error', id: 'error' }],
+        systemStatus: 'warning',
+      })))
+      .finally(() => setLoading(false));
+  }, [currentUser?.id, periodeId]);
 
   // Format timestamp to relative time
   const formatTimestamp = (timestamp) => {
@@ -324,32 +115,32 @@ const Dashboard = () => {
   // Statistics data - NOW USING REAL DATA
   const stats = [
     {
-      title: 'Total Risks',
+      title: 'Total Risiko',
       value: dashboardData.totalRisks.toString(),
       icon: <AlertTriangle size={24} />,
       color: 'error.main',
-      description: 'Risiko teridentifikasi'
+      description: 'Risiko pada periode berjalan'
     },
     {
-      title: 'Active RTP',
+      title: 'Mitigasi Aktif',
       value: dashboardData.activeRTP.toString(),
       icon: <Activity size={24} />,
       color: 'primary.main',
-      description: 'Risk Treatment Plan aktif'
+      description: 'Direncanakan, berjalan, atau terlambat'
     },
     {
-      title: 'High Risks',
+      title: 'Risiko Tinggi',
       value: dashboardData.highRisks.toString(),
       icon: <FileText size={24} />,
       color: 'warning.main',
-      description: 'Risiko tingkat tinggi/extreme'
+      description: 'Residual pada dua level teratas'
     },
     {
-      title: 'Risk Owners',
+      title: 'Pimpinan Unit',
       value: dashboardData.riskOwners.toString(),
       icon: <Users size={24} />,
       color: 'success.main',
-      description: 'Pemilik risiko aktif'
+      description: 'Pemilik risiko di tingkat unit'
     },
   ];
 
@@ -471,13 +262,13 @@ const Dashboard = () => {
       {/* Header Section */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" gutterBottom fontWeight="bold">
-          PT Solusi Kelola Risiko
+          {identitas.judul}
         </Typography>
         <Typography variant="h6" color="textSecondary" gutterBottom>
           Selamat datang kembali, <strong>{userData?.name || 'User'}!</strong>
         </Typography>
         <Chip
-          label={userData?.role || 'User'}
+          label={(userData?.peran || []).join(' · ').replace(/_/g, ' ') || 'Pengguna'}
           color="primary"
           variant="outlined"
           sx={{ mt: 1 }}
