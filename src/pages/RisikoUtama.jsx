@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel,
   Grid, IconButton, MenuItem, Paper, Snackbar, Switch, Tab, Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, Tabs, TextField, Typography
+  TableRow, Tabs, TextField, Typography, Checkbox, List, ListItem, ListItemText
 } from '@mui/material';
-import { Library, Plus, Edit2, Trash2, RefreshCw } from 'lucide-react';
+import { Library, Plus, Edit2, Trash2, RefreshCw, Download, Upload, Copy, CalendarRange } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -38,10 +38,86 @@ const RisikoUtama = () => {
   const [editId, setEditId] = useState(null);
   const [error, setError] = useState('');
   const [pesan, setPesan] = useState('');
+  const [daftarPeriode, setDaftarPeriode] = useState([]);
+  const [periodeId, setPeriodeId] = useState('');
+  const [salinDari, setSalinDari] = useState('');
+  const [hasilImpor, setHasilImpor] = useState(null);
+  const [fileImpor, setFileImpor] = useState(null);
+  const [kelolaPeriode, setKelolaPeriode] = useState(false);
+  const [formPeriode, setFormPeriode] = useState({ nama: '', tanggal_mulai: '', tanggal_selesai: '', status: 'PERSIAPAN' });
+  const periode = daftarPeriode.find((p) => p.id === periodeId);
+  const bisaAturDaftar = bolehUbah && periode && periode.status !== 'DITUTUP';
 
-  const muat = () => Promise.all([api.get('/risiko-utama?semua=1'), api.get('/kategori-risiko'), api.get('/direktorat')])
-    .then(([r, k, d]) => { setDaftar(r); setKategori(k); setDirektorat(d); })
+  const muat = () => Promise.all([api.get('/risiko-utama?semua=1'), api.get('/kategori-risiko'), api.get('/direktorat'), api.get('/periode')])
+    .then(([r, k, d, p]) => {
+      setDaftar(r); setKategori(k); setDirektorat(d); setDaftarPeriode(p);
+      setPeriodeId((id) => (p.some((x) => x.id === id) ? id : (p.find((x) => x.status === 'PERSIAPAN') || p.find((x) => x.status === 'TERBUKA') || p[0])?.id || ''));
+    })
     .catch((e) => setError(e.message));
+
+  const dalamPeriode = (r) => r.periode_ids?.includes(periodeId);
+  const toggleDaftar = async (r) => {
+    const ids = daftar.filter((x) => (x.id === r.id ? !dalamPeriode(x) : dalamPeriode(x))).map((x) => x.id);
+    try {
+      const h = await api.put(`/risiko-utama/periode/${periodeId}`, { risiko_utama_ids: ids });
+      if (h.entri_dibuat) setPesan(`${h.entri_dibuat} entri risk register cabang dibentuk`);
+      muat();
+    } catch (e) { setError(e.message); }
+  };
+  const salin = async () => {
+    try {
+      const h = await api.post(`/risiko-utama/periode/${periodeId}/salin`, { dari_periode_id: salinDari });
+      setPesan(`${h.ditambahkan} risiko utama disalin${h.entri_dibuat ? `, ${h.entri_dibuat} entri cabang dibentuk` : ''}`);
+      setSalinDari('');
+      muat();
+    } catch (e) { setError(e.message); }
+  };
+  const ekspor = async () => {
+    try {
+      const r = await fetch(`/api/risiko-utama/excel/ekspor?periode_id=${periodeId}`, { credentials: 'same-origin' });
+      if (!r.ok) throw new Error((await r.json()).error);
+      const url = URL.createObjectURL(await r.blob());
+      Object.assign(document.createElement('a'), { href: url, download: `risiko-utama-${periode?.nama || 'semua'}.xlsx` }).click();
+      URL.revokeObjectURL(url);
+    } catch (e) { setError(e.message); }
+  };
+  const impor = async (file, simulasi) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('periode_id', String(periodeId));
+    const r = await fetch(`/api/risiko-utama/excel/impor${simulasi ? '?simulasi=1' : ''}`, { method: 'POST', credentials: 'same-origin', body: fd });
+    const j = await r.json();
+    if (!r.ok && !j.kesalahan) throw new Error(j.error);
+    return j;
+  };
+  const pilihFile = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      setFileImpor(file);
+      setHasilImpor(await impor(file, true));
+    } catch (err) { setError(err.message); }
+  };
+  const jalankanImpor = async () => {
+    try {
+      const h = await impor(fileImpor, false);
+      setHasilImpor(null);
+      setPesan(`Impor selesai: ${h.baru} baru, ${h.diubah} diubah${h.entri_dibuat ? `, ${h.entri_dibuat} entri cabang dibentuk` : ''}`);
+      muat();
+    } catch (e) { setError(e.message); }
+  };
+  const simpanPeriode = async (p, data) => {
+    try {
+      if (p) await api.patch(`/periode/${p.id}`, data);
+      else {
+        const baru = await api.post('/periode', formPeriode);
+        setFormPeriode({ nama: '', tanggal_mulai: '', tanggal_selesai: '', status: 'PERSIAPAN' });
+        setPeriodeId(baru.id);
+      }
+      muat();
+    } catch (e) { setError(e.message); }
+  };
   useEffect(() => { muat(); }, []);
 
   const buka = (r) => {
@@ -57,7 +133,7 @@ const RisikoUtama = () => {
   const simpan = async () => {
     try {
       const { terpakai, ...body } = form;
-      const r = editId ? await api.patch(`/risiko-utama/${editId}`, body) : await api.post('/risiko-utama', body);
+      const r = editId ? await api.patch(`/risiko-utama/${editId}`, body) : await api.post('/risiko-utama', { ...body, periode_id: bisaAturDaftar ? periodeId : undefined });
       setForm(null);
       setPesan(r.entri_dibuat ? `Tersimpan. ${r.entri_dibuat} entri risk register cabang dibentuk otomatis.` : 'Tersimpan');
       muat();
@@ -108,6 +184,30 @@ const RisikoUtama = () => {
               </Box>
             )}
           </Box>
+          <Box display="flex" gap={1} mt={2} flexWrap="wrap" alignItems="center">
+            <TextField select size="small" label="Periode" sx={{ minWidth: 200 }} value={periodeId} onChange={(e) => setPeriodeId(e.target.value)}>
+              {daftarPeriode.map((p) => <MenuItem key={p.id} value={p.id}>{p.nama} · {p.status}</MenuItem>)}
+            </TextField>
+            {bolehUbah && <Button size="small" startIcon={<CalendarRange size={16} />} onClick={() => setKelolaPeriode(true)}>Kelola periode</Button>}
+            {bisaAturDaftar && (
+              <>
+                <TextField select size="small" label="Salin daftar dari" sx={{ minWidth: 180 }} value={salinDari} onChange={(e) => setSalinDari(e.target.value)}>
+                  {daftarPeriode.filter((p) => p.id !== periodeId).map((p) => <MenuItem key={p.id} value={p.id}>{p.nama}</MenuItem>)}
+                </TextField>
+                <Button size="small" variant="outlined" startIcon={<Copy size={16} />} disabled={!salinDari} onClick={salin}>Salin</Button>
+              </>
+            )}
+            <Box flexGrow={1} />
+            {bolehUbah && (
+              <>
+                <Button size="small" startIcon={<Download size={16} />} onClick={ekspor}>Ekspor Excel</Button>
+                <Button size="small" component="label" startIcon={<Upload size={16} />} disabled={!bisaAturDaftar}>
+                  Impor Excel
+                  <input hidden type="file" accept=".xlsx" onChange={pilihFile} />
+                </Button>
+              </>
+            )}
+          </Box>
         </CardContent>
       </Card>
 
@@ -121,6 +221,8 @@ const RisikoUtama = () => {
         {tab === 'CABANG'
           ? 'Risiko utama cabang wajib bagi seluruh cabang. Saat disimpan, setiap cabang otomatis mendapat entri DRAF di risk register periode terbuka.'
           : 'Risiko utama Pusat dipilih sendiri oleh unit Pusat saat mengisi risk register.'}
+        {' '}Centang kolom "Periode" untuk menentukan risiko utama yang berlaku pada periode terpilih.
+        {periode?.status === 'PERSIAPAN' && ' Periode masih PERSIAPAN: entri cabang baru dibentuk saat periode dibuka.'}
       </Alert>
 
       <Paper>
@@ -128,6 +230,7 @@ const RisikoUtama = () => {
           <Table size="small">
             <TableHead>
               <TableRow>
+                <TableCell padding="checkbox">Periode</TableCell>
                 <TableCell>Kode</TableCell>
                 <TableCell>Nama</TableCell>
                 <TableCell>Kategori</TableCell>
@@ -140,10 +243,14 @@ const RisikoUtama = () => {
             </TableHead>
             <TableBody>
               {tampil.length === 0 && (
-                <TableRow><TableCell colSpan={8} align="center">Belum ada risiko utama.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} align="center">Belum ada risiko utama.</TableCell></TableRow>
               )}
               {tampil.map((r) => (
                 <TableRow key={r.id} hover sx={{ opacity: r.aktif ? 1 : 0.5 }}>
+                  <TableCell padding="checkbox">
+                    <Checkbox checked={!!dalamPeriode(r)} disabled={!bisaAturDaftar || !r.aktif} onChange={() => toggleDaftar(r)}
+                      inputProps={{ 'aria-label': `${r.kode} berlaku di periode ${periode?.nama || ''}` }} />
+                  </TableCell>
                   <TableCell><strong>{r.kode}</strong></TableCell>
                   <TableCell>{r.nama}{!r.aktif && <Chip size="small" label="Nonaktif" sx={{ ml: 1 }} />}</TableCell>
                   <TableCell>{r.kategori?.nama || '-'}</TableCell>
@@ -221,6 +328,73 @@ const RisikoUtama = () => {
           <Button variant="contained" onClick={simpan} disabled={!form?.kode || !form?.nama}>Simpan</Button>
         </DialogActions>
       </Dialog>
+      <Dialog open={!!hasilImpor} onClose={() => setHasilImpor(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Pratinjau Impor</DialogTitle>
+        <DialogContent dividers>
+          {hasilImpor?.kesalahan?.length ? (
+            <>
+              <Alert severity="error" sx={{ mb: 1 }}>File tidak dapat diimpor. Perbaiki baris berikut lalu unggah ulang:</Alert>
+              <List dense>
+                {hasilImpor.kesalahan.map((k, i) => (
+                  <ListItem key={i}><ListItemText primary={`${k.baris ? `Baris ${k.baris}` : ''} ${k.kode || ''}`} secondary={k.kesalahan} /></ListItem>
+                ))}
+              </List>
+            </>
+          ) : (
+            <Typography>
+              {hasilImpor?.baru} risiko utama baru dan {hasilImpor?.diubah} diubah akan disimpan, lalu dimasukkan ke daftar periode {periode?.nama}.
+              Pustaka yang hilang dari file akan dihapus, atau dinonaktifkan bila sudah dipakai unit.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setHasilImpor(null)}>Batal</Button>
+          {!hasilImpor?.kesalahan?.length && <Button variant="contained" onClick={jalankanImpor}>Impor</Button>}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={kelolaPeriode} onClose={() => setKelolaPeriode(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Kelola Periode</DialogTitle>
+        <DialogContent dividers>
+          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+          <Alert severity="info" sx={{ mb: 2 }}>
+            PERSIAPAN: susun daftar risiko utama tanpa membentuk entri. TERBUKA: entri cabang dibentuk dan unit mulai mengisi. DITUTUP: periode terkunci.
+          </Alert>
+          <Table size="small">
+            <TableHead>
+              <TableRow><TableCell>Nama</TableCell><TableCell>Mulai</TableCell><TableCell>Selesai</TableCell><TableCell>Status</TableCell></TableRow>
+            </TableHead>
+            <TableBody>
+              {daftarPeriode.map((p) => (
+                <TableRow key={p.id}>
+                  <TableCell>{p.nama}</TableCell>
+                  <TableCell>{new Date(p.tanggal_mulai).toLocaleDateString('id-ID')}</TableCell>
+                  <TableCell>{new Date(p.tanggal_selesai).toLocaleDateString('id-ID')}</TableCell>
+                  <TableCell>
+                    <TextField select size="small" value={p.status} onChange={(e) => {
+                      if (e.target.value === 'DITUTUP' && !window.confirm(`Tutup periode ${p.nama}? Seluruh data periode ini tidak dapat diubah lagi.`)) return;
+                      simpanPeriode(p, { status: e.target.value });
+                    }}>
+                      {['PERSIAPAN', 'TERBUKA', 'DITUTUP'].map((st) => <MenuItem key={st} value={st}>{st}</MenuItem>)}
+                    </TextField>
+                  </TableCell>
+                </TableRow>
+              ))}
+              <TableRow>
+                <TableCell><TextField size="small" placeholder="mis. 2027" value={formPeriode.nama} onChange={(e) => setFormPeriode({ ...formPeriode, nama: e.target.value })} /></TableCell>
+                <TableCell><TextField size="small" type="date" value={formPeriode.tanggal_mulai} onChange={(e) => setFormPeriode({ ...formPeriode, tanggal_mulai: e.target.value })} /></TableCell>
+                <TableCell><TextField size="small" type="date" value={formPeriode.tanggal_selesai} onChange={(e) => setFormPeriode({ ...formPeriode, tanggal_selesai: e.target.value })} /></TableCell>
+                <TableCell>
+                  <Button size="small" variant="contained" disabled={!formPeriode.nama || !formPeriode.tanggal_mulai || !formPeriode.tanggal_selesai}
+                    onClick={() => simpanPeriode(null)}>Tambah</Button>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </DialogContent>
+        <DialogActions><Button onClick={() => setKelolaPeriode(false)}>Tutup</Button></DialogActions>
+      </Dialog>
+
       <Snackbar open={!!pesan} autoHideDuration={6000} onClose={() => setPesan('')} message={pesan} />
     </Box>
   );

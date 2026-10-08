@@ -153,7 +153,7 @@ router.use('/periode', crud({
     if (kurang) return { error: `${kurang} wajib diisi` };
     if ([data.tanggal_mulai, data.tanggal_selesai].some((d) => d && isNaN(d))) return { error: 'Tanggal tidak valid' };
     if ((data.tanggal_mulai ?? lama?.tanggal_mulai) > (data.tanggal_selesai ?? lama?.tanggal_selesai)) return { error: 'Tanggal mulai melewati tanggal selesai' };
-    if (data.status && !['TERBUKA', 'DITUTUP'].includes(data.status)) return { error: 'Status harus TERBUKA atau DITUTUP' };
+    if (data.status && !['PERSIAPAN', 'TERBUKA', 'DITUTUP'].includes(data.status)) return { error: 'Status harus PERSIAPAN, TERBUKA, atau DITUTUP' };
     return { data };
   },
 }));

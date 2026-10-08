@@ -18,16 +18,14 @@ const sertakan = {
   _count: { select: { risiko: true } },
 };
 
-// Bentuk entri draf: setiap cabang aktif x setiap risiko utama CABANG aktif, pada periode TERBUKA.
+// Bentuk entri draf: setiap cabang aktif x setiap risiko utama CABANG aktif dalam daftar periode TERBUKA.
 // Idempoten (unique periode+unit+risiko_utama). Kembalikan jumlah entri baru.
 async function bentukEntriCabang(periode_id) {
   const periode = await prisma.periode.findMany({ where: { status: 'TERBUKA', ...(periode_id ? { id: periode_id } : {}) } });
-  const [cabang, utama] = await Promise.all([
-    prisma.unit.findMany({ where: { jenis: 'CABANG', aktif: true }, select: { id: true, kode: true } }),
-    prisma.risiko_utama.findMany({ where: { berlaku_untuk: 'CABANG', aktif: true } }),
-  ]);
+  const cabang = await prisma.unit.findMany({ where: { jenis: 'CABANG', aktif: true }, select: { id: true, kode: true } });
   let dibuat = 0;
   for (const p of periode) {
+    const utama = await prisma.risiko_utama.findMany({ where: { berlaku_untuk: 'CABANG', aktif: true, periode: { some: { periode_id: p.id } } } });
     const ada = new Set((await prisma.risiko.findMany({
       where: { periode_id: p.id, risiko_utama_id: { not: null } }, select: { unit_id: true, risiko_utama_id: true },
     })).map((r) => `${r.unit_id}-${r.risiko_utama_id}`));
@@ -88,11 +86,50 @@ async function simpan(tx, id, h) {
 }
 
 router.get('/', async (req, res) => {
+  const periode_id = Number(req.query.periode_id) || null;
   const where = {
     ...(req.query.berlaku_untuk ? { berlaku_untuk: req.query.berlaku_untuk } : {}),
     ...(req.query.semua ? {} : { aktif: true }),
+    ...(periode_id ? { periode: { some: { periode_id } } } : {}),
   };
-  res.json(await prisma.risiko_utama.findMany({ where, include: sertakan, orderBy: [{ berlaku_untuk: 'asc' }, { kode: 'asc' }] }));
+  const list = await prisma.risiko_utama.findMany({
+    where,
+    include: { ...sertakan, periode: { select: { periode_id: true } } },
+    orderBy: [{ berlaku_untuk: 'asc' }, { kode: 'asc' }],
+  });
+  res.json(list.map(({ periode, ...r }) => ({ ...r, periode_ids: periode.map((p) => p.periode_id) })));
+});
+
+// Atur daftar risiko utama satu periode (ganti seluruhnya). Entri unit yang sudah ada tidak dihapus.
+router.put('/periode/:periodeId', wajibPeran(...PENULIS), async (req, res) => {
+  const periode_id = Number(req.params.periodeId);
+  const periode = await prisma.periode.findUnique({ where: { id: periode_id } });
+  if (!periode) throw galat(404, 'Periode tidak ditemukan');
+  if (periode.status === 'DITUTUP') throw galat(400, 'Periode sudah ditutup');
+  const ids = [...new Set((Array.isArray(req.body?.risiko_utama_ids) ? req.body.risiko_utama_ids : []).map(Number))];
+  if ((await prisma.risiko_utama.count({ where: { id: { in: ids } } })) !== ids.length) throw galat(400, 'Ada risiko utama yang tidak dikenal');
+  await prisma.$transaction([
+    prisma.periode_risiko_utama.deleteMany({ where: { periode_id, risiko_utama_id: { notIn: ids } } }),
+    prisma.periode_risiko_utama.createMany({ data: ids.map((risiko_utama_id) => ({ periode_id, risiko_utama_id })), skipDuplicates: true }),
+  ]);
+  await catat({ req, nama_tabel: 'periode_risiko_utama', id_data: periode_id, aksi: 'ATUR_DAFTAR', nilai_baru: { risiko_utama_ids: ids } });
+  const entri_dibuat = periode.status === 'TERBUKA' ? await bentukEntriCabang(periode_id) : 0;
+  res.json({ jumlah: ids.length, entri_dibuat });
+});
+
+// Salin daftar risiko utama dari periode lain (ditambahkan, tidak menghapus yang sudah ada).
+router.post('/periode/:periodeId/salin', wajibPeran(...PENULIS), async (req, res) => {
+  const periode_id = Number(req.params.periodeId);
+  const dari = Number(req.body?.dari_periode_id);
+  const [tujuan, asal] = await Promise.all([prisma.periode.findUnique({ where: { id: periode_id } }), prisma.periode.findUnique({ where: { id: dari } })]);
+  if (!tujuan || !asal) throw galat(404, 'Periode tidak ditemukan');
+  if (tujuan.status === 'DITUTUP') throw galat(400, 'Periode tujuan sudah ditutup');
+  if (dari === periode_id) throw galat(400, 'Periode asal dan tujuan sama');
+  const daftar = await prisma.periode_risiko_utama.findMany({ where: { periode_id: dari, risiko_utama: { aktif: true } }, select: { risiko_utama_id: true } });
+  const { count } = await prisma.periode_risiko_utama.createMany({ data: daftar.map((d) => ({ periode_id, risiko_utama_id: d.risiko_utama_id })), skipDuplicates: true });
+  await catat({ req, nama_tabel: 'periode_risiko_utama', id_data: periode_id, aksi: 'SALIN_DAFTAR', nilai_baru: { dari_periode_id: dari, ditambahkan: count } });
+  const entri_dibuat = tujuan.status === 'TERBUKA' ? await bentukEntriCabang(periode_id) : 0;
+  res.json({ ditambahkan: count, entri_dibuat });
 });
 
 router.post('/bentuk-entri', wajibPeran(...PENULIS), async (req, res) => {
@@ -103,9 +140,14 @@ router.post('/bentuk-entri', wajibPeran(...PENULIS), async (req, res) => {
 
 router.post('/', wajibPeran(...PENULIS), async (req, res) => {
   const h = bersihkan(req.body || {}, true);
-  const r = await prisma.$transaction(async (tx) => simpan(tx, (await tx.risiko_utama.create({ data: h.data })).id, h));
+  const periode_id = Number(req.body?.periode_id) || null;
+  const r = await prisma.$transaction(async (tx) => {
+    const baru = await tx.risiko_utama.create({ data: h.data });
+    if (periode_id) await tx.periode_risiko_utama.create({ data: { periode_id, risiko_utama_id: baru.id } });
+    return simpan(tx, baru.id, h);
+  });
   await catat({ req, nama_tabel: 'risiko_utama', id_data: r.id, aksi: 'BUAT', nilai_baru: r });
-  const entri = r.berlaku_untuk === 'CABANG' && r.aktif ? await bentukEntriCabang() : 0;
+  const entri = periode_id && r.berlaku_untuk === 'CABANG' && r.aktif ? await bentukEntriCabang(periode_id) : 0;
   res.status(201).json({ ...r, entri_dibuat: entri });
 });
 

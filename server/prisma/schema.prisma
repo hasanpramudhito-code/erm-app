@@ -16,7 +16,9 @@ enum JenisUnit {
   CABANG
 }
 
+// PERSIAPAN: daftar risiko utama disusun, belum ada entri; TERBUKA: input berjalan; DITUTUP: terkunci.
 enum StatusPeriode {
+  PERSIAPAN
   TERBUKA
   DITUTUP
 }
@@ -255,14 +257,15 @@ model pengguna_peran {
 // ============ B. PARAMETER ============
 
 model periode {
-  id              Int           @id @default(autoincrement())
-  nama            String        @db.VarChar(100)
-  tanggal_mulai   DateTime      @db.Date
-  tanggal_selesai DateTime      @db.Date
-  status          StatusPeriode @default(TERBUKA)
+  id              Int                    @id @default(autoincrement())
+  nama            String                 @db.VarChar(100)
+  tanggal_mulai   DateTime               @db.Date
+  tanggal_selesai DateTime               @db.Date
+  status          StatusPeriode          @default(TERBUKA)
   risiko          risiko[]
-  dibuat_pada     DateTime      @default(now())
-  diubah_pada     DateTime      @updatedAt
+  risiko_utama    periode_risiko_utama[]
+  dibuat_pada     DateTime               @default(now())
+  diubah_pada     DateTime               @updatedAt
 }
 
 model skala_kemungkinan {
@@ -355,23 +358,37 @@ model pengaturan {
 // ============ C. RISIKO UTAMA & PUSTAKA ============
 
 model risiko_utama {
-  id                    Int                @id @default(autoincrement())
-  kode                  String             @unique @db.VarChar(30)
-  nama                  String             @db.VarChar(255)
-  deskripsi             String?            @db.Text
+  id                    Int                    @id @default(autoincrement())
+  kode                  String                 @unique @db.VarChar(30)
+  nama                  String                 @db.VarChar(255)
+  deskripsi             String?                @db.Text
   kategori_id           Int?
-  kategori              kategori_risiko?   @relation(fields: [kategori_id], references: [id])
+  kategori              kategori_risiko?       @relation(fields: [kategori_id], references: [id])
   berlaku_untuk         JenisUnit
   direktorat_pemilik_id Int?
-  direktorat_pemilik    direktorat?        @relation(fields: [direktorat_pemilik_id], references: [id])
-  aktif                 Boolean            @default(true)
+  direktorat_pemilik    direktorat?            @relation(fields: [direktorat_pemilik_id], references: [id])
+  aktif                 Boolean                @default(true)
   pustaka_penyebab      pustaka_penyebab[]
   pustaka_dampak        pustaka_dampak[]
   risiko                risiko[]
-  dibuat_pada           DateTime           @default(now())
-  diubah_pada           DateTime           @updatedAt
+  periode               periode_risiko_utama[]
+  dibuat_pada           DateTime               @default(now())
+  diubah_pada           DateTime               @updatedAt
 
   @@index([berlaku_untuk, aktif])
+}
+
+// Daftar risiko utama yang berlaku pada satu periode.
+model periode_risiko_utama {
+  id              Int          @id @default(autoincrement())
+  periode_id      Int
+  periode         periode      @relation(fields: [periode_id], references: [id], onDelete: Cascade)
+  risiko_utama_id Int
+  risiko_utama    risiko_utama @relation(fields: [risiko_utama_id], references: [id], onDelete: Cascade)
+  dibuat_pada     DateTime     @default(now())
+  diubah_pada     DateTime     @updatedAt
+
+  @@unique([periode_id, risiko_utama_id])
 }
 
 model pustaka_penyebab {

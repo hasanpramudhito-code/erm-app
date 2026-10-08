@@ -176,7 +176,9 @@ export function usePeriode() {
   const [periodeId, setPeriodeIdState] = useState(() => Number(localStorage.getItem(KUNCI_PERIODE)) || null);
 
   useEffect(() => {
-    api.get('/periode').then((list) => {
+    // Periode PERSIAPAN hanya untuk menyusun daftar risiko utama; unit belum mengisi.
+    api.get('/periode').then((semua) => {
+      const list = semua.filter((p) => p.status !== 'PERSIAPAN');
       setDaftar(list);
       setPeriodeIdState((id) => (list.some((p) => p.id === id) ? id : (list.find((p) => p.status === 'TERBUKA') || list[0])?.id ?? null));
     }).catch(() => setDaftar([]));

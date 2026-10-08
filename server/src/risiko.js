@@ -144,7 +144,7 @@ async function sinkron(tx, model, risiko_id, daftar, riwayat, nama) {
 }
 
 // Validasi body. Kembalikan {data, penyebab, dampak, penilaian, residual} atau {error}.
-async function bersihkan(b, baru, pengguna, risikoUtamaLama = null) {
+async function bersihkan(b, baru, pengguna, risikoUtamaLama = null, periodeLama = null) {
   const data = {
     kode: teks(b.kode)?.toUpperCase(),
     nama: teks(b.nama),
@@ -185,6 +185,9 @@ async function bersihkan(b, baru, pengguna, risikoUtamaLama = null) {
     if (data.risiko_utama_id) {
       const ru = await prisma.risiko_utama.findUnique({ where: { id: data.risiko_utama_id } });
       if (!ru || !ru.aktif) return { error: 'Risiko utama tidak ditemukan' };
+      const periodeEntri = data.periode_id ?? periodeLama;
+      if (periodeEntri && !(await prisma.periode_risiko_utama.findUnique({ where: { periode_id_risiko_utama_id: { periode_id: periodeEntri, risiko_utama_id: ru.id } } })))
+        return { error: 'Risiko utama ini tidak termasuk daftar periode tersebut' };
       if (ru.berlaku_untuk !== u.jenis) return { error: `Risiko utama ini hanya untuk unit ${ru.berlaku_untuk}` };
     }
   }
@@ -283,7 +286,7 @@ router.patch('/:id', async (req, res) => {
   const larang = cekTulis(req.pengguna, lama.unit_id, lama.status_persetujuan);
   if (larang) return res.status(403).json({ error: larang });
 
-  const h = await bersihkan(req.body || {}, false, req.pengguna, lama.risiko_utama_id);
+  const h = await bersihkan(req.body || {}, false, req.pengguna, lama.risiko_utama_id, lama.periode_id);
   if (h.error) return res.status(400).json({ error: h.error });
   if (h.data.unit_id && h.data.unit_id !== lama.unit_id) {
     const l2 = cekTulis(req.pengguna, h.data.unit_id, lama.status_persetujuan);

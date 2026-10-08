@@ -19,6 +19,7 @@ app.get('/api/identitas', async (req, res) => {
 app.use('/api/auth', auth.router);
 app.use('/api/lampiran', lampiran.router);
 app.use('/api/pengguna', require('./pengguna').router);
+app.use('/api/risiko-utama/excel', require('./auth').wajibLogin, require('./risiko-utama-excel').router);
 app.use('/api/risiko-utama', require('./risiko-utama').router);
 app.use('/api/risiko', require('./risiko').router);
 app.use('/api/pemantauan', require('./pemantauan').router);

@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `periode` MODIFY `status` ENUM('PERSIAPAN', 'TERBUKA', 'DITUTUP') NOT NULL DEFAULT 'TERBUKA';
+
