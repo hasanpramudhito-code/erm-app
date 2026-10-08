@@ -50,6 +50,7 @@ import {
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import LoncengNotifikasi from './persetujuan/LoncengNotifikasi';
+import { useIdentitas } from '../services/identitas';
 
 const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
   const { currentUser, logout, userData, loading } = useAuth();
@@ -89,6 +90,7 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
   }, [location.pathname]);
 
   const userRole = userData?.role || "STAFF";
+  const identitas = useIdentitas();
 
   const handleMenuClick = (menu) => {
     setOpenMenus(prev => ({
@@ -694,6 +696,11 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             text: 'Risk Register',
             icon: <AlertTriangle size={20} />,
             path: '/risk-register'
+          },
+          {
+            text: 'Pemantauan Bulanan',
+            icon: <CalendarCheck size={20} />,
+            path: '/pemantauan-bulanan'
           }
         ]
       },
@@ -1005,6 +1012,19 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
 
       {/* Desktop Header */}
       {!isMobile && (
+        <>
+        <Box sx={{
+          px: 2, py: 1.5,
+          background: theme.palette.primary.dark,
+          borderBottom: `1px solid ${alpha(theme.palette.common.white, 0.15)}`,
+        }}>
+          <Typography variant="subtitle1" fontWeight="bold" sx={{ color: theme.palette.common.white, lineHeight: 1.2 }}>
+            {identitas.perusahaan}
+          </Typography>
+          <Typography variant="body2" sx={{ color: alpha(theme.palette.common.white, 0.85) }}>
+            {identitas.namaUnit}
+          </Typography>
+        </Box>
         <Toolbar sx={{
           display: 'flex',
           flexDirection: 'column',
@@ -1131,6 +1151,7 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             </IconButton>
           </Box>
         </Toolbar>
+        </>
       )}
 
       {/* Navigation Sections */}

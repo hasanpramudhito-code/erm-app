@@ -12,6 +12,10 @@ app.use(express.json({ limit: '1mb' }));
 app.use(auth.sesi);
 
 app.get('/api/sehat', (req, res) => res.json({ ok: true }));
+app.get('/api/identitas', async (req, res) => {
+  const p = await require('./db').pengaturan.findUnique({ where: { kunci: 'nama_perusahaan' } });
+  res.json({ nama_perusahaan: p?.nilai || 'Perusahaan' });
+});
 app.use('/api/auth', auth.router);
 app.use('/api/lampiran', lampiran.router);
 app.use('/api/pengguna', require('./pengguna').router);

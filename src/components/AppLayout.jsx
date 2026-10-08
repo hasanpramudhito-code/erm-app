@@ -12,12 +12,14 @@ import {
   Chip
 } from '@mui/material';
 import { Menu } from 'lucide-react';
-import EnhancedNavigation from './EnhancedNavigation'; // ✅ GANTI DI SINI SAJA
+import EnhancedNavigation from './EnhancedNavigation';
+import { useIdentitas } from '../services/identitas';
 
 const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const identitas = useIdentitas();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -48,9 +50,10 @@ const Layout = ({ children }) => {
           >
             <Menu size={24} />
           </IconButton>
-          <Typography variant="h6" noWrap component="div" fontWeight="600">
-            ERM System
-          </Typography>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="subtitle1" noWrap fontWeight="600" lineHeight={1.2}>{identitas.perusahaan}</Typography>
+            <Typography variant="caption" noWrap component="div">{identitas.namaUnit}</Typography>
+          </Box>
         </Toolbar>
       </AppBar>
 

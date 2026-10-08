@@ -83,6 +83,7 @@ import { muatRisiko, keBodyApi, usePeriode, LABEL_PERSETUJUAN } from '../service
 import MitigasiEditor from '../components/risk/MitigasiEditor';
 import KriEditor from '../components/risk/KriEditor';
 import AksiPersetujuan from '../components/persetujuan/AksiPersetujuan';
+import { muatIdentitas } from '../services/identitas';
 import { useAuth } from '../contexts/AuthContext';
 import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
 import { useLocation } from 'react-router-dom';
@@ -743,7 +744,7 @@ const RiskRegister = () => {
         risks: filteredRisks,
         reportConfig: {
           dateRange: `${new Date().getFullYear()}-Q${Math.floor((new Date().getMonth() + 3) / 3)}`,
-          company: import.meta.env.VITE_NAMA_PERUSAHAAN || 'Perusahaan'
+          company: (await muatIdentitas()).nama_perusahaan
         },
         userData,
         assessmentConfig, // INI PENTING - kirim konfigurasi

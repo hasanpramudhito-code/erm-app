@@ -105,6 +105,7 @@ const PENGATURAN = {
   metode_penilaian: 'coordinate',
   ambang_toleransi: 13,
   tenggat_pemantauan: 10,
+  nama_perusahaan: process.env.SEED_NAMA_PERUSAHAAN || 'Perusahaan Air Minum',
   umum: { autoSave: true, autoSaveInterval: 30, idleTimeout: 15 },
   ui: { themeMode: 'light', compactView: true, sidebarCollapsed: false },
   notifikasi: { emailAlerts: true, systemAnnouncements: true },

@@ -14,7 +14,8 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  TextField
 } from '@mui/material';
 import {
   Save,
@@ -25,6 +26,7 @@ import {
   Shield as Security
 } from 'lucide-react';
 import { api } from '../services/api';
+import { muatIdentitas } from '../services/identitas';
 import { useAuth } from '../contexts/AuthContext';
 
 const SystemSettings = () => {
@@ -52,10 +54,12 @@ const SystemSettings = () => {
   };
 
   const [settings, setSettings] = useState(defaultSettings);
+  const [namaPerusahaan, setNamaPerusahaan] = useState('');
 
   // Load Settings
   useEffect(() => {
     api.get('/pengaturan')
+      .then((p) => (setNamaPerusahaan(p.nama_perusahaan || ''), p))
       .then((p) => setSettings({
         general: { ...defaultSettings.general, ...p.umum },
         ui: { ...defaultSettings.ui, ...p.ui },
@@ -67,6 +71,7 @@ const SystemSettings = () => {
 
   // Simpan tiap bagian ke kunci pengaturan masing-masing di server.
   const simpan = (data) => Promise.all([
+    namaPerusahaan.trim() && api.put('/pengaturan/nama_perusahaan', { nilai: namaPerusahaan.trim() }).then(() => muatIdentitas(true)),
     api.put('/pengaturan/umum', { nilai: data.general }),
     api.put('/pengaturan/ui', { nilai: data.ui }),
     api.put('/pengaturan/notifikasi', { nilai: data.notifications })
@@ -143,6 +148,11 @@ const SystemSettings = () => {
             <Divider sx={{ mb: 2 }} />
 
             <Box display="flex" flexDirection="column" gap={2}>
+              <TextField
+                fullWidth size="small" label="Nama Perusahaan"
+                helperText="Tampil di sidebar, judul tab, dan laporan ekspor"
+                value={namaPerusahaan} onChange={(e) => setNamaPerusahaan(e.target.value)}
+              />
               <FormControlLabel
                 control={
                   <Switch
