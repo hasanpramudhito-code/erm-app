@@ -5,6 +5,9 @@ const { wajibLogin, wajibPeran } = require('./auth');
 const { catat } = require('./audit');
 const { crud, teks, angka } = require('./crud');
 
+// Dimuat saat dipakai untuk menghindari require melingkar.
+const bentukEntri = (...a) => require('./risiko-utama').bentukEntriCabang(...a);
+
 const ADMIN = ['ADMIN_SISTEM'];
 const PENGELOLA = ['ADMIN_SISTEM', 'PENGELOLA_RISIKO'];
 const WARNA = /^#[0-9a-fA-F]{6}$/;
@@ -30,6 +33,8 @@ router.use('/direktorat', crud({
 router.use('/unit', crud({
   model: 'unit',
   penulis: ADMIN,
+  // Cabang baru/aktif kembali: bentuk entri risiko utama CABANG di periode terbuka.
+  setelah: (r, lama) => (r.jenis === 'CABANG' && r.aktif && (!lama || !lama.aktif || lama.jenis !== 'CABANG') ? bentukEntri() : null),
   orderBy: [{ jenis: 'asc' }, { kode: 'asc' }],
   include: { direktorat: { select: { id: true, kode: true, nama: true } } },
   bersihkan: async (b, baru, lama) => {
@@ -138,6 +143,8 @@ router.use('/level-selera-risiko', crud({
 router.use('/periode', crud({
   model: 'periode',
   penulis: PENGELOLA,
+  // Periode dibuka: bentuk entri draf risiko utama CABANG untuk setiap cabang (handoff 5.1).
+  setelah: (r, lama) => (r.status === 'TERBUKA' && (!lama || lama.status !== 'TERBUKA') ? bentukEntri(r.id) : null),
   orderBy: { tanggal_mulai: 'desc' },
   bersihkan: (b, baru, lama) => {
     const tgl = (v) => (v === undefined ? undefined : new Date(v));

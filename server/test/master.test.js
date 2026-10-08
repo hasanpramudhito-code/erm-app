@@ -27,9 +27,9 @@ test('konfigurasi penilaian berisi data seed', async () => {
 
 test('unit: buat, cegah siklus induk, kode duplikat 409, hapus', async () => {
   const kode = `T${Date.now() % 100000}`;
-  const a = await req('POST', '/unit', { kode, nama: 'Cabang Uji', jenis: 'CABANG' });
+  const a = await req('POST', '/unit', { kode, nama: 'Unit Uji', jenis: 'PUSAT' });
   assert.equal(a.status, 201);
-  const b = await req('POST', '/unit', { kode: kode + 'S', nama: 'Sub Uji', jenis: 'CABANG', parent_id: a.body.id });
+  const b = await req('POST', '/unit', { kode: kode + 'S', nama: 'Sub Uji', jenis: 'PUSAT', parent_id: a.body.id });
   assert.equal(b.status, 201);
   assert.equal((await req('PATCH', `/unit/${a.body.id}`, { parent_id: b.body.id })).status, 400);
   assert.equal((await req('POST', '/unit', { kode, nama: 'Dobel', jenis: 'PUSAT' })).status, 409);

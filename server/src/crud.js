@@ -5,7 +5,8 @@ const { catat } = require('./audit');
 
 // Router CRUD sederhana untuk tabel master. Baca: semua yang login. Tulis: peran `penulis`.
 // `bersihkan(body)` mengembalikan {data} atau {error}; hanya kolom yang dikembalikan yang ditulis.
-function crud({ model, penulis, bersihkan, orderBy, include }) {
+// `setelah(baru, lama)` opsional: dijalankan setelah buat/ubah berhasil.
+function crud({ model, penulis, bersihkan, orderBy, include, setelah }) {
   const router = express.Router();
   const tabel = prisma[model];
   router.use(wajibLogin);
@@ -19,6 +20,7 @@ function crud({ model, penulis, bersihkan, orderBy, include }) {
     if (error) return res.status(400).json({ error });
     const r = await tabel.create({ data, include });
     await catat({ req, nama_tabel: model, id_data: r.id, aksi: 'BUAT', nilai_baru: r });
+    await setelah?.(r, null);
     res.status(201).json(r);
   });
 
@@ -30,6 +32,7 @@ function crud({ model, penulis, bersihkan, orderBy, include }) {
     if (error) return res.status(400).json({ error });
     const r = await tabel.update({ where: { id }, data, include });
     await catat({ req, nama_tabel: model, id_data: id, aksi: 'UBAH', nilai_lama: lama, nilai_baru: r });
+    await setelah?.(r, lama);
     res.json(r);
   });
 

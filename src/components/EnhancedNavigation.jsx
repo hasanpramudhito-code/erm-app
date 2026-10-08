@@ -45,7 +45,8 @@ import {
   History,
   Workflow,
   Zap,
-  CalendarCheck
+  CalendarCheck,
+  Library
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -173,6 +174,11 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             icon: <AlertTriangle size={20} />,
             path: '/risk-register',
             badge: 'core'
+          },
+          {
+            text: 'Risiko Utama & Pustaka',
+            icon: <Library size={20} />,
+            path: '/risiko-utama'
           },
           {
             text: 'Risk Assessment',
@@ -304,6 +310,11 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             path: '/risk-register'
           },
           {
+            text: 'Risiko Utama & Pustaka',
+            icon: <Library size={20} />,
+            path: '/risiko-utama'
+          },
+          {
             text: 'Risk Assessment',
             icon: <BarChart3 size={20} />,
             path: '/risk-assessment'
@@ -424,6 +435,11 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             text: 'Risk Register',
             icon: <AlertTriangle size={20} />,
             path: '/risk-register'
+          },
+          {
+            text: 'Risiko Utama & Pustaka',
+            icon: <Library size={20} />,
+            path: '/risiko-utama'
           },
           {
             text: 'Risk Assessment',

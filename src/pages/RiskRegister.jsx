@@ -83,6 +83,7 @@ import { muatRisiko, keBodyApi, usePeriode, LABEL_PERSETUJUAN } from '../service
 import MitigasiEditor from '../components/risk/MitigasiEditor';
 import KriEditor from '../components/risk/KriEditor';
 import AksiPersetujuan from '../components/persetujuan/AksiPersetujuan';
+import UraianPustakaEditor from '../components/risk/UraianPustakaEditor';
 import { muatIdentitas } from '../services/identitas';
 import { useAuth } from '../contexts/AuthContext';
 import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
@@ -149,6 +150,7 @@ const RiskRegister = () => {
   const { userData } = useAuth();
   const { daftar: daftarPeriode, periodeId, setPeriodeId, periode } = usePeriode();
   const [daftarPengguna, setDaftarPengguna] = useState([]);
+  const [daftarRisikoUtama, setDaftarRisikoUtama] = useState([]);
   const {
     assessmentConfig,
     loading: configLoading,
@@ -210,8 +212,9 @@ const RiskRegister = () => {
     classification: '',
     riskSource: '',
     riskDescription: '',
-    cause: '',
-    impactText: '',
+    mainRiskId: '',
+    causes: [],
+    impacts: [],
     riskOwner: '',
     department: '',
     initialProbability: '',
@@ -443,8 +446,9 @@ const RiskRegister = () => {
 
   // Load master data: kategori risiko, unit, pengguna (untuk PIC)
   useEffect(() => {
-    Promise.all([api.get('/kategori-risiko'), api.get('/unit'), api.get('/pengguna/ringkas')])
-      .then(([kategori, unit, pengguna]) => {
+    Promise.all([api.get('/kategori-risiko'), api.get('/unit'), api.get('/pengguna/ringkas'), api.get('/risiko-utama')])
+      .then(([kategori, unit, pengguna, risikoUtama]) => {
+        setDaftarRisikoUtama(risikoUtama);
         setRiskTypes(kategori.map((k) => ({ id: k.id, name: k.nama, code: k.kode, description: k.deskripsi })));
         setDepartments(unit.filter((u) => u.aktif).map((u) => ({ id: u.id, name: u.nama, code: u.kode, parent: u.jenis })));
         setDaftarPengguna(pengguna);
@@ -646,8 +650,9 @@ const RiskRegister = () => {
       classification: '',
       riskSource: '',
       riskDescription: '',
-      cause: '',
-      impactText: '',
+      mainRiskId: '',
+      causes: [],
+      impacts: [],
       riskOwner: '',
       department: '',
       initialProbability: '',
@@ -695,8 +700,9 @@ const RiskRegister = () => {
       classification: risk.classification || '',
       riskSource: risk.riskSource || '',
       riskDescription: risk.riskDescription || '',
-      cause: risk.cause || '',
-      impactText: risk.impactText || '',
+      mainRiskId: risk.mainRiskId,
+      causes: risk.causes,
+      impacts: risk.impacts,
       riskOwner: risk.riskOwner || '',
       department: risk.department || '',
       initialProbability: risk.initialProbability || '',
@@ -784,6 +790,8 @@ const RiskRegister = () => {
 
   // Handle view detail
   const [riwayat, setRiwayat] = useState([]);
+  const jenisUnitForm = departments.find((d) => d.id === formData.department)?.parent || 'CABANG';
+  const risikoUtamaTerpilih = daftarRisikoUtama.find((r) => r.id === formData.mainRiskId);
   const handleViewDetail = (risk) => {
     setSelectedRisk(risk);
     setRiwayat([]);
@@ -2003,6 +2011,35 @@ const RiskRegister = () => {
                 <FileText size={18} /> Identifikasi Risiko
               </Typography>
               <Grid container spacing={2}>
+                {/* Risiko Utama (kosong = risiko spesifik unit) */}
+                <Grid item xs={12}>
+                  <TextField
+                    select fullWidth label="Risiko Utama"
+                    value={formData.mainRiskId}
+                    disabled={!!editingRisk?.mainRiskId && jenisUnitForm === 'CABANG'}
+                    onChange={(e) => {
+                      const ru = daftarRisikoUtama.find((r) => r.id === e.target.value);
+                      setFormData((f) => ({
+                        ...f,
+                        mainRiskId: e.target.value,
+                        riskType: ru?.kategori_id || f.riskType,
+                        riskDescription: f.riskDescription || ru?.deskripsi || ru?.nama || '',
+                        // Pustaka lama tidak berlaku untuk risiko utama lain; uraian tulisan sendiri dipertahankan.
+                        causes: f.causes.filter((c) => !c.pustaka_id),
+                        impacts: f.impacts.filter((c) => !c.pustaka_id),
+                      }));
+                    }}
+                    helperText={jenisUnitForm === 'CABANG'
+                      ? 'Risiko utama cabang dibentuk otomatis; pilih kosong untuk risiko spesifik cabang'
+                      : 'Pilih risiko utama Pusat yang relevan, atau kosongkan untuk risiko spesifik unit'}
+                  >
+                    <MenuItem value="">— Risiko spesifik unit —</MenuItem>
+                    {daftarRisikoUtama
+                      .filter((r) => r.berlaku_untuk === jenisUnitForm)
+                      .map((r) => <MenuItem key={r.id} value={r.id}>{r.kode} · {r.nama}</MenuItem>)}
+                  </TextField>
+                </Grid>
+
                 {/* Kode Risiko */}
                 <Grid item xs={12} sm={6}>
                   <TextField
@@ -2103,29 +2140,21 @@ const RiskRegister = () => {
                   />
                 </Grid>
 
-                {/* Penyebab */}
+                {/* Penyebab & Dampak: dari pustaka risiko utama atau tulis sendiri */}
                 <Grid item xs={12}>
-                  <TextField
-                    fullWidth
+                  <UraianPustakaEditor
                     label="Penyebab"
-                    multiline
-                    rows={2}
-                    value={formData.cause}
-                    onChange={(e) => setFormData({ ...formData, cause: e.target.value })}
-                    placeholder="Apa penyebab risiko ini? (satu penyebab per baris)"
+                    value={formData.causes}
+                    onChange={(causes) => setFormData((f) => ({ ...f, causes }))}
+                    pustaka={risikoUtamaTerpilih?.pustaka_penyebab || []}
                   />
                 </Grid>
-
-                {/* Dampak */}
                 <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Dampak (Teks)"
-                    multiline
-                    rows={2}
-                    value={formData.impactText}
-                    onChange={(e) => setFormData({ ...formData, impactText: e.target.value })}
-                    placeholder="Jelaskan dampak yang mungkin terjadi... (satu dampak per baris)"
+                  <UraianPustakaEditor
+                    label="Dampak"
+                    value={formData.impacts}
+                    onChange={(impacts) => setFormData((f) => ({ ...f, impacts }))}
+                    pustaka={risikoUtamaTerpilih?.pustaka_dampak || []}
                   />
                 </Grid>
 

@@ -144,7 +144,7 @@ async function sinkron(tx, model, risiko_id, daftar, riwayat, nama) {
 }
 
 // Validasi body. Kembalikan {data, penyebab, dampak, penilaian, residual} atau {error}.
-async function bersihkan(b, baru, pengguna) {
+async function bersihkan(b, baru, pengguna, risikoUtamaLama = null) {
   const data = {
     kode: teks(b.kode)?.toUpperCase(),
     nama: teks(b.nama),
@@ -194,6 +194,14 @@ async function bersihkan(b, baru, pengguna) {
   const hasil = { data: Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)) };
   if (b.penyebab !== undefined) hasil.penyebab = daftarUraian(b.penyebab, 'pustaka_penyebab_id');
   if (b.dampak !== undefined) hasil.dampak = daftarUraian(b.dampak, 'pustaka_dampak_id');
+  // Rujukan pustaka harus milik risiko utama entri ini (teks tetap disalin, handoff 5.3).
+  for (const [kunci, model] of [['penyebab', 'pustaka_penyebab'], ['dampak', 'pustaka_dampak']]) {
+    const ids = (hasil[kunci] || []).map((x) => x[`${model}_id`]).filter(Boolean);
+    if (!ids.length) continue;
+    const ru = data.risiko_utama_id ?? risikoUtamaLama;
+    const sah = ru ? await prisma[model].count({ where: { id: { in: ids }, risiko_utama_id: ru } }) : 0;
+    if (sah !== new Set(ids).size) return { error: `Pilihan pustaka ${kunci} tidak sesuai risiko utama` };
+  }
 
   if (b.mitigasi !== undefined) {
     const r = await bersihkanMitigasi(b.mitigasi);
@@ -275,7 +283,7 @@ router.patch('/:id', async (req, res) => {
   const larang = cekTulis(req.pengguna, lama.unit_id, lama.status_persetujuan);
   if (larang) return res.status(403).json({ error: larang });
 
-  const h = await bersihkan(req.body || {}, false, req.pengguna);
+  const h = await bersihkan(req.body || {}, false, req.pengguna, lama.risiko_utama_id);
   if (h.error) return res.status(400).json({ error: h.error });
   if (h.data.unit_id && h.data.unit_id !== lama.unit_id) {
     const l2 = cekTulis(req.pengguna, h.data.unit_id, lama.status_persetujuan);
