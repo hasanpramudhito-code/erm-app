@@ -42,7 +42,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  ButtonGroup
+  ButtonGroup,
+  MenuItem
 } from '@mui/material';
 import {
   AlertTriangle,
@@ -66,21 +67,20 @@ import {
   LineChart,
   LayoutGrid
 } from 'lucide-react';
-import {
-  collection,
-  getDocs,
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
-import { useAuth } from '../contexts/AuthContext';
+import { api } from '../services/api';
+import { muatRisiko, usePeriode } from '../services/risiko';
 
-import { hasPermission, canAssessRisks, ROLES } from '../config/roles';
 import { useNavigate } from 'react-router-dom';
 import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
 import HeatMapFilters from '../components/HeatMapFilters';
 import RiskCellDetailModal from '../components/RiskCellDetailModal';
 import { exportHeatmapAsPNG, exportHeatmapAsPDF, exportHeatmapAsCSV, exportCellDetailsAsText } from '../utils/heatmapExport';
-import { useApprovalActions } from '../hooks/useApproval';
 // import { fetchRisks } from '../services/riskService'; // Dihapus pemanggilan top-level await untuk menghindari gangguan build
+
+// Koordinat (kemungkinan, dampak) risiko di matriks. Belum dinilai = di luar matriks.
+const koordinat = (risk, viewMode) => viewMode === 'inherent'
+  ? [Number(risk.initialProbability) || 0, Number(risk.initialImpact) || 0]
+  : [Number(risk.residualProbability) || 0, Number(risk.residualImpact) || 0];
 
 // =======================================================================
 // DEFAULT CONSTANTS (JIKA IMPORT GAGAL)
@@ -281,14 +281,7 @@ const ProfessionalRiskMatrix = ({
   const matrix = Array(5).fill().map(() => Array(5).fill(0));
 
   risks.forEach(risk => {
-    let likelihood, impact;
-    if (viewMode === 'inherent') {
-      likelihood = risk.likelihood ?? risk.inherentLikelihood ?? 1;
-      impact = risk.impact ?? risk.inherentImpact ?? 1;
-    } else {
-      likelihood = risk.residualLikelihood ?? risk.likelihood ?? risk.inherentLikelihood ?? 1;
-      impact = risk.residualImpact ?? risk.impact ?? risk.inherentImpact ?? 1;
-    }
+    const [likelihood, impact] = koordinat(risk, viewMode);
     if (likelihood >= 1 && likelihood <= 5 && impact >= 1 && impact <= 5) {
       matrix[likelihood - 1][impact - 1]++;
     }
@@ -322,14 +315,7 @@ const ProfessionalRiskMatrix = ({
 
   const handleCellClickLocal = (likelihood, impact) => {
     const cellRisks = risks.filter(risk => {
-      const L =
-        viewMode === 'inherent'
-          ? (risk.likelihood ?? risk.inherentLikelihood)
-          : (risk.residualLikelihood ?? risk.likelihood ?? risk.inherentLikelihood);
-      const I =
-        viewMode === 'inherent'
-          ? (risk.impact ?? risk.inherentImpact)
-          : (risk.residualImpact ?? risk.impact ?? risk.inherentImpact);
+      const [L, I] = koordinat(risk, viewMode);
       return L === likelihood && I === impact;
     });
 
@@ -688,11 +674,10 @@ const CustomExportMenu = ({
 // MAIN COMPONENT
 // =======================================================================
 const RiskAssessment = () => {
-  const { currentUser, userData } = useAuth();
+  const { daftar: daftarPeriode, periodeId, setPeriodeId } = usePeriode();
 
   const navigate = useNavigate();
   const { assessmentConfig, calculateScore } = useAssessmentConfig();
-  const { submitForApproval, loading: approvalLoading } = useApprovalActions();
 
   const defaultConfig = {
     assessmentMethod: 'coordinate',
@@ -723,9 +708,6 @@ const RiskAssessment = () => {
   const [selectedCell, setSelectedCell] = useState(null);
   const [riskTypes, setRiskTypes] = useState([]);
   const [cellDetailOpen, setCellDetailOpen] = useState(false);
-  const [selectedUnit, setSelectedUnit] = useState('all');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedStatus, setSelectedStatus] = useState('all');
   const [configDialog, setConfigDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
@@ -745,14 +727,7 @@ const RiskAssessment = () => {
     for (let likelihood = 1; likelihood <= 5; likelihood++) {
       for (let impact = 1; impact <= 5; impact++) {
         const cellRisks = filteredRisks.filter(risk => {
-          const L =
-            viewMode === 'inherent'
-              ? (risk.likelihood ?? risk.inherentLikelihood)
-              : (risk.residualLikelihood ?? risk.likelihood ?? risk.inherentLikelihood);
-          const I =
-            viewMode === 'inherent'
-              ? (risk.impact ?? risk.inherentImpact)
-              : (risk.residualImpact ?? risk.impact ?? risk.inherentImpact);
+          const [L, I] = koordinat(risk, viewMode);
           return L === likelihood && I === impact;
         });
 
@@ -870,35 +845,13 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
   };
   const handleCloseSnackbar = () => setSnackbar({ ...snackbar, open: false });
   // Helpers to get names from IDs
-  const getRiskTypeName = (id) => {
-    if (!id) return '-';
-    // Find in loaded riskTypes
-    const found = riskTypes.find(r => r.id === id || r.name === id || r.code === id);
-    return found ? found.name : id;
-  };
-
-  const getDeptName = (id) => {
-    if (!id) return '-';
-    // Find in organization_units collection
-    const foundInUnits = organizationUnits.find(u => u.id === id || u.name === id);
-    if (foundInUnits) return foundInUnits.name;
-
-    // Find in risk_parameters (some might be there)
-    const foundInParams = riskTypes.find(r => r.id === id || r.name === id || r.code === id);
-    if (foundInParams && foundInParams.type === 'organization_unit') return foundInParams.name;
-
-    return id;
-  };
+  const getRiskTypeName = (id) => riskTypes.find((r) => r.id === id)?.name || '-';
+  const getDeptName = (id) => organizationUnits.find((u) => u.id === id)?.name || '-';
 
   // Handle cell click to show details
   const handleCellClick = (likelihood, impact) => {
     const cellRisks = filteredRisks.filter(risk => {
-      const L = viewMode === 'inherent'
-        ? (risk.inherentLikelihood ?? risk.likelihood)
-        : (risk.residualLikelihood ?? risk.likelihood);
-      const I = viewMode === 'inherent'
-        ? (risk.inherentImpact ?? risk.impact)
-        : (risk.residualImpact ?? risk.impact);
+      const [L, I] = koordinat(risk, viewMode);
       return L === likelihood && I === impact;
     });
     if (cellRisks.length === 0) return;
@@ -926,55 +879,14 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
     setCellDetailOpen(true);
   };
 
-  const handleHeatmapClick = (riskLevel, likelihood, impact, mode) => {
-    const params = new URLSearchParams({
-      riskLevel,
-      likelihood,
-      impact,
-      viewMode: mode,
-      assessmentMethod: config.assessmentMethod
-    });
-    navigate(`/risk-register?${params.toString()}`);
-  };
-
   const loadData = async () => {
+    if (!periodeId) return;
     try {
       setLoading(true);
-
-      // Ambil dari Firestore sebagai sumber data utama
-      const riskSnap = await getDocs(collection(db, 'risks'));
-      const risksList = riskSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        // Fallback menggunakan nullish coalescing agar 0 tidak dianggap falsy
-        likelihood: doc.data().likelihood ?? doc.data().inherentLikelihood ?? 1,
-        impact: doc.data().impact ?? doc.data().inherentImpact ?? 1,
-        inherentScore: doc.data().inherentScore ?? doc.data().riskScore ?? null,
-        inherentLevel: doc.data().inherentLevel ?? doc.data().riskLevel ?? null,
-        residualLikelihood: doc.data().residualLikelihood,
-        residualImpact: doc.data().residualImpact,
-        residualScore: doc.data().residualScore,
-        residualLevel: doc.data().residualLevel
-      }));
-
-      const unitSnap = await getDocs(collection(db, 'organization_units'));
-      const unitsList = unitSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-
-      // Load risk types and org units from parameters for ID resolution
-      const riskParamsSnap = await getDocs(collection(db, 'risk_parameters'));
-      const allParams = riskParamsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      const riskTypesData = allParams.filter(param =>
-        param.type === 'risk_type' || param.type === 'organization_unit'
-      );
-
+      const [risksList, unit, kategori] = await Promise.all([muatRisiko(periodeId), api.get('/unit'), api.get('/kategori-risiko')]);
       setRisks(risksList);
-      setFilteredRisks(risksList);
-      setOrganizationUnits(unitsList);
-      setRiskTypes(riskTypesData);
+      setOrganizationUnits(unit.map((u) => ({ id: u.id, name: u.nama })));
+      setRiskTypes(kategori.map((k) => ({ id: k.id, name: k.nama })));
     } catch (err) {
       showSnackbar('Error memuat data: ' + err.message, 'error');
     } finally {
@@ -982,15 +894,21 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [periodeId]);
 
+  // Satu jalur filter: dari HeatMapFilters.
   useEffect(() => {
-    let filtered = risks;
-    if (selectedUnit !== 'all') filtered = filtered.filter(r => (r.unitId ?? '') === selectedUnit);
-    if (selectedCategory !== 'all') filtered = filtered.filter(r => (r.category ?? '') === selectedCategory);
-    if (selectedStatus !== 'all') filtered = filtered.filter(r => (r.status ?? '') === selectedStatus);
-    setFilteredRisks(filtered);
-  }, [selectedUnit, selectedCategory, selectedStatus, risks]);
+    const f = heatmapFilters;
+    const q = (f.search || '').toLowerCase();
+    const batas = { today: 1, week: 7, month: 30, quarter: 90, year: 365 }[f.timeRange];
+    setFilteredRisks(risks.filter((r) =>
+      (f.department === 'all' || r.department === f.department) &&
+      (f.category === 'all' || r.riskType === f.category) &&
+      (f.riskLevel === 'all' || (viewMode === 'inherent' ? r.inherentLevel : r.residualLevel) === f.riskLevel) &&
+      (!q || `${r.riskCode} ${r.riskDescription}`.toLowerCase().includes(q)) &&
+      (!batas || Date.now() - new Date(r.createdAt) <= batas * 86400000)
+    ));
+  }, [heatmapFilters, risks, viewMode]);
 
   const stats = {
     totalRisks: risks.length,
@@ -1027,7 +945,19 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
                   Metode: {config.assessmentMethod === 'coordinate' ? 'Koordinat' : 'Perkalian'}{' '}
                   • Total Risks: {stats.totalRisks}
                 </Typography>
-                <Box mt={1}>
+                <Box mt={1} display="flex" gap={2} alignItems="center">
+                  <TextField
+                    select
+                    size="small"
+                    label="Periode"
+                    value={periodeId || ''}
+                    onChange={(e) => setPeriodeId(e.target.value)}
+                    sx={{ minWidth: 140 }}
+                  >
+                    {daftarPeriode.map((p) => (
+                      <MenuItem key={p.id} value={p.id}>{p.nama}</MenuItem>
+                    ))}
+                  </TextField>
                   <ButtonGroup size="small">
                     <Button
                       variant={viewMode === 'inherent' ? 'contained' : 'outlined'}
@@ -1092,15 +1022,10 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
       {/* FILTER BAR */}
       <HeatMapFilters
         filters={heatmapFilters}
-        onFilterChange={(newFilters) => {
-          setHeatmapFilters(newFilters);
-          let filtered = risks;
-          if (newFilters.department !== 'all') filtered = filtered.filter(r => (r.unitId ?? '') === newFilters.department);
-          if (newFilters.category !== 'all') filtered = filtered.filter(r => (r.category ?? '') === newFilters.category);
-          if (newFilters.riskLevel !== 'all') filtered = filtered.filter(r => (r.inherentLevel ?? '') === newFilters.riskLevel);
-          setFilteredRisks(filtered);
-        }}
+        onFilterChange={setHeatmapFilters}
         organizationUnits={organizationUnits}
+        categories={riskTypes}
+        levels={config.riskLevels || []}
         onExport={handleExportPNG}
         exportLoading={exportLoading}
       />
@@ -1122,7 +1047,7 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
 
         {/* LINE CHART COMPARISON */}
         <Grid item xs={12}>
-          <AverageRiskScoreTrend risks={risks} />
+          <AverageRiskScoreTrend risks={filteredRisks} />
         </Grid>
 
         {/* RIGHT SIDEBAR */}

@@ -74,30 +74,18 @@ import {
   X as Clear,
   Download,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Target
 } from 'lucide-react';
-import {
-  collection,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  query as firestoreQuery,
-  orderBy,
-  where
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { api } from '../services/api';
+import { muatRisiko, keBodyApi, usePeriode, LABEL_PERSETUJUAN } from '../services/risiko';
 import { useAuth } from '../contexts/AuthContext';
 import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
 import { useLocation } from 'react-router-dom';
-import { calculateRisk } from '../utils/riskCalculator';
 import {
   exportRiskRegisterPDF,
   exportRiskRegisterExcel
 } from '../services/reporting/exportRiskRegister';
-import { fetchRisks } from '../services/riskService';
-import { simpleExportRiskRegisterPDF } from './simple-export';
 
 const RiskRegister = () => {
   const [risks, setRisks] = useState([]);
@@ -153,6 +141,8 @@ const RiskRegister = () => {
   const [uniqueDepartmentNames, setUniqueDepartmentNames] = useState([]);
 
   const { userData } = useAuth();
+  const { daftar: daftarPeriode, periodeId, setPeriodeId, periode } = usePeriode();
+  const [daftarPengguna, setDaftarPengguna] = useState([]);
   const {
     assessmentConfig,
     loading: configLoading,
@@ -166,87 +156,16 @@ const RiskRegister = () => {
     refreshConfig
   } = useAssessmentConfig();
 
-  // ========== FUNGSI BARU UNTUK MENGHITUNG SCORE SESUAI KONFIGURASI ==========
-
-  // 1. Fungsi calculateRiskScore baru
-  const calculateRiskScore = (impact, probability, riskMethod = null) => {
-    if (!impact || !probability) {
-      return 1;
-    }
-
-    const impactNum = parseInt(impact) || 1;
-    const probNum = parseInt(probability) || 1;
-
-    // Gunakan method dari risk data jika ada, jika tidak gunakan config
-    const method = riskMethod || assessmentConfig?.assessmentMethod || 'multiplication';
-    const methodLower = method.toLowerCase();
-
-    // Jika method coordinate dan calculateScore ada
-    if (methodLower === 'coordinate' && calculateScore) {
-      try {
-        const result = calculateScore(probNum, impactNum); // Note: calculateScore expects (likelihood, impact)
-        return result;
-      } catch (error) {
-        // Fallback ke perkalian
-        const fallbackResult = impactNum * probNum;
-        return fallbackResult;
-      }
-    } else {
-      // Multiplication method
-      const result = impactNum * probNum;
-      return result;
-    }
-  };
-
-  // 2. Debug useEffect untuk config
-  useEffect(() => {
-    if (assessmentConfig) {
-    }
-  }, [assessmentConfig, configLoading]);
-
   // ========== FUNGSI UNTUK INHERENT DAN RESIDUAL RISK LEVEL ==========
 
-  // Fungsi getInherentRiskLevelInfo BARU
-  const getInherentRiskLevelInfo = (risk) => {
-    const method = risk.scoreMethod || assessmentConfig?.assessmentMethod || 'multiplication';
-    const methodLower = method.toLowerCase();
-
-    const score = calculateRiskScore(risk.initialImpact, risk.initialProbability, methodLower);
-
-
-    // Safe call to calculateRiskLevel with fallback
-    const levelInfo = calculateRiskLevel
-      ? calculateRiskLevel(score)
-      : { level: 'Unknown', color: 'default', label: 'Unknown', score: score };
-
-    // Ensure score is always present in levelInfo
-    if (levelInfo && levelInfo.score === undefined) {
-      levelInfo.score = score;
-    }
-
-
-    return levelInfo;
-  };
-
-  // Fungsi getResidualRiskLevelInfo BARU
-  const getResidualRiskLevelInfo = (risk) => {
-    const method = risk.scoreMethod || assessmentConfig?.assessmentMethod || 'multiplication';
-    const methodLower = method.toLowerCase();
-
-    const score = calculateRiskScore(risk.residualImpact, risk.residualProbability, methodLower);
-
-    // Safe call to calculateRiskLevel with fallback
-    const levelInfo = calculateRiskLevel
-      ? calculateRiskLevel(score)
-      : { level: 'Unknown', color: 'default', label: 'Unknown', score: score };
-
-    // Ensure score is always present in levelInfo
-    if (levelInfo && levelInfo.score === undefined) {
-      levelInfo.score = score;
-    }
-
-    return levelInfo;
-  };
+  // Level & skor dihitung server; di sini hanya ditampilkan.
+  const levelInfo = (score, level) => ({
+    score: score ?? '-',
+    level: level || 'Belum dinilai',
+    color: assessmentConfig?.riskLevels?.find((l) => l.label === level)?.color || 'default'
+  });
+  const getInherentRiskLevelInfo = (risk) => levelInfo(risk.inherentScore, risk.inherentLevel);
+  const getResidualRiskLevelInfo = (risk) => levelInfo(risk.residualScore, risk.residualLevel);
 
   // Helper function untuk mendapatkan warna Chip yang valid
   const getValidChipColor = (color, fallback = 'default') => {
@@ -291,6 +210,8 @@ const RiskRegister = () => {
     department: '',
     initialProbability: '',
     initialImpact: '',
+    targetProbability: '',
+    targetImpact: '',
     inherentRiskQuantification: '',
     existingControls: '',
     controlEffectiveness: '',
@@ -299,16 +220,16 @@ const RiskRegister = () => {
     residualRiskQuantification: '',
     additionalControls: '',
     controlCost: '',
-    responsiblePerson: '',
+    responsiblePersonId: '',
     targetCompletion: '',
-    status: 'open'
+    status: 'Open - Baru Teridentifikasi'
   });
 
   // Assessment form data
   const [assessmentData, setAssessmentData] = useState({
     likelihood: 1,
     impact: 1,
-    controlEffectiveness: 3,
+    controlEffectiveness: '',
     residualLikelihood: 1,
     residualImpact: 1,
     treatmentPriority: 'Medium - Sedang (Penanganan < 1 Bulan)',
@@ -428,19 +349,8 @@ const RiskRegister = () => {
   };
 
   // Helper untuk mendapatkan nama dari ID
-  const getRiskTypeName = (id) => {
-    if (!id) return '-';
-    if (typeof id !== 'string') return String(id);
-    const found = riskTypes.find(r => r.id === id || r.name === id || r.code === id);
-    return found ? (found.name || found.label || id) : id;
-  };
-
-  const getDepartmentName = (id) => {
-    if (!id) return '-';
-    if (typeof id !== 'string') return String(id);
-    const found = departments.find(d => d.id === id || d.name === id || d.code === id);
-    return found ? (found.name || id) : id;
-  };
+  const getRiskTypeName = (id) => riskTypes.find((r) => r.id === id)?.name || '-';
+  const getDepartmentName = (id) => departments.find((d) => d.id === id)?.name || '';
 
   // Filter risk types berdasarkan search
   const filteredRiskTypes = useMemo(() => {
@@ -515,16 +425,12 @@ const RiskRegister = () => {
     }
   };
 
-  // Load data risiko
+  // Load data risiko periode terpilih
   const loadData = async () => {
+    if (!periodeId) return;
     try {
       setLoading(true);
-
-      const risksQuery = firestoreQuery(collection(db, 'risks'), orderBy('createdAt', 'desc'));
-      const risksSnapshot = await getDocs(risksQuery);
-      const risksList = risksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setRisks(risksList);
-
+      setRisks(await muatRisiko(periodeId));
     } catch (error) {
       showSnackbar('Error memuat data: ' + error.message, 'error');
     } finally {
@@ -532,78 +438,26 @@ const RiskRegister = () => {
     }
   };
 
-  // Load master data dari risk_parameters
-  // Load master data dari risk_parameters dan organization_units
+  // Load master data: kategori risiko, unit, pengguna (untuk PIC)
   useEffect(() => {
-    const loadMasterData = async () => {
-      try {
-        // Load from risk_parameters
-        const qParams = firestoreQuery(
-          collection(db, 'risk_parameters'),
-          where('type', 'in', ['risk_type', 'organization_unit'])
-        );
-        const snapshotParams = await getDocs(qParams);
-
-        // Load from organization_units collection
-        const qUnits = collection(db, 'organization_units');
-        const snapshotUnits = await getDocs(qUnits);
-
-        const types = [];
-        const depts = [];
-
-        snapshotParams.forEach(doc => {
-          const data = { id: doc.id, ...doc.data() };
-          if (data.type === 'risk_type') types.push(data);
-          if (data.type === 'organization_unit') depts.push(data);
-        });
-
-        snapshotUnits.forEach(doc => {
-          const data = { id: doc.id, ...doc.data() };
-          // Pastikan tidak duplikat jika ID sama
-          if (!depts.some(d => d.id === data.id)) {
-            depts.push(data);
-          }
-        });
-
-        setRiskTypes(types);
-        setDepartments(depts);
-      } catch (err) {
-      }
-    };
-
-    loadMasterData();
+    Promise.all([api.get('/kategori-risiko'), api.get('/unit'), api.get('/pengguna/ringkas')])
+      .then(([kategori, unit, pengguna]) => {
+        setRiskTypes(kategori.map((k) => ({ id: k.id, name: k.nama, code: k.kode, description: k.deskripsi })));
+        setDepartments(unit.filter((u) => u.aktif).map((u) => ({ id: u.id, name: u.nama, code: u.kode, parent: u.jenis })));
+        setDaftarPengguna(pengguna);
+      })
+      .catch((err) => showSnackbar('Error memuat data master: ' + err.message, 'error'));
   }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+    setPage(0);
+  }, [periodeId]);
 
-  let filtered = risks;
-
-  if (filterLikelihood) {
-    filtered = filtered.filter(r =>
-      (viewMode === "inherent"
-        ? (r.likelihood || r.inherentLikelihood)
-        : (r.residualLikelihood || r.likelihood || r.inherentLikelihood)
-      ) == filterLikelihood
-    );
-  }
-
-  if (filterImpact) {
-    filtered = filtered.filter(r =>
-      (viewMode === "inherent"
-        ? (r.impact || r.inherentImpact)
-        : (r.residualImpact || r.impact || r.inherentImpact)
-      ) == filterImpact
-    );
-  }
-
-  if (filterRiskLevel) {
-    filtered = filtered.filter(r =>
-      r.inherentLevel === filterRiskLevel ||
-      r.residualLevel === filterRiskLevel
-    );
-  }
+  // Kembali ke halaman pertama saat pencarian/filter berubah.
+  useEffect(() => {
+    setPage(0);
+  }, [searchTerm, filters]);
 
   // Extract unique data for filters
   useEffect(() => {
@@ -694,17 +548,13 @@ const RiskRegister = () => {
       // Inherent Risk Level menggunakan fungsi baru
       if (filters.inherentLevels.length > 0) {
         const inherentLevelInfo = getInherentRiskLevelInfo(risk);
-        if (!filters.inherentLevels.some(level =>
-          inherentLevelInfo.level?.toLowerCase().includes(level.toLowerCase())
-        )) return false;
+        if (!filters.inherentLevels.some(level => getRiskLevelLabelFromConfig(level) === inherentLevelInfo.level)) return false;
       }
 
       // Residual Risk Level menggunakan fungsi baru
       if (filters.residualLevels.length > 0) {
         const residualLevelInfo = getResidualRiskLevelInfo(risk);
-        if (!filters.residualLevels.some(level =>
-          residualLevelInfo.level?.toLowerCase().includes(level.toLowerCase())
-        )) return false;
+        if (!filters.residualLevels.some(level => getRiskLevelLabelFromConfig(level) === residualLevelInfo.level)) return false;
       }
 
       // Date Created Range
@@ -759,162 +609,20 @@ const RiskRegister = () => {
     });
   };
 
-  // Get changed fields for audit trail
-  const getChangedFields = (oldData, newData) => {
-    const changes = [];
-    Object.keys(newData).forEach(key => {
-      const skipFields = ['createdAt', 'updatedAt', 'createdBy', 'updatedBy', 'auditTrail', 'initialRiskLevel', 'residualRiskLevel'];
-      if (skipFields.includes(key)) return;
-
-      const oldValue = oldData[key];
-      const newValue = newData[key];
-
-      const oldVal = oldValue === null || oldValue === undefined ? '' : oldValue;
-      const newVal = newValue === null || newValue === undefined ? '' : newValue;
-
-      if (oldVal.toString() !== newVal.toString()) {
-        changes.push({
-          field: key,
-          oldValue: oldVal,
-          newValue: newVal
-        });
-      }
-    });
-    return changes;
-  };
-
-
-  // Clean data for Firestore
-  const cleanDataForFirestore = (data) => {
-    const cleaned = {};
-    Object.keys(data).forEach(key => {
-      if (data[key] !== undefined && data[key] !== null) {
-        cleaned[key] = data[key];
-      }
-    });
-    return cleaned;
-  };
-
   // Handle form submit
   const handleSubmit = async () => {
     try {
-      if (!formData.riskCode || !formData.riskDescription || !formData.riskSource) {
-        showSnackbar('Kode Risiko, Deskripsi risiko dan sumber risiko harus diisi!', 'error');
+      if (!formData.riskCode || !formData.riskDescription || !formData.riskSource || !formData.department) {
+        showSnackbar('Kode, deskripsi, sumber risiko, dan unit harus diisi!', 'error');
         return;
       }
 
-      if (!editingRisk) {
-        const isCodeExists = risks.some(risk =>
-          risk.riskCode?.toLowerCase() === formData.riskCode.toLowerCase()
-        );
-        if (isCodeExists) {
-          showSnackbar('Kode Risiko sudah digunakan! Silakan gunakan kode yang berbeda.', 'error');
-          return;
-        }
-      }
-
-      const riskDataToSave = {
-        riskCode: formData.riskCode.toUpperCase(),
-        riskType: formData.riskType || '',
-        classification: formData.classification || '',
-        riskSource: formData.riskSource || '',
-        riskDescription: formData.riskDescription || '',
-        cause: formData.cause || '',
-        impactText: formData.impactText || '',
-        riskOwner: formData.riskOwner || '',
-        department: formData.department || '',
-        initialProbability: formData.initialProbability || '',
-        initialImpact: formData.initialImpact || '',
-        inherentRiskQuantification: formData.inherentRiskQuantification || '',
-        existingControls: formData.existingControls || '',
-        controlEffectiveness: formData.controlEffectiveness || '',
-        residualProbability: formData.residualProbability || '',
-        residualImpact: formData.residualImpact || '',
-        residualRiskQuantification: formData.residualRiskQuantification || '',
-        additionalControls: formData.additionalControls || '',
-        controlCost: formData.controlCost || '',
-        responsiblePerson: formData.responsiblePerson || '',
-        targetCompletion: formData.targetCompletion || '',
-        status: formData.status || 'Open - Baru Teridentifikasi',
-
-        // Metadata
-        createdAt: editingRisk ? editingRisk.createdAt : new Date(),
-        createdBy: editingRisk ? editingRisk.createdBy : userData?.name || 'System',
-        updatedAt: new Date(),
-        updatedBy: userData?.name || 'System'
-      };
-
-      // Tentukan metode aktif dari Configuration (via context)
-      const method = assessmentConfig?.assessmentMethod || 'multiplication';
-
-      // Hitung score jika ada probability dan impact (Inherent)
-      if (formData.initialProbability && formData.initialImpact) {
-        const likelihood = parseInt(formData.initialProbability) || 1;
-        const impact = parseInt(formData.initialImpact) || 1;
-
-        // GUNAKAN FUNGSI BARU yang mengikuti config
-        const inhScore = calculateRiskScore(impact, likelihood, method);
-        const inhLevel = calculateRiskLevel ? calculateRiskLevel(inhScore) : { level: 'Unknown', color: 'default' };
-
-        // Simpan nilai mentah
-        riskDataToSave.initialProbability = likelihood;
-        riskDataToSave.initialImpact = impact;
-        riskDataToSave.likelihood = likelihood;
-        riskDataToSave.impact = impact;
-
-        // Simpan hasil akhir ke Firestore
-        riskDataToSave.inherentScore = inhScore;
-        riskDataToSave.initialRiskLevel = inhLevel;
-      }
-
-      // Hitung score untuk Residual (jika ada)
-      if (formData.residualProbability && formData.residualImpact) {
-        const residualLikelihood = parseInt(formData.residualProbability) || 1;
-        const residualImpact = parseInt(formData.residualImpact) || 1;
-
-        // GUNAKAN FUNGSI BARU yang mengikuti config
-        const resScore = calculateRiskScore(residualImpact, residualLikelihood, method);
-        const resLevel = calculateRiskLevel ? calculateRiskLevel(resScore) : { level: 'Unknown', color: 'default' };
-
-        riskDataToSave.residualProbability = residualLikelihood;
-        riskDataToSave.residualImpact = residualImpact;
-        riskDataToSave.residualLikelihood = residualLikelihood;
-        riskDataToSave.residualImpact = residualImpact;
-
-        riskDataToSave.residualScore = resScore;
-        riskDataToSave.residualRiskLevel = resLevel;
-      }
-
-      // Simpan jejak metode yang dipakai (untuk audit & ekspor)
-      riskDataToSave.scoreMethod = assessmentConfig?.assessmentMethod || 'multiplication';
-
-      const cleanedRiskData = cleanDataForFirestore(riskDataToSave);
-
+      const body = keBodyApi(formData);
       if (editingRisk) {
-        const existingAuditTrail = editingRisk.auditTrail || [];
-        cleanedRiskData.auditTrail = [
-          ...existingAuditTrail,
-          {
-            action: 'updated',
-            timestamp: new Date(),
-            user: userData?.name || 'System',
-            changes: getChangedFields(editingRisk, riskDataToSave)
-          }
-        ];
-
-        await updateDoc(doc(db, "risks", editingRisk.id), cleanedRiskData);
+        await api.patch(`/risiko/${editingRisk.id}`, body);
         showSnackbar('Risiko berhasil diupdate!', 'success');
       } else {
-        cleanedRiskData.auditTrail = [
-          {
-            action: 'created',
-            timestamp: new Date(),
-            user: userData?.name || 'System',
-            changes: []
-          }
-        ];
-
-        await addDoc(collection(db, "risks"), cleanedRiskData);
+        await api.post('/risiko', { ...body, periode_id: periodeId });
         showSnackbar('Risiko berhasil ditambahkan!', 'success');
       }
 
@@ -922,7 +630,6 @@ const RiskRegister = () => {
       setEditingRisk(null);
       resetForm();
       loadData();
-
     } catch (error) {
       showSnackbar('Error menyimpan risiko: ' + error.message, 'error');
     }
@@ -942,6 +649,8 @@ const RiskRegister = () => {
       department: '',
       initialProbability: '',
       initialImpact: '',
+      targetProbability: '',
+      targetImpact: '',
       inherentRiskQuantification: '',
       existingControls: '',
       controlEffectiveness: '',
@@ -950,9 +659,10 @@ const RiskRegister = () => {
       residualRiskQuantification: '',
       additionalControls: '',
       controlCost: '',
-      responsiblePerson: '',
+      responsiblePersonId: '',
       targetCompletion: '',
-      status: 'Open - Baru Teridentifikasi'
+      status: 'Open - Baru Teridentifikasi',
+      department: userData?.unit_id || ''
     });
     setCodeError('');
     setRiskTypeSearch('');
@@ -990,15 +700,17 @@ const RiskRegister = () => {
       department: risk.department || '',
       initialProbability: risk.initialProbability || '',
       initialImpact: risk.initialImpact || '',
-      inherentRiskQuantification: risk.inherentRiskQuantification || '',
+      targetProbability: risk.targetProbability || '',
+      targetImpact: risk.targetImpact || '',
+      inherentRiskQuantification: risk.inherentRiskQuantification ?? '',
       existingControls: risk.existingControls || '',
       controlEffectiveness: risk.controlEffectiveness || '',
       residualProbability: risk.residualProbability || '',
       residualImpact: risk.residualImpact || '',
-      residualRiskQuantification: risk.residualRiskQuantification || '',
+      residualRiskQuantification: risk.residualRiskQuantification ?? '',
       additionalControls: risk.additionalControls || '',
-      controlCost: risk.controlCost || '',
-      responsiblePerson: risk.responsiblePerson || '',
+      controlCost: risk.controlCost ?? '',
+      responsiblePersonId: risk.responsiblePersonId || '',
       targetCompletion: risk.targetCompletion || '',
       status: risk.status || 'Open - Baru Teridentifikasi'
     });
@@ -1011,7 +723,7 @@ const RiskRegister = () => {
     setAssessmentData({
       likelihood: risk.initialProbability || 1,
       impact: risk.initialImpact || 1,
-      controlEffectiveness: risk.controlEffectiveness || 3,
+      controlEffectiveness: risk.controlEffectiveness || '',
       residualLikelihood: risk.residualProbability || risk.initialProbability || 1,
       residualImpact: risk.residualImpact || risk.initialImpact || 1,
       treatmentPriority: risk.treatmentPriority || 'Medium - Sedang (Penanganan < 1 Bulan)',
@@ -1034,7 +746,7 @@ const RiskRegister = () => {
         risks: filteredRisks,
         reportConfig: {
           dateRange: `${new Date().getFullYear()}-Q${Math.floor((new Date().getMonth() + 3) / 3)}`,
-          company: 'PT Odira Energy Karang Agung'
+          company: import.meta.env.VITE_NAMA_PERUSAHAAN || 'Perusahaan'
         },
         userData,
         assessmentConfig, // INI PENTING - kirim konfigurasi
@@ -1073,9 +785,12 @@ const RiskRegister = () => {
   };
 
   // Handle view detail
+  const [riwayat, setRiwayat] = useState([]);
   const handleViewDetail = (risk) => {
     setSelectedRisk(risk);
+    setRiwayat([]);
     setDetailDialog(true);
+    api.get(`/risiko/${risk.id}/riwayat`).then(setRiwayat).catch(() => {});
   };
 
   // Handle assessment submit
@@ -1085,60 +800,14 @@ const RiskRegister = () => {
     try {
       setLoading(true);
 
-      // Ambil metode aktif dari Configuration (via context)
-      const method = assessmentConfig?.assessmentMethod || 'multiplication';
-
-      // Pastikan nilai numerik
-      const L = parseInt(assessmentData.likelihood) || 1;
-      const I = parseInt(assessmentData.impact) || 1;
-      const RL = parseInt(assessmentData.residualLikelihood) || 1;
-      const RI = parseInt(assessmentData.residualImpact) || 1;
-
-      // Hitung skor dengan fungsi baru yang mengikuti config
-      const inhScore = calculateRiskScore(I, L, method);
-      const resScore = calculateRiskScore(RI, RL, method);
-
-      const inhLevel = calculateRiskLevel ? calculateRiskLevel(inhScore) : { level: 'Unknown', color: 'default' };
-      const resLevel = calculateRiskLevel ? calculateRiskLevel(resScore) : { level: 'Unknown', color: 'default' };
-
-      // SATU objek update saja (tidak duplikasi)
-      const assessmentUpdate = {
-        // nilai mentah
-        likelihood: L,
-        impact: I,
-        controlEffectiveness: assessmentData.controlEffectiveness || 3,
-        residualLikelihood: RL,
-        residualImpact: RI,
-
-        // hasil util (angka + level)
-        inherentScore: inhScore,
-        initialRiskLevel: inhLevel,
-
-        residualScore: resScore,
-        residualRiskLevel: resLevel,
-
-        // jejak metode
-        scoreMethod: method,
-
-        // metadata lain
-        treatmentPriority: assessmentData.treatmentPriority || 'Medium - Sedang (Penanganan < 1 Bulan)',
-        assessmentNotes: assessmentData.assessmentNotes || '',
-        assessedAt: new Date(),
-        assessedBy: userData?.name || 'System',
-        status: 'Assessed - Telah Dinilai',
-        updatedAt: new Date(),
-        updatedBy: userData?.name || 'System'
-      };
-
-      // Bersihkan nilai undefined/null sebelum kirim
-      const cleanAssessmentData = {};
-      Object.keys(assessmentUpdate).forEach(key => {
-        if (assessmentUpdate[key] !== undefined && assessmentUpdate[key] !== null) {
-          cleanAssessmentData[key] = assessmentUpdate[key];
-        }
+      await api.patch(`/risiko/${assessingRisk.id}`, {
+        inheren: { kemungkinan: Number(assessmentData.likelihood), dampak: Number(assessmentData.impact) },
+        residual: { kemungkinan: Number(assessmentData.residualLikelihood), dampak: Number(assessmentData.residualImpact) },
+        efektivitas_kontrol: assessmentData.controlEffectiveness || null,
+        prioritas_penanganan: keBodyApi({ treatmentPriority: assessmentData.treatmentPriority }).prioritas_penanganan,
+        catatan_penilaian: assessmentData.assessmentNotes,
+        status: 'DINILAI'
       });
-
-      await updateDoc(doc(db, "risks", assessingRisk.id), cleanAssessmentData);
 
       showSnackbar('Assessment risiko berhasil disimpan!', 'success');
       setAssessmentDialog(false);
@@ -1146,7 +815,7 @@ const RiskRegister = () => {
       setAssessmentData({
         likelihood: 1,
         impact: 1,
-        controlEffectiveness: 3,
+        controlEffectiveness: '',
         residualLikelihood: 1,
         residualImpact: 1,
         treatmentPriority: 'Medium - Sedang (Penanganan < 1 Bulan)',
@@ -1165,7 +834,7 @@ const RiskRegister = () => {
   const handleDelete = async (riskId) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus risiko ini?')) {
       try {
-        await deleteDoc(doc(db, 'risks', riskId));
+        await api.delete(`/risiko/${riskId}`);
         showSnackbar('Risiko berhasil dihapus!', 'success');
         loadData();
       } catch (error) {
@@ -1445,15 +1114,26 @@ const RiskRegister = () => {
                 </Typography>
               </Box>
             </Box>
-            <Button
-              variant="contained"
-              startIcon={<Plus size={18} />}
-              size="large"
-              sx={{ borderRadius: 2 }}
-              onClick={() => setOpenDialog(true)}
-            >
-              Tambah Risiko
-            </Button>
+            <Box display="flex" gap={2} alignItems="center">
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <InputLabel>Periode</InputLabel>
+                <Select value={periodeId || ''} label="Periode" onChange={(e) => setPeriodeId(e.target.value)}>
+                  {daftarPeriode.map((p) => (
+                    <MenuItem key={p.id} value={p.id}>{p.nama}{p.status === 'DITUTUP' ? ' (ditutup)' : ''}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button
+                variant="contained"
+                startIcon={<Plus size={18} />}
+                size="large"
+                sx={{ borderRadius: 2 }}
+                disabled={!periode || periode.status !== 'TERBUKA'}
+                onClick={() => { resetForm(); setOpenDialog(true); }}
+              >
+                Tambah Risiko
+              </Button>
+            </Box>
           </Box>
         </CardContent>
       </Card>
@@ -2085,6 +1765,14 @@ const RiskRegister = () => {
                                 size="small"
                                 color={statusChipColor}
                               />
+                              <Chip
+                                label={LABEL_PERSETUJUAN[risk.approvalStatus] || risk.approvalStatus}
+                                size="small"
+                                variant="outlined"
+                                sx={{ mt: 0.5 }}
+                                color={risk.approvalStatus === 'FINAL' ? 'success' : risk.approvalStatus === 'DIKEMBALIKAN' ? 'warning' : 'default'}
+                              />
+                              {risk.modifiedByDirectors && <Chip label="Diubah Direksi" size="small" color="error" sx={{ mt: 0.5 }} />}
                             </TableCell>
                             {/* GUNAKAN FUNGSI BARU */}
                             <TableCell>
@@ -2144,6 +1832,7 @@ const RiskRegister = () => {
                                     color="warning"
                                     size="small"
                                     onClick={() => handleAssessment(risk)}
+                                    disabled={!['DRAF', 'DIKEMBALIKAN'].includes(risk.approvalStatus) && !userData?.peran?.includes('DIREKSI')}
                                   >
                                     <BarChart3 size={18} />
                                   </IconButton>
@@ -2153,6 +1842,7 @@ const RiskRegister = () => {
                                     color="primary"
                                     size="small"
                                     onClick={() => handleEdit(risk)}
+                                    disabled={!['DRAF', 'DIKEMBALIKAN'].includes(risk.approvalStatus) && !userData?.peran?.includes('DIREKSI')}
                                   >
                                     <Edit2 size={18} />
                                   </IconButton>
@@ -2162,6 +1852,7 @@ const RiskRegister = () => {
                                     color="error"
                                     size="small"
                                     onClick={() => handleDelete(risk.id)}
+                                    disabled={risk.approvalStatus !== 'DRAF'}
                                   >
                                     <Trash2 size={18} />
                                   </IconButton>
@@ -2415,7 +2106,7 @@ const RiskRegister = () => {
                     rows={2}
                     value={formData.cause}
                     onChange={(e) => setFormData({ ...formData, cause: e.target.value })}
-                    placeholder="Apa penyebab risiko ini?"
+                    placeholder="Apa penyebab risiko ini? (satu penyebab per baris)"
                   />
                 </Grid>
 
@@ -2428,18 +2119,17 @@ const RiskRegister = () => {
                     rows={2}
                     value={formData.impactText}
                     onChange={(e) => setFormData({ ...formData, impactText: e.target.value })}
-                    placeholder="Jelaskan dampak yang mungkin terjadi..."
+                    placeholder="Jelaskan dampak yang mungkin terjadi... (satu dampak per baris)"
                   />
                 </Grid>
 
-                {/* Pemilik Risiko */}
+                {/* Pemilik Risiko: direktur pembina unit (handoff bagian 4) */}
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label="Pemilik Risiko"
-                    value={formData.riskOwner}
-                    onChange={(e) => setFormData({ ...formData, riskOwner: e.target.value })}
-                    placeholder="Nama pemilik risiko"
+                    value={editingRisk?.riskOwner || 'Ditetapkan otomatis: direktur pembina unit'}
+                    disabled
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -2452,20 +2142,22 @@ const RiskRegister = () => {
 
                 {/* Penanggung Jawab */}
                 <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Penanggung Jawab"
-                    value={formData.responsiblePerson}
-                    onChange={(e) => setFormData({ ...formData, responsiblePerson: e.target.value })}
-                    placeholder="Nama penanggung jawab"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <User size={18} />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
+                  <FormControl fullWidth>
+                    <InputLabel>Penanggung Jawab</InputLabel>
+                    <Select
+                      value={formData.responsiblePersonId}
+                      label="Penanggung Jawab"
+                      onChange={(e) => setFormData({ ...formData, responsiblePersonId: e.target.value })}
+                    >
+                      <MenuItem value="">-</MenuItem>
+                      {daftarPengguna
+                        .filter((p) => !formData.department || !p.unit_id || p.unit_id === formData.department)
+                        .map((p) => (
+                          <MenuItem key={p.id} value={p.id}>{p.nama}</MenuItem>
+                        ))}
+                    </Select>
+                    <FormHelperText>Pengguna di unit yang sama</FormHelperText>
+                  </FormControl>
                 </Grid>
               </Grid>
             </Paper>
@@ -2513,8 +2205,6 @@ const RiskRegister = () => {
                     fullWidth
                     label="Kuantifikasi Risiko Inherent"
                     type="number"
-                    multiline
-                    rows={2}
                     value={formData.inherentRiskQuantification}
                     onChange={(e) => setFormData({ ...formData, inherentRiskQuantification: e.target.value })}
                     placeholder="Kuantifikasi risiko inherent (dalam nilai rupiah atau lainnya)..."
@@ -2532,9 +2222,62 @@ const RiskRegister = () => {
                   <Grid item xs={12}>
                     <Alert severity="info">
                       {(() => {
-                        const score = calculateRiskScore(formData.initialImpact, formData.initialProbability);
+                        const score = calculateScore(Number(formData.initialProbability), Number(formData.initialImpact));
                         const level = calculateRiskLevel ? calculateRiskLevel(score) : { level: 'Unknown', color: 'default' };
                         return <>Risk Score: {score} • Level: {level.level}</>;
+                      })()}
+                    </Alert>
+                  </Grid>
+                )}
+              </Grid>
+            </Paper>
+
+            {/* Section 2b: Target Risiko */}
+            <Paper sx={{ p: 3, mb: 3, backgroundColor: 'grey.50' }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Target size={18} /> 2b. Target Risiko (akhir periode)
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Probabilitas Target</InputLabel>
+                    <Select
+                      value={formData.targetProbability}
+                      label="Probabilitas Target"
+                      onChange={(e) => setFormData({ ...formData, targetProbability: e.target.value })}
+                    >
+                      <MenuItem value="">-</MenuItem>
+                      {getRatingOptionsFromConfig().map((option) => (
+                        <MenuItem key={option} value={option}>
+                          {getRatingLabelFromConfig(option, 'likelihood')}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Dampak Target</InputLabel>
+                    <Select
+                      value={formData.targetImpact}
+                      label="Dampak Target"
+                      onChange={(e) => setFormData({ ...formData, targetImpact: e.target.value })}
+                    >
+                      <MenuItem value="">-</MenuItem>
+                      {getRatingOptionsFromConfig().map((option) => (
+                        <MenuItem key={option} value={option}>
+                          {getRatingLabelFromConfig(option, 'impact')}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                {formData.targetProbability && formData.targetImpact && (
+                  <Grid item xs={12}>
+                    <Alert severity="info">
+                      {(() => {
+                        const score = calculateScore(Number(formData.targetProbability), Number(formData.targetImpact));
+                        return <>Risk Score: {score} • Level: {calculateRiskLevel(score).level}</>;
                       })()}
                     </Alert>
                   </Grid>
@@ -2581,7 +2324,7 @@ const RiskRegister = () => {
             {/* Section 4: Penilaian Risiko Residual */}
             <Paper sx={{ p: 3, mb: 3, backgroundColor: 'grey.50' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <BarChart3 size={18} /> 4. Penilaian Risiko Residual (Akhir)
+                <BarChart3 size={18} /> 4. Penilaian Risiko Residual (bulan berjalan)
               </Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
@@ -2621,8 +2364,6 @@ const RiskRegister = () => {
                     fullWidth
                     label="Kuantifikasi Risiko Residual"
                     type="number"
-                    multiline
-                    rows={2}
                     value={formData.residualRiskQuantification}
                     onChange={(e) => setFormData({ ...formData, residualRiskQuantification: e.target.value })}
                     placeholder="Kuantifikasi risiko residual (dalam nilai rupiah atau lainnya)..."
@@ -2640,7 +2381,7 @@ const RiskRegister = () => {
                   <Grid item xs={12}>
                     <Alert severity="info">
                       {(() => {
-                        const score = calculateRiskScore(formData.residualImpact, formData.residualProbability);
+                        const score = calculateScore(Number(formData.residualProbability), Number(formData.residualImpact));
                         const level = calculateRiskLevel ? calculateRiskLevel(score) : { level: 'Unknown', color: 'default' };
                         return <>Risk Score: {score} • Level: {level.level}</>;
                       })()}
@@ -2718,7 +2459,7 @@ const RiskRegister = () => {
           <Button
             variant="contained"
             onClick={handleSubmit}
-            disabled={!formData.riskCode || !formData.riskDescription || !formData.riskSource || !!codeError}
+            disabled={!formData.riskCode || !formData.riskDescription || !formData.riskSource || !formData.department || !!codeError || !periodeId}
           >
             {editingRisk ? 'Update Risiko' : 'Simpan Risiko'}
           </Button>
@@ -2797,16 +2538,18 @@ const RiskRegister = () => {
                   </Typography>
                   <FormControl fullWidth>
                     <Typography variant="body2" gutterBottom>
-                      Efektivitas Kontrol (1-5)
+                      Efektivitas Kontrol
                     </Typography>
-                    <Slider
+                    <Select
                       value={assessmentData.controlEffectiveness}
-                      onChange={(e, newValue) => setAssessmentData({ ...assessmentData, controlEffectiveness: newValue })}
-                      min={1}
-                      max={5}
-                      marks
-                      valueLabelDisplay="auto"
-                    />
+                      displayEmpty
+                      onChange={(e) => setAssessmentData({ ...assessmentData, controlEffectiveness: e.target.value })}
+                    >
+                      <MenuItem value="">-</MenuItem>
+                      {effectivenessLevels.map((level) => (
+                        <MenuItem key={level} value={level}>{level}</MenuItem>
+                      ))}
+                    </Select>
                   </FormControl>
                 </Grid>
 
@@ -2887,7 +2630,7 @@ const RiskRegister = () => {
                       {/* Inherent preview */}
                       <Grid item xs={6}>
                         {(() => {
-                          const inhScore = calculateRiskScore(assessmentData.impact, assessmentData.likelihood);
+                          const inhScore = calculateScore(Number(assessmentData.likelihood), Number(assessmentData.impact));
                           const inhLevel = calculateRiskLevel ? calculateRiskLevel(inhScore) : { level: 'Unknown', color: 'default' };
                           return (
                             <>
@@ -2904,7 +2647,7 @@ const RiskRegister = () => {
                       {/* Residual preview */}
                       <Grid item xs={6}>
                         {(() => {
-                          const resScore = calculateRiskScore(assessmentData.residualImpact, assessmentData.residualLikelihood);
+                          const resScore = calculateScore(Number(assessmentData.residualLikelihood), Number(assessmentData.residualImpact));
                           const resLevel = calculateRiskLevel ? calculateRiskLevel(resScore) : { level: 'Unknown', color: 'default' };
                           return (
                             <>
@@ -3211,19 +2954,14 @@ const RiskRegister = () => {
                             {selectedRisk.assessmentNotes || '-'}
                           </Typography>
                         </Grid>
-                        {selectedRisk.assessedBy && (
-                          <Grid item xs={12}>
-                            <Alert severity="success">
-                              Dinilai oleh: {selectedRisk.assessedBy} pada {(() => {
-                                const val = selectedRisk.assessedAt;
-                                if (!val) return '-';
-                                if (val.toDate) return val.toDate().toLocaleDateString('id-ID');
-                                if (val.seconds) return new Date(val.seconds * 1000).toLocaleDateString('id-ID');
-                                return new Date(val).toLocaleDateString('id-ID');
-                              })()}
-                            </Alert>
-                          </Grid>
-                        )}
+                        <Grid item xs={6}>
+                          <Typography variant="subtitle2" fontWeight="bold">Target</Typography>
+                          <Typography variant="body1">{selectedRisk.targetScore ? `${selectedRisk.targetLevel} (${selectedRisk.targetScore})` : "-"}</Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="subtitle2" fontWeight="bold">Residual (periode pemantauan)</Typography>
+                          <Typography variant="body1">{selectedRisk.residualPeriod || "-"}</Typography>
+                        </Grid>
                       </Grid>
                     </CardContent>
                   </Card>
@@ -3235,9 +2973,9 @@ const RiskRegister = () => {
                         <History size={18} />
                         Audit Trail
                       </Typography>
-                      {selectedRisk.auditTrail && selectedRisk.auditTrail.length > 0 ? (
+                      {riwayat.length > 0 ? (
                         <List sx={{ maxHeight: 300, overflow: 'auto' }}>
-                          {selectedRisk.auditTrail.map((audit, index) => (
+                          {riwayat.map((audit, index) => (
                             <ListItem key={index} divider>
                               <ListItemIcon>
                                 <Calendar size={18} />
@@ -3246,36 +2984,14 @@ const RiskRegister = () => {
                                 primary={
                                   <Box display="flex" justifyContent="space-between">
                                     <Typography variant="subtitle1">
-                                      {audit.action === 'created' ? 'Dibuat' : 'Diupdate'} oleh {audit.user}
+                                      {audit.aksi === 'BUAT' ? 'Dibuat' : audit.aksi === 'HAPUS' ? 'Dihapus' : 'Diubah'} oleh {audit.pengguna?.nama || 'Sistem'}
                                     </Typography>
                                     <Typography variant="body2" color="textSecondary">
                                       {(() => {
-                                        const val = audit.timestamp;
-                                        if (!val) return '-';
-                                        if (val.toDate) return val.toDate().toLocaleString('id-ID');
-                                        if (val.seconds) return new Date(val.seconds * 1000).toLocaleString('id-ID');
-                                        return new Date(val).toLocaleString('id-ID');
+                                        return new Date(audit.dibuat_pada).toLocaleString('id-ID');
                                       })()}
                                     </Typography>
                                   </Box>
-                                }
-                                secondary={
-                                  audit.changes && audit.changes.length > 0 ? (
-                                    <Box sx={{ mt: 1 }}>
-                                      <Typography variant="body2" fontWeight="bold">
-                                        Perubahan:
-                                      </Typography>
-                                      {audit.changes.map((change, changeIndex) => (
-                                        <Typography key={changeIndex} variant="body2" sx={{ ml: 2 }}>
-                                          • {change.field}: "{change.oldValue || 'kosong'}" → "{change.newValue || 'kosong'}"
-                                        </Typography>
-                                      ))}
-                                    </Box>
-                                  ) : (
-                                    <Typography variant="body2" color="textSecondary">
-                                      Tidak ada perubahan field
-                                    </Typography>
-                                  )
                                 }
                               />
                             </ListItem>

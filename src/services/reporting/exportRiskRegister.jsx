@@ -1,50 +1,24 @@
 // src/services/reporting/exportRiskRegister.js
 import { saveAs } from 'file-saver';
 import { fmtRp } from '../../utils/reporting/numberUtils';
-import { db } from '../../config/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { api } from '../api';
 
-// Cache untuk data referensi dari risk_parameters
+// Cache untuk data referensi (kategori risiko & unit)
 let referenceDataCache = null;
 
 /**
- * Fetch data referensi dari Firestore (risk_parameters collection)
+ * Ambil data referensi dari API untuk menerjemahkan ID ke nama.
  */
 const fetchReferenceData = async () => {
-  if (referenceDataCache) {
-    return referenceDataCache;
-  }
-
+  if (referenceDataCache) return referenceDataCache;
   try {
-
-    
-    const paramsSnapshot = await getDocs(collection(db, 'risk_parameters'));
-    
-    const riskTypesMap = {};
-    const departmentsMap = {};
-
-    paramsSnapshot.forEach(doc => {
-      const data = doc.data();
-      const type = data.type;
-
-      if (type === 'risk_type') {
-        riskTypesMap[doc.id] = data.name || data.nama || data.label || doc.id;
-        if (data.code) {
-          riskTypesMap[data.code] = data.name || data.nama || data.label || doc.id;
-        }
-      } else if (type === 'organization_unit') {
-        departmentsMap[doc.id] = data.name || data.nama || data.label || doc.id;
-        if (data.code) {
-          departmentsMap[data.code] = data.name || data.nama || data.label || doc.id;
-        }
-      }
-    });
-
-    referenceDataCache = { departmentsMap, riskTypesMap };
+    const [kategori, unit] = await Promise.all([api.get('/kategori-risiko'), api.get('/unit')]);
+    referenceDataCache = {
+      riskTypesMap: Object.fromEntries(kategori.map((k) => [k.id, k.nama])),
+      departmentsMap: Object.fromEntries(unit.map((u) => [u.id, u.nama]))
+    };
     return referenceDataCache;
-
   } catch (error) {
-
     return { departmentsMap: {}, riskTypesMap: {} };
   }
 };

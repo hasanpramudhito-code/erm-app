@@ -146,6 +146,10 @@ async function main() {
   for (const [kunci, nilai] of Object.entries(PENGATURAN))
     await prisma.pengaturan.upsert({ where: { kunci }, update: {}, create: { kunci, nilai } });
 
+  const tahun = new Date().getFullYear();
+  if (!(await prisma.periode.findFirst({ where: { nama: String(tahun) } })))
+    await prisma.periode.create({ data: { nama: String(tahun), tanggal_mulai: new Date(`${tahun}-01-01`), tanggal_selesai: new Date(`${tahun}-12-31`) } });
+
   const adminPeran = await prisma.peran.findUnique({ where: { kode: 'ADMIN_SISTEM' } });
   await prisma.pengguna.upsert({
     where: { email },

@@ -135,6 +135,22 @@ router.use('/level-selera-risiko', crud({
   },
 }));
 
+router.use('/periode', crud({
+  model: 'periode',
+  penulis: PENGELOLA,
+  orderBy: { tanggal_mulai: 'desc' },
+  bersihkan: (b, baru, lama) => {
+    const tgl = (v) => (v === undefined ? undefined : new Date(v));
+    const data = rapikan({ nama: teks(b.nama), tanggal_mulai: tgl(b.tanggal_mulai), tanggal_selesai: tgl(b.tanggal_selesai), status: b.status });
+    const kurang = wajib(data, ['nama', 'tanggal_mulai', 'tanggal_selesai'], baru);
+    if (kurang) return { error: `${kurang} wajib diisi` };
+    if ([data.tanggal_mulai, data.tanggal_selesai].some((d) => d && isNaN(d))) return { error: 'Tanggal tidak valid' };
+    if ((data.tanggal_mulai ?? lama?.tanggal_mulai) > (data.tanggal_selesai ?? lama?.tanggal_selesai)) return { error: 'Tanggal mulai melewati tanggal selesai' };
+    if (data.status && !['TERBUKA', 'DITUTUP'].includes(data.status)) return { error: 'Status harus TERBUKA atau DITUTUP' };
+    return { data };
+  },
+}));
+
 // ---- Pengaturan (key-value) ----
 // Kunci yang boleh dibaca semua pengguna login; sisanya hanya admin.
 const PENGATURAN_PUBLIK = ['metode_penilaian', 'ambang_toleransi', 'ui'];

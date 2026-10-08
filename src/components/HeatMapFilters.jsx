@@ -31,6 +31,8 @@ const HeatMapFilters = ({
   filters,
   onFilterChange,
   organizationUnits = [],
+  categories = [],
+  levels = [],
   onExport,
   exportLoading = false
 }) => {
@@ -44,11 +46,7 @@ const HeatMapFilters = ({
   });
 
   // Risk categories
-  const riskCategories = [
-    'Strategis', 'Operasional', 'Finansial', 'HSSE',
-    'IT & Teknologi', 'Legal & Kepatuhan', 'Fraud',
-    'Reputasi', 'Lainnya'
-  ];
+  const riskCategories = categories;
 
   // Time ranges
   const timeRanges = [
@@ -63,10 +61,7 @@ const HeatMapFilters = ({
   // Risk levels
   const riskLevels = [
     { value: 'all', label: 'Semua Level' },
-    { value: 'extreme', label: 'Ekstrim', color: '#7b1fa2' },
-    { value: 'high', label: 'Tinggi', color: '#d32f2f' },
-    { value: 'medium', label: 'Sedang', color: '#f57c00' },
-    { value: 'low', label: 'Rendah', color: '#4caf50' }
+    ...levels.map((l) => ({ value: l.label, label: l.label, color: l.color }))
   ];
 
   // Handle filter change
@@ -184,8 +179,8 @@ const HeatMapFilters = ({
                 <em>Semua Kategori</em>
               </MenuItem>
               {riskCategories.map((category) => (
-                <MenuItem key={category} value={category}>
-                  {category}
+                <MenuItem key={category.id} value={category.id}>
+                  {category.name}
                 </MenuItem>
               ))}
             </Select>
@@ -288,7 +283,7 @@ const HeatMapFilters = ({
               )}
               {localFilters.category !== 'all' && (
                 <Chip
-                  label={`Kategori: ${localFilters.category}`}
+                  label={`Kategori: ${riskCategories.find((c) => c.id === localFilters.category)?.name || localFilters.category}`}
                   size="small"
                   onDelete={() => handleFilterChange('category', 'all')}
                 />
