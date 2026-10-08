@@ -49,3 +49,34 @@ test('login, akses, unggah, unduh, hapus, logout', async () => {
   await fetch(`${base}/api/auth/logout`, { method: 'POST', headers: h });
   assert.equal((await fetch(`${base}/api/auth/saya`, { headers: h })).status, 401);
 });
+
+test('kelola pengguna: buat, login, ubah peran memutus sesi, non-admin ditolak', async () => {
+  const admin = (await login(process.env.SEED_ADMIN_EMAIL, process.env.SEED_ADMIN_PASSWORD)).headers.get('set-cookie').split(';')[0];
+  const json = (method, url, body, cookie) =>
+    fetch(`${base}/api${url}`, { method, headers: { 'content-type': 'application/json', cookie }, body: body && JSON.stringify(body) });
+
+  const email = `uji-${Date.now()}@erm.local`;
+  assert.equal((await json('POST', '/pengguna', { nama: 'Uji', email, kata_sandi: 'pendek', peran: ['PETUGAS_RISIKO_CABANG'] }, admin)).status, 400);
+  assert.equal((await json('POST', '/pengguna', { nama: 'Uji', email, kata_sandi: 'sandi-uji-panjang', peran: ['TIDAK_ADA'] }, admin)).status, 400);
+  const r = await json('POST', '/pengguna', { nama: 'Uji', email, kata_sandi: 'sandi-uji-panjang', peran: ['PETUGAS_RISIKO_CABANG'] }, admin);
+  assert.equal(r.status, 201);
+  const baru = await r.json();
+  assert.deepEqual(baru.peran, ['PETUGAS_RISIKO_CABANG']);
+  assert.equal(baru.kata_sandi_hash, undefined);
+
+  const petugas = (await login(email, 'sandi-uji-panjang')).headers.get('set-cookie').split(';')[0];
+  assert.equal((await json('GET', '/pengguna', null, petugas)).status, 403);
+  assert.equal((await json('POST', '/pengguna', { nama: 'x', email: 'x@x.id', kata_sandi: 'xxxxxxxxxxxx', peran: ['ADMIN_SISTEM'] }, petugas)).status, 403);
+  assert.equal((await json('GET', '/pengguna/ringkas', null, petugas)).status, 200);
+
+  assert.equal((await json('PATCH', `/pengguna/${baru.id}`, { peran: ['PIMPINAN_CABANG'] }, admin)).status, 200);
+  assert.equal((await json('GET', '/auth/saya', null, petugas)).status, 401);
+
+  assert.equal((await json('PATCH', `/pengguna/${baru.id}`, { aktif: false }, admin)).status, 200);
+  assert.equal((await login(email, 'sandi-uji-panjang')).status, 401);
+
+  const saya = await (await json('GET', '/auth/saya', null, admin)).json();
+  assert.equal((await json('PATCH', `/pengguna/${saya.id}`, { aktif: false }, admin)).status, 400);
+
+  await prisma.pengguna.delete({ where: { id: baru.id } });
+});

@@ -1,8 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
-import { SECURITY_CONFIG } from '../config/securityConfig';
+import { api, ApiError } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -12,108 +9,68 @@ export const useAuth = () => {
   return ctx;
 };
 
+// ponytail: peta peran baru -> kode role lama, agar halaman yang belum dipindahkan tetap jalan.
+// Hapus setelah semua pengecekan role (roles.js, usePermissions, EnhancedNavigation) memakai `peran`.
+const ROLE_LAMA = [
+  ['ADMIN_SISTEM', 'ADMIN'],
+  ['DIREKSI', 'DIRECTOR'],
+  ['PENGELOLA_RISIKO', 'RISK_MANAGER'],
+  ['PIMPINAN_UNIT_PUSAT', 'RISK_OWNER'],
+  ['PIMPINAN_CABANG', 'RISK_OWNER'],
+  ['KEPATUHAN', 'RISK_OWNER'],
+];
+const roleLama = (peran) => ROLE_LAMA.find(([baru]) => peran.includes(baru))?.[1] || 'STAFF';
+
+const keUserData = (p) => ({
+  ...p,
+  uid: p.id,
+  name: p.nama,
+  role: roleLama(p.peran),
+  status: 'active',
+});
+
 export const AuthProvider = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const login = (email, password) =>
-    signInWithEmailAndPassword(auth, email, password);
-
-  const logout = async () => {
-    setUserData(null);
-    setCurrentUser(null);
-    await signOut(auth);
-  };
-
-  const loadUserProfile = async (user) => {
-    const snap = await getDoc(doc(db, 'users', user.uid));
-
-    if (!snap.exists()) {
-      return {
-        uid: user.uid,
-        email: user.email,
-        role: 'STAFF'
-      };
-    }
-
-    const data = snap.data();
-    let role = data.role || 'STAFF';
-
-    if (SECURITY_CONFIG.useSecureFunctions) {
-      try {
-        const tokenResult = await user.getIdTokenResult();
-        if (tokenResult.claims?.role) {
-          role = tokenResult.claims.role;
-        }
-      } catch (error) {
-        // fallback ke Firestore
-      }
-    }
-
-    return {
-      uid: user.uid,
-      email: user.email,
-      role,
-      name: data.name || data.displayName || user.email,
-      status: data.status || 'active'
-    };
-  };
-
   const refreshUserData = useCallback(async () => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    await user.getIdToken(true);
-    const profile = await loadUserProfile(user);
-    setUserData(profile);
-    return profile;
+    try {
+      const p = keUserData(await api.get('/auth/saya'));
+      setUserData(p);
+      return p;
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 401)) console.error(e);
+      setUserData(null);
+      return null;
+    }
   }, []);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      try {
-        setLoading(true);
+    refreshUserData().finally(() => setLoading(false));
+  }, [refreshUserData]);
 
-        if (!user) {
-          setCurrentUser(null);
-          setUserData(null);
-          return;
-        }
+  const login = async (email, password) => {
+    const p = keUserData(await api.post('/auth/login', { email, kata_sandi: password }));
+    setUserData(p);
+    return p;
+  };
 
-        setCurrentUser(user);
-
-        try {
-          const profile = await loadUserProfile(user);
-          setUserData(profile);
-        } catch (error) {
-          if (error.code === 'permission-denied') {
-            setUserData(null);
-            setCurrentUser(null);
-          }
-        }
-
-      } catch (err) {
-        setCurrentUser(null);
-        setUserData(null);
-      } finally {
-        setLoading(false); // ⬅️ WAJIB DI SINI
-      }
-    });
-
-    return () => unsub();
-  }, []);
+  const logout = async () => {
+    await api.post('/auth/logout').catch(() => {});
+    setUserData(null);
+  };
 
   return (
     <AuthContext.Provider
       value={{
-        currentUser,
+        currentUser: userData,
         userData,
         loading,
         isInitialized: !loading,
+        authReady: !loading,
         login,
         logout,
-        refreshUserData
+        refreshUserData,
       }}
     >
       {!loading && children}

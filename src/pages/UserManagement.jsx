@@ -23,82 +23,59 @@ import {
   Grid,
   Alert,
   CircularProgress,
-  Snackbar
+  Snackbar,
+  OutlinedInput
 } from '@mui/material';
 import { Plus, Edit2, Trash2 } from 'lucide-react';
-import {
-  collection,
-  getDocs,
-  doc,
-  updateDoc,
-  setDoc,
-  query,
-  where,
-  serverTimestamp
-} from 'firebase/firestore';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { db, auth } from '../config/firebase';
+import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  isSecureUserManagementEnabled,
-  createUserSecure,
-  updateUserSecure,
-  deactivateUserSecure
-} from '../services/userSecurityService';
+
+const EMPTY_FORM = {
+  name: '',
+  email: '',
+  password: '',
+  peran: ['PETUGAS_RISIKO_CABANG'],
+  unit_id: '',
+  position: '',
+  phone: '',
+  status: 'active'
+};
 
 const UserManagement = () => {
   const { userData, refreshUserData } = useAuth();
-  const isAdmin = userData?.role === 'ADMIN' || userData?.role === 'SUPER_ADMIN';
-  const secureMode = isSecureUserManagementEnabled();
+  const isAdmin = userData?.peran?.includes('ADMIN_SISTEM');
+  const canView = isAdmin || userData?.peran?.includes('DIREKSI');
 
   const [users, setUsers] = useState([]);
+  const [daftarPeran, setDaftarPeran] = useState([]);
+  const [daftarUnit, setDaftarUnit] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    role: 'STAFF',
-    department: '',
-    position: '',
-    phone: '',
-    status: 'active'
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
 
   // Load users
   const loadUsers = async () => {
     try {
       setLoading(true);
 
-      if (!isAdmin) {
+      if (!canView) {
         setUsers([]);
         return;
       }
 
-      // Admin bisa melihat semua user
-      const usersRef = collection(db, 'users');
-      const snapshot = await getDocs(usersRef);
-
-      const userList = [];
-      snapshot.forEach((docSnap) => {
-        userList.push({
-          id: docSnap.id,
-          ...docSnap.data(),
-          // Format tanggal jika ada
-          createdAt: docSnap.data().createdAt?.toDate?.() || docSnap.data().createdAt,
-          updatedAt: docSnap.data().updatedAt?.toDate?.() || docSnap.data().updatedAt
-        });
-      });
-
-      setUsers(userList);
-
+      const [list, peran, unit] = await Promise.all([
+        api.get('/pengguna'),
+        api.get('/pengguna/peran'),
+        api.get('/unit')
+      ]);
+      setUsers(list);
+      setDaftarPeran(peran);
+      setDaftarUnit(unit);
     } catch (err) {
-      showSnackbar('Gagal memuat data pengguna', 'error');
+      showSnackbar(err.message || 'Gagal memuat data pengguna', 'error');
     } finally {
       setLoading(false);
     }
@@ -108,7 +85,7 @@ const UserManagement = () => {
     if (userData) {
       loadUsers();
     }
-  }, [userData]);
+  }, [userData?.id]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -116,73 +93,32 @@ const UserManagement = () => {
     setError('');
 
     try {
+      const payload = {
+        nama: formData.name,
+        peran: formData.peran,
+        unit_id: formData.unit_id || null,
+        jabatan: formData.position,
+        telepon: formData.phone
+      };
+
       if (editingUser) {
-        if (secureMode) {
-          await updateUserSecure({
-            uid: editingUser.id,
-            name: formData.name,
-            role: formData.role,
-            department: formData.department,
-            position: formData.position,
-            phone: formData.phone,
-            status: formData.status
-          });
-        } else {
-          await updateDoc(doc(db, 'users', editingUser.id), {
-            name: formData.name,
-            role: formData.role,
-            department: formData.department,
-            position: formData.position,
-            phone: formData.phone,
-            status: formData.status,
-            updatedAt: serverTimestamp()
-          });
-        }
-
+        await api.patch(`/pengguna/${editingUser.id}`, {
+          ...payload,
+          aktif: formData.status === 'active',
+          ...(formData.password ? { kata_sandi: formData.password } : {})
+        });
         showSnackbar('User berhasil diupdate', 'success');
-      } else if (secureMode) {
-        await createUserSecure({
-          email: formData.email.toLowerCase().trim(),
-          password: formData.password,
-          name: formData.name,
-          role: formData.role || 'STAFF',
-          department: formData.department || '',
-          position: formData.position || '',
-          phone: formData.phone || '',
-          status: formData.status || 'active'
-        });
-
-        showSnackbar('User berhasil dibuat (secure)', 'success');
       } else {
-        const userCredential = await createUserWithEmailAndPassword(
-          auth,
-          formData.email.toLowerCase().trim(),
-          formData.password
-        );
-
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-          uid: userCredential.user.uid,
-          email: formData.email.toLowerCase().trim(),
-          name: formData.name,
-          role: formData.role || 'STAFF',
-          department: formData.department || '',
-          position: formData.position || '',
-          phone: formData.phone || '',
-          status: formData.status || 'active',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-
+        await api.post('/pengguna', { ...payload, email: formData.email, kata_sandi: formData.password });
         showSnackbar('User berhasil dibuat', 'success');
       }
 
-      if (refreshUserData) {
+      if (editingUser?.id === userData?.id) {
         await refreshUserData();
       }
 
       handleCloseDialog();
       loadUsers();
-
     } catch (err) {
       setError(err.message || 'Gagal menyimpan user');
       showSnackbar(err.message || 'Gagal menyimpan user', 'error');
@@ -192,36 +128,28 @@ const UserManagement = () => {
   };
 
   const handleDelete = async (user) => {
-    if (!window.confirm(`Nonaktifkan user ${user.name}?`)) return;
+    if (!window.confirm(`Nonaktifkan user ${user.nama}?`)) return;
 
     try {
-      if (secureMode) {
-        await deactivateUserSecure(user.id);
-      } else {
-        await updateDoc(doc(db, 'users', user.id), {
-          status: 'inactive',
-          updatedAt: new Date()
-        });
-      }
-
+      await api.patch(`/pengguna/${user.id}`, { aktif: false });
       showSnackbar('User dinonaktifkan', 'success');
       loadUsers();
     } catch (err) {
-      showSnackbar('Gagal menonaktifkan user', 'error');
+      showSnackbar(err.message || 'Gagal menonaktifkan user', 'error');
     }
   };
 
   const handleEdit = (user) => {
     setEditingUser(user);
     setFormData({
-      name: user.name || '',
+      name: user.nama || '',
       email: user.email || '',
       password: '',
-      role: user.role || 'STAFF',
-      department: user.department || '',
-      position: user.position || '',
-      phone: user.phone || '',
-      status: user.status || 'active'
+      peran: user.peran || [],
+      unit_id: user.unit_id || '',
+      position: user.jabatan || '',
+      phone: user.telepon || '',
+      status: user.aktif ? 'active' : 'inactive'
     });
     setOpenDialog(true);
   };
@@ -229,16 +157,7 @@ const UserManagement = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingUser(null);
-    setFormData({
-      name: '',
-      email: '',
-      password: '',
-      role: 'STAFF',
-      department: '',
-      position: '',
-      phone: '',
-      status: 'active'
-    });
+    setFormData(EMPTY_FORM);
     setError('');
   };
 
@@ -251,20 +170,23 @@ const UserManagement = () => {
   };
 
   const getRoleColor = (role) => {
-    switch (role?.toUpperCase()) {
-      case 'ADMIN': return 'error';
-      case 'RISK_MANAGER': return 'warning';
-      case 'RISK_OWNER': return 'info';
-      case 'DIRECTOR': return 'success';
+    switch (role) {
+      case 'ADMIN_SISTEM': return 'error';
+      case 'PENGELOLA_RISIKO': return 'warning';
+      case 'PIMPINAN_UNIT_PUSAT':
+      case 'PIMPINAN_CABANG': return 'info';
+      case 'DIREKSI': return 'success';
       default: return 'default';
     }
   };
 
-  if (!isAdmin) {
+  const namaPeran = (kode) => daftarPeran.find((p) => p.kode === kode)?.nama || kode;
+
+  if (!canView) {
     return (
       <Box p={3}>
         <Alert severity="error">
-          Anda tidak memiliki akses untuk mengelola user. Halaman ini hanya dapat diakses oleh Admin.
+          Anda tidak memiliki akses untuk mengelola user. Halaman ini hanya dapat diakses oleh Administrator dan Direksi.
         </Alert>
       </Box>
     );
@@ -291,19 +213,6 @@ const UserManagement = () => {
         </Alert>
       )}
 
-      {!secureMode && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          Mode legacy aktif — user/role disimpan langsung dari browser.
-          Deploy Cloud Functions lalu set <code>REACT_APP_USE_SECURE_FUNCTIONS=true</code> untuk keamanan penuh.
-        </Alert>
-      )}
-
-      {secureMode && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          Mode aman aktif — manajemen user melalui Cloud Functions dengan sinkronisasi custom claims.
-        </Alert>
-      )}
-
       {loading ? (
         <Box display="flex" justifyContent="center" p={3}>
           <CircularProgress />
@@ -316,8 +225,8 @@ const UserManagement = () => {
                 <TableRow>
                   <TableCell>Nama</TableCell>
                   <TableCell>Email</TableCell>
-                  <TableCell>Role</TableCell>
-                  <TableCell>Departemen</TableCell>
+                  <TableCell>Peran</TableCell>
+                  <TableCell>Unit</TableCell>
                   <TableCell>Status</TableCell>
                   {isAdmin && <TableCell>Aksi</TableCell>}
                 </TableRow>
@@ -325,20 +234,18 @@ const UserManagement = () => {
               <TableBody>
                 {users.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell>{user.name}</TableCell>
+                    <TableCell>{user.nama}</TableCell>
                     <TableCell>{user.email}</TableCell>
                     <TableCell>
-                      <Chip
-                        label={user.role}
-                        color={getRoleColor(user.role)}
-                        size="small"
-                      />
+                      {user.peran.map((p) => (
+                        <Chip key={p} label={namaPeran(p)} color={getRoleColor(p)} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
+                      ))}
                     </TableCell>
-                    <TableCell>{user.department || '-'}</TableCell>
+                    <TableCell>{user.unit?.nama || '-'}</TableCell>
                     <TableCell>
                       <Chip
-                        label={user.status || 'active'}
-                        color={user.status === 'active' ? 'success' : 'error'}
+                        label={user.aktif ? 'active' : 'inactive'}
+                        color={user.aktif ? 'success' : 'error'}
                         size="small"
                       />
                     </TableCell>
@@ -350,7 +257,7 @@ const UserManagement = () => {
                         <IconButton
                           onClick={() => handleDelete(user)}
                           size="small"
-                          disabled={user.id === userData?.uid}
+                          disabled={user.id === userData?.id || !user.aktif}
                         >
                           <Trash2 size={18} />
                         </IconButton>
@@ -395,43 +302,50 @@ const UserManagement = () => {
                   />
                 </Grid>
 
-                {!editingUser && (
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="Password"
-                      type="password"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      required
-                    />
-                  </Grid>
-                )}
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label={editingUser ? 'Reset Password (kosongkan bila tidak diubah)' : 'Password'}
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    required={!editingUser}
+                    inputProps={{ minLength: 10 }}
+                    helperText="Minimal 10 karakter"
+                  />
+                </Grid>
 
                 <Grid item xs={12}>
                   <FormControl fullWidth required>
-                    <InputLabel>Role</InputLabel>
+                    <InputLabel>Peran</InputLabel>
                     <Select
-                      value={formData.role}
-                      label="Role"
-                      onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                      multiple
+                      value={formData.peran}
+                      input={<OutlinedInput label="Peran" />}
+                      onChange={(e) => setFormData({ ...formData, peran: e.target.value })}
+                      renderValue={(v) => v.map(namaPeran).join(', ')}
                     >
-                      <MenuItem value="STAFF">Staff</MenuItem>
-                      <MenuItem value="RISK_OWNER">Risk Owner</MenuItem>
-                      <MenuItem value="RISK_MANAGER">Risk Manager</MenuItem>
-                      <MenuItem value="DIRECTOR">Director</MenuItem>
-                      <MenuItem value="ADMIN">Admin</MenuItem>
+                      {daftarPeran.map((p) => (
+                        <MenuItem key={p.kode} value={p.kode}>{p.nama}</MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
                 </Grid>
 
                 <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Departemen"
-                    value={formData.department}
-                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                  />
+                  <FormControl fullWidth>
+                    <InputLabel>Unit</InputLabel>
+                    <Select
+                      value={formData.unit_id}
+                      label="Unit"
+                      onChange={(e) => setFormData({ ...formData, unit_id: e.target.value })}
+                    >
+                      <MenuItem value="">- Tanpa unit -</MenuItem>
+                      {daftarUnit.map((u) => (
+                        <MenuItem key={u.id} value={u.id}>{u.kode} - {u.nama} ({u.jenis})</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 </Grid>
 
                 <Grid item xs={12}>

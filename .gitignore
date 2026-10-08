@@ -30,3 +30,4 @@ setAdmin.js
 # Backend
 /server/unggahan
 .env
+/dist

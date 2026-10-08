@@ -14,6 +14,8 @@ app.use(auth.sesi);
 app.get('/api/sehat', (req, res) => res.json({ ok: true }));
 app.use('/api/auth', auth.router);
 app.use('/api/lampiran', lampiran.router);
+app.use('/api/pengguna', require('./pengguna').router);
+app.use('/api/unit', require('./unit').router);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan' }));
 
 // Produksi: sajikan hasil build frontend dari server yang sama (satu origin, cookie SameSite=Strict aman).
