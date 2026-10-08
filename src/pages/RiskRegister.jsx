@@ -2278,7 +2278,7 @@ const RiskRegister = () => {
             {/* Section 4: Penilaian Risiko Residual */}
             <Paper sx={{ p: 3, mb: 3, backgroundColor: 'grey.50' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <BarChart3 size={18} /> Penilaian Risiko Residual (bulan berjalan)
+                <BarChart3 size={18} /> Penilaian Risiko Residual
               </Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
@@ -2873,8 +2873,8 @@ const RiskRegister = () => {
                           </Typography>
                         </Grid>
                         <Grid item xs={6}>
-                          <Typography variant="subtitle2" fontWeight="bold">Residual (periode pemantauan)</Typography>
-                          <Typography variant="body1">{selectedRisk.residualPeriod || "-"}</Typography>
+                          <Typography variant="subtitle2" fontWeight="bold">Laporan pemantauan terakhir</Typography>
+                          <Typography variant="body1">{selectedRisk.lastReport || "-"}</Typography>
                         </Grid>
                       </Grid>
                     </CardContent>

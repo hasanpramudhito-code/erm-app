@@ -16,6 +16,7 @@ app.use('/api/auth', auth.router);
 app.use('/api/lampiran', lampiran.router);
 app.use('/api/pengguna', require('./pengguna').router);
 app.use('/api/risiko', require('./risiko').router);
+app.use('/api/pemantauan', require('./pemantauan').router);
 app.use('/api', require('./master').router);
 app.use(require('./crud').errorPrisma);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan' }));

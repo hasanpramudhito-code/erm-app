@@ -35,7 +35,7 @@ const sertakan = {
   pemantauan_bulanan: {
     orderBy: [{ tahun: 'desc' }, { bulan: 'desc' }],
     take: 1,
-    include: { level: { select: { id: true, nama: true, warna: true } } },
+    select: { id: true, tahun: true, bulan: true, status_persetujuan: true, peristiwa_terjadi: true },
   },
 };
 
@@ -206,19 +206,14 @@ async function bersihkan(b, baru, pengguna) {
     hasil.kri = r.daftar;
   }
 
-  // Penilaian: inheren sekali per periode; residual disimpan sebagai pemantauan bulan berjalan.
+  // Penilaian inheren & residual: sekali per periode.
   const ctx = await konteksPenilaian();
   hasil.penilaian = [];
-  for (const [kunci, jenis, nama] of [['inheren', 'INHEREN', 'Inheren']]) {
+  for (const [kunci, jenis, nama] of [['inheren', 'INHEREN', 'Inheren'], ['residual', 'RESIDUAL', 'Residual']]) {
     if (!b[kunci]) continue;
     const r = nilaiPenilaian(ctx, b[kunci], nama);
     if (r.error) return r;
     hasil.penilaian.push({ jenis, ...r.data });
-  }
-  if (b.residual) {
-    const r = nilaiPenilaian(ctx, b.residual, 'Residual');
-    if (r.error) return r;
-    hasil.residual = r.data;
   }
   return hasil;
 }
@@ -239,15 +234,7 @@ async function simpanAnak(tx, risiko_id, h) {
     const { jenis, ...nilai } = p;
     await tx.penilaian.upsert({ where: { risiko_id_jenis: { risiko_id, jenis } }, update: nilai, create: { risiko_id, jenis, ...nilai } });
   }
-  if (h.residual) {
-    const now = new Date();
-    const kunci = { risiko_id, tahun: now.getFullYear(), bulan: now.getMonth() + 1 };
-    const ada = await tx.pemantauan_bulanan.findUnique({ where: { risiko_id_tahun_bulan: kunci } });
-    const r = { kemungkinan_residual: h.residual.kemungkinan, dampak_residual: h.residual.dampak, skor: h.residual.skor, level_id: h.residual.level_id };
-    if (!ada) await tx.pemantauan_bulanan.create({ data: { ...kunci, ...r } });
-    else if (STATUS_BISA_DIUBAH.includes(ada.status_persetujuan)) await tx.pemantauan_bulanan.update({ where: { id: ada.id }, data: r });
-    else throw Object.assign(new Error('Pemantauan bulan ini sudah diajukan/final, residual tidak dapat diubah dari register'), { status: 400, expose: true });
-  }
+
 }
 
 router.get('/', async (req, res) => {

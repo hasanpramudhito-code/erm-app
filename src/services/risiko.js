@@ -53,7 +53,8 @@ const baris = (teks) => String(teks || '').split('\n').map((s) => s.trim()).filt
 // Data API -> bentuk lama.
 export function keBentukLama(r) {
   const inheren = r.penilaian?.find((p) => p.jenis === 'INHEREN');
-  const residual = r.pemantauan_bulanan?.[0];
+  const residual = r.penilaian?.find((p) => p.jenis === 'RESIDUAL');
+  const laporanTerakhir = r.pemantauan_bulanan?.[0];
   return {
     id: r.id,
     raw: r,
@@ -81,15 +82,15 @@ export function keBentukLama(r) {
     initialImpact: inheren?.dampak ?? '',
     inherentScore: inheren?.skor,
     inherentLevel: inheren?.level?.nama,
-    residualProbability: residual?.kemungkinan_residual ?? '',
-    residualImpact: residual?.dampak_residual ?? '',
+    residualProbability: residual?.kemungkinan ?? '',
+    residualImpact: residual?.dampak ?? '',
     residualScore: residual?.skor,
     residualLevel: residual?.level?.nama,
-    residualPeriod: residual ? `${residual.bulan}/${residual.tahun}` : '',
+    lastReport: laporanTerakhir ? `${laporanTerakhir.bulan}/${laporanTerakhir.tahun}` : '',
     // Alias yang dipakai heatmap & filter URL.
     likelihood: inheren?.kemungkinan,
     impact: inheren?.dampak,
-    residualLikelihood: residual?.kemungkinan_residual,
+    residualLikelihood: residual?.kemungkinan,
     existingControls: r.kontrol_eksisting || '',
     controlEffectiveness: r.efektivitas_kontrol || '',
     mitigations: (r.mitigasi || []).map((m) => ({

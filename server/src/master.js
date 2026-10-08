@@ -153,11 +153,12 @@ router.use('/periode', crud({
 
 // ---- Pengaturan (key-value) ----
 // Kunci yang boleh dibaca semua pengguna login; sisanya hanya admin.
-const PENGATURAN_PUBLIK = ['metode_penilaian', 'ambang_toleransi', 'ui'];
-const PENGATURAN_PENGELOLA = ['metode_penilaian', 'ambang_toleransi'];
+const PENGATURAN_PUBLIK = ['metode_penilaian', 'ambang_toleransi', 'ui', 'tenggat_pemantauan'];
+const PENGATURAN_PENGELOLA = ['metode_penilaian', 'ambang_toleransi', 'tenggat_pemantauan'];
 const VALIDASI_PENGATURAN = {
   metode_penilaian: (v) => ['multiplication', 'coordinate'].includes(v) || 'Metode harus multiplication atau coordinate',
   ambang_toleransi: (v) => (Number.isInteger(v) && v >= 1 && v <= 100) || 'Ambang toleransi harus bilangan 1-100',
+  tenggat_pemantauan: (v) => (Number.isInteger(v) && v >= 1 && v <= 28) || 'Tenggat harus tanggal 1-28',
   umum: (v) => (v && typeof v === 'object' && !Array.isArray(v)) || 'Harus objek',
   ui: (v) => (v && typeof v === 'object' && !Array.isArray(v)) || 'Harus objek',
   notifikasi: (v) => (v && typeof v === 'object' && !Array.isArray(v)) || 'Harus objek',

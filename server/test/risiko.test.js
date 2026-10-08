@@ -47,7 +47,7 @@ test('buat risiko lengkap: skor & level dihitung server', async () => {
   assert.equal(r.body.penyebab.length, 1);
   const inheren = r.body.penilaian.find((p) => p.jenis === 'INHEREN');
   assert.ok(inheren.skor > 0 && inheren.level.nama);
-  assert.equal(r.body.pemantauan_bulanan.length, 1);
+  assert.ok(r.body.penilaian.some((p) => p.jenis === 'RESIDUAL'));
   assert.equal(r.body.status_persetujuan, 'DRAF');
 });
 
@@ -103,6 +103,7 @@ test('mitigasi & KRI ikut tersimpan lewat risiko, sinkron by id', async () => {
   assert.equal((await req('PATCH', `/risiko/${buat.body.id}`, { mitigasi: [{ id: 999999, uraian: 'x' }] })).status, 400);
 
   // Mitigasi yang sudah punya realisasi tidak boleh dihapus.
-  await prisma.realisasi_mitigasi.create({ data: { mitigasi_id: m1.id, tanggal: new Date(), uraian: 'progres', progres: 10 } });
+  const lap = await prisma.pemantauan_bulanan.create({ data: { risiko_id: buat.body.id, tahun: 2026, bulan: 1 } });
+  await prisma.realisasi_mitigasi.create({ data: { mitigasi_id: m1.id, pemantauan_bulanan_id: lap.id, status: 'BERJALAN', progres: 10 } });
   assert.equal((await req('PATCH', `/risiko/${buat.body.id}`, { mitigasi: [] })).status, 400);
 });

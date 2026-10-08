@@ -44,7 +44,8 @@ import {
   CheckSquare,
   History,
   Workflow,
-  Zap
+  Zap,
+  CalendarCheck
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -174,6 +175,11 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             text: 'Risk Assessment',
             icon: <BarChart3 size={20} />,
             path: '/risk-assessment'
+          },
+          {
+            text: 'Pemantauan Bulanan',
+            icon: <CalendarCheck size={20} />,
+            path: '/pemantauan-bulanan'
           },
           {
             text: 'Treatment Plans',
@@ -323,6 +329,11 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             path: '/risk-assessment'
           },
           {
+            text: 'Pemantauan Bulanan',
+            icon: <CalendarCheck size={20} />,
+            path: '/pemantauan-bulanan'
+          },
+          {
             text: 'Treatment Plans',
             icon: <ClipboardCheck size={20} />,
             path: '/treatment-plans'
@@ -458,6 +469,11 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             path: '/risk-assessment'
           },
           {
+            text: 'Pemantauan Bulanan',
+            icon: <CalendarCheck size={20} />,
+            path: '/pemantauan-bulanan'
+          },
+          {
             text: 'Treatment Plans',
             icon: <ClipboardCheck size={20} />,
             path: '/treatment-plans'
@@ -580,6 +596,11 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             path: '/risk-assessment'
           },
           {
+            text: 'Pemantauan Bulanan',
+            icon: <CalendarCheck size={20} />,
+            path: '/pemantauan-bulanan'
+          },
+          {
             text: 'Treatment Plans',
             icon: <ClipboardCheck size={20} />,
             path: '/treatment-plans'
@@ -674,6 +695,11 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             text: 'Risk Assessment',
             icon: <BarChart3 size={20} />,
             path: '/risk-assessment'
+          },
+          {
+            text: 'Pemantauan Bulanan',
+            icon: <CalendarCheck size={20} />,
+            path: '/pemantauan-bulanan'
           },
           {
             text: 'Treatment Plans',
