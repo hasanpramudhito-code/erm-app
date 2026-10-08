@@ -74,8 +74,7 @@ import {
   X as Clear,
   Download,
   CheckCircle2,
-  AlertCircle,
-  Target
+  AlertCircle
 } from 'lucide-react';
 import { api } from '../services/api';
 import { muatRisiko, keBodyApi, usePeriode, LABEL_PERSETUJUAN } from '../services/risiko';
@@ -210,8 +209,6 @@ const RiskRegister = () => {
     department: '',
     initialProbability: '',
     initialImpact: '',
-    targetProbability: '',
-    targetImpact: '',
     inherentRiskQuantification: '',
     existingControls: '',
     controlEffectiveness: '',
@@ -649,8 +646,6 @@ const RiskRegister = () => {
       department: '',
       initialProbability: '',
       initialImpact: '',
-      targetProbability: '',
-      targetImpact: '',
       inherentRiskQuantification: '',
       existingControls: '',
       controlEffectiveness: '',
@@ -700,8 +695,6 @@ const RiskRegister = () => {
       department: risk.department || '',
       initialProbability: risk.initialProbability || '',
       initialImpact: risk.initialImpact || '',
-      targetProbability: risk.targetProbability || '',
-      targetImpact: risk.targetImpact || '',
       inherentRiskQuantification: risk.inherentRiskQuantification ?? '',
       existingControls: risk.existingControls || '',
       controlEffectiveness: risk.controlEffectiveness || '',
@@ -2232,59 +2225,6 @@ const RiskRegister = () => {
               </Grid>
             </Paper>
 
-            {/* Section 2b: Target Risiko */}
-            <Paper sx={{ p: 3, mb: 3, backgroundColor: 'grey.50' }}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Target size={18} /> 2b. Target Risiko (akhir periode)
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Probabilitas Target</InputLabel>
-                    <Select
-                      value={formData.targetProbability}
-                      label="Probabilitas Target"
-                      onChange={(e) => setFormData({ ...formData, targetProbability: e.target.value })}
-                    >
-                      <MenuItem value="">-</MenuItem>
-                      {getRatingOptionsFromConfig().map((option) => (
-                        <MenuItem key={option} value={option}>
-                          {getRatingLabelFromConfig(option, 'likelihood')}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Dampak Target</InputLabel>
-                    <Select
-                      value={formData.targetImpact}
-                      label="Dampak Target"
-                      onChange={(e) => setFormData({ ...formData, targetImpact: e.target.value })}
-                    >
-                      <MenuItem value="">-</MenuItem>
-                      {getRatingOptionsFromConfig().map((option) => (
-                        <MenuItem key={option} value={option}>
-                          {getRatingLabelFromConfig(option, 'impact')}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                {formData.targetProbability && formData.targetImpact && (
-                  <Grid item xs={12}>
-                    <Alert severity="info">
-                      {(() => {
-                        const score = calculateScore(Number(formData.targetProbability), Number(formData.targetImpact));
-                        return <>Risk Score: {score} • Level: {calculateRiskLevel(score).level}</>;
-                      })()}
-                    </Alert>
-                  </Grid>
-                )}
-              </Grid>
-            </Paper>
-
             {/* Section 3: Kontrol dan Penilaian Residual */}
             <Paper sx={{ p: 3, mb: 3, backgroundColor: 'grey.50' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -2953,10 +2893,6 @@ const RiskRegister = () => {
                           <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
                             {selectedRisk.assessmentNotes || '-'}
                           </Typography>
-                        </Grid>
-                        <Grid item xs={6}>
-                          <Typography variant="subtitle2" fontWeight="bold">Target</Typography>
-                          <Typography variant="body1">{selectedRisk.targetScore ? `${selectedRisk.targetLevel} (${selectedRisk.targetScore})` : "-"}</Typography>
                         </Grid>
                         <Grid item xs={6}>
                           <Typography variant="subtitle2" fontWeight="bold">Residual (periode pemantauan)</Typography>

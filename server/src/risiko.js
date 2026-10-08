@@ -113,10 +113,10 @@ async function bersihkan(b, baru, pengguna) {
   if (b.penyebab !== undefined) hasil.penyebab = daftarUraian(b.penyebab, 'pustaka_penyebab_id');
   if (b.dampak !== undefined) hasil.dampak = daftarUraian(b.dampak, 'pustaka_dampak_id');
 
-  // Penilaian: inheren & target per periode; residual awal disimpan sebagai pemantauan bulan berjalan.
+  // Penilaian: inheren sekali per periode; residual disimpan sebagai pemantauan bulan berjalan.
   const ctx = await konteksPenilaian();
   hasil.penilaian = [];
-  for (const [kunci, jenis, nama] of [['inheren', 'INHEREN', 'Inheren'], ['target', 'TARGET', 'Target']]) {
+  for (const [kunci, jenis, nama] of [['inheren', 'INHEREN', 'Inheren']]) {
     if (!b[kunci]) continue;
     const r = nilaiPenilaian(ctx, b[kunci], nama);
     if (r.error) return r;

@@ -40,7 +40,7 @@ test('buat risiko lengkap: skor & level dihitung server', async () => {
   const r = await req('POST', '/risiko', {
     periode_id: periode.id, unit_id: unitA.id, kode: `rx-${sufiks}`, nama: 'Kebocoran pipa distribusi', sumber: 'INTERNAL',
     penyebab: [{ uraian: 'Pipa tua' }, { uraian: '  ' }], dampak: [{ uraian: 'Kehilangan air' }],
-    inheren: { kemungkinan: 4, dampak: 5 }, target: { kemungkinan: 2, dampak: 3 }, residual: { kemungkinan: 3, dampak: 4 },
+    inheren: { kemungkinan: 4, dampak: 5 }, residual: { kemungkinan: 3, dampak: 4 },
   });
   assert.equal(r.status, 201, JSON.stringify(r.body));
   assert.equal(r.body.kode, `RX-${sufiks}`);

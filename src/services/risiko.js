@@ -47,7 +47,6 @@ const baris = (teks) => String(teks || '').split('\n').map((s) => s.trim()).filt
 // Data API -> bentuk lama.
 export function keBentukLama(r) {
   const inheren = r.penilaian?.find((p) => p.jenis === 'INHEREN');
-  const target = r.penilaian?.find((p) => p.jenis === 'TARGET');
   const residual = r.pemantauan_bulanan?.[0];
   return {
     id: r.id,
@@ -76,10 +75,6 @@ export function keBentukLama(r) {
     initialImpact: inheren?.dampak ?? '',
     inherentScore: inheren?.skor,
     inherentLevel: inheren?.level?.nama,
-    targetProbability: target?.kemungkinan ?? '',
-    targetImpact: target?.dampak ?? '',
-    targetScore: target?.skor,
-    targetLevel: target?.level?.nama,
     residualProbability: residual?.kemungkinan_residual ?? '',
     residualImpact: residual?.dampak_residual ?? '',
     residualScore: residual?.skor,
@@ -129,7 +124,6 @@ export function keBodyApi(f) {
     prioritas_penanganan: KODE_PRIORITAS[f.treatmentPriority] || null,
     catatan_penilaian: f.assessmentNotes,
     inheren: pasangan(f.initialProbability, f.initialImpact),
-    target: pasangan(f.targetProbability, f.targetImpact),
     residual: pasangan(f.residualProbability, f.residualImpact),
   };
 }
