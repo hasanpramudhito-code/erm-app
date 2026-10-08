@@ -1,6 +1,5 @@
 // scripts/migrateRiskData.js
-const { collection, getDocs, writeBatch } = require('firebase/firestore');
-const { db } = require('../config/firebase');
+import { collection, getDocs, writeBatch } from 'firebase/firestore';
 export const migrateRiskData = async (db) => {
   const risksRef = collection(db, 'risks');
   const snapshot = await getDocs(risksRef);
@@ -32,6 +31,5 @@ export const migrateRiskData = async (db) => {
   
   if (migratedCount > 0) {
     await batch.commit();
-    console.log(`✅ Migrated ${migratedCount} risks`);
   }
 };

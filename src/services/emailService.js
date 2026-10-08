@@ -24,9 +24,7 @@ class EmailService {
         'YOUR_TEMPLATE_ID',
         templateParams
       );
-      console.log('Approval email sent successfully');
     } catch (error) {
-      console.error('Failed to send approval email:', error);
     }
   }
 
@@ -46,9 +44,7 @@ class EmailService {
         'YOUR_REMINDER_TEMPLATE_ID',
         templateParams
       );
-      console.log('Reminder email sent successfully');
     } catch (error) {
-      console.error('Failed to send reminder email:', error);
     }
   }
 
@@ -69,9 +65,7 @@ class EmailService {
         'YOUR_RESULT_TEMPLATE_ID',
         templateParams
       );
-      console.log('Result email sent successfully');
     } catch (error) {
-      console.error('Failed to send result email:', error);
     }
   }
 }

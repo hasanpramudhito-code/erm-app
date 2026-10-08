@@ -1,27 +1,22 @@
 import { db } from '../config/firebase';
-import { 
-  collection, getDocs, addDoc, writeBatch, doc 
+import {
+  collection, getDocs, addDoc, writeBatch, doc
 } from 'firebase/firestore';
 
 class DatabaseService {
-  
+
   // ✅ EKSPOR SEMUA DATA DARI FIRESTORE
   async exportDatabase() {
     try {
-      console.log('Starting database export...');
-      
-      // Daftar semua collections yang akan di-export
+
+
+      // Daftar semua collections yang akan di-export (RESTRICTED SCOPE)
       const collections = [
-        'users',
-        'risks', 
+        'risks',
         'treatment_plans',
         'incidents',
-        'kris',
-        'kri_alerts',
-        'composite_scores',
-        'risk_culture_surveys',
-        'risk_culture_responses',
-        'organization_units'
+        'raci_assignments',
+        'organization_units' // Required for context
       ];
 
       const exportData = {
@@ -41,17 +36,17 @@ class DatabaseService {
             id: doc.id,
             ...doc.data()
           }));
-          console.log(`Exported ${exportData.data[collectionName].length} documents from ${collectionName}`);
+
         } catch (error) {
-          console.warn(`Could not export collection ${collectionName}:`, error);
+
           exportData.data[collectionName] = [];
         }
       }
 
-      console.log('Database export completed successfully');
+
       return exportData;
     } catch (error) {
-      console.error('Error exporting database:', error);
+
       throw error;
     }
   }
@@ -59,8 +54,8 @@ class DatabaseService {
   // ✅ IMPORT DATA KE FIRESTORE
   async importDatabase(importData, options = { clearExisting: false }) {
     try {
-      console.log('Starting database import...', options);
-      
+
+
       const batch = writeBatch(db);
       let totalImported = 0;
       const results = {
@@ -76,8 +71,8 @@ class DatabaseService {
       // Import setiap collection
       for (const [collectionName, documents] of Object.entries(importData.data)) {
         try {
-          console.log(`Importing ${documents.length} documents to ${collectionName}...`);
-          
+
+
           let importedCount = 0;
           for (const document of documents) {
             try {
@@ -85,7 +80,7 @@ class DatabaseService {
               batch.set(docRef, this.sanitizeDocumentData(document));
               importedCount++;
             } catch (docError) {
-              console.error(`Error importing document ${document.id} in ${collectionName}:`, docError);
+
               results.errors.push({
                 collection: collectionName,
                 documentId: document.id,
@@ -93,17 +88,17 @@ class DatabaseService {
               });
             }
           }
-          
+
           totalImported += importedCount;
           results.success.push({
             collection: collectionName,
             imported: importedCount,
             total: documents.length
           });
-          
-          console.log(`Imported ${importedCount}/${documents.length} documents to ${collectionName}`);
+
+
         } catch (collectionError) {
-          console.error(`Error importing collection ${collectionName}:`, collectionError);
+
           results.errors.push({
             collection: collectionName,
             error: collectionError.message
@@ -113,15 +108,15 @@ class DatabaseService {
 
       // Commit batch
       await batch.commit();
-      console.log(`Database import completed: ${totalImported} documents imported`);
-      
+
+
       return {
         success: true,
         totalImported,
         results
       };
     } catch (error) {
-      console.error('Error importing database:', error);
+
       return {
         success: false,
         error: error.message,
@@ -133,7 +128,7 @@ class DatabaseService {
   // ✅ SANITIZE DOCUMENT DATA (remove id field sebelum disimpan)
   sanitizeDocumentData(document) {
     const { id, ...data } = document;
-    
+
     // Convert string dates back to Timestamp jika diperlukan
     return this.convertDates(data);
   }
@@ -169,11 +164,11 @@ class DatabaseService {
   downloadExportFile(exportData) {
     const dataStr = JSON.stringify(exportData, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    
+
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `erm-backup-${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `erm-scope-backup-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -195,14 +190,14 @@ class DatabaseService {
         return { valid: false, error: 'Invalid file: missing export timestamp' };
       }
 
-      // Check required collections
-      const requiredCollections = ['users', 'risks', 'kris'];
+      // Check required collections (Relaxed validation for scoped export)
+      const requiredCollections = ['risks'];
       const missingCollections = requiredCollections.filter(col => !fileData.data[col]);
-      
+
       if (missingCollections.length > 0) {
-        return { 
-          valid: false, 
-          error: `Missing required collections: ${missingCollections.join(', ')}` 
+        return {
+          valid: false,
+          error: `Missing required collections: ${missingCollections.join(', ')}`
         };
       }
 
@@ -216,7 +211,7 @@ class DatabaseService {
   async getDatabaseStats() {
     try {
       const collections = [
-        'users', 'risks', 'treatment_plans', 'incidents', 
+        'users', 'risks', 'treatment_plans', 'incidents',
         'kris', 'kri_alerts', 'composite_scores',
         'risk_culture_surveys', 'risk_culture_responses'
       ];
@@ -231,7 +226,7 @@ class DatabaseService {
           totalDocuments += querySnapshot.size;
         } catch (error) {
           stats[collectionName] = 0;
-          console.warn(`Could not get stats for ${collectionName}:`, error);
+
         }
       }
 
@@ -242,7 +237,7 @@ class DatabaseService {
         lastImport: localStorage.getItem('lastImport') || 'Never'
       };
     } catch (error) {
-      console.error('Error getting database stats:', error);
+
       throw error;
     }
   }
@@ -251,8 +246,8 @@ class DatabaseService {
   async clearAllData() {
     try {
       const collections = [
-        'risks', 'treatment_plans', 'incidents', 'kris', 
-        'kri_alerts', 'composite_scores', 'risk_culture_surveys', 
+        'risks', 'treatment_plans', 'incidents', 'kris',
+        'kri_alerts', 'composite_scores', 'risk_culture_surveys',
         'risk_culture_responses'
       ];
 
@@ -268,11 +263,11 @@ class DatabaseService {
       }
 
       await batch.commit();
-      console.log(`Cleared ${totalDeleted} documents from database`);
-      
+
+
       return { success: true, totalDeleted };
     } catch (error) {
-      console.error('Error clearing database:', error);
+
       throw error;
     }
   }

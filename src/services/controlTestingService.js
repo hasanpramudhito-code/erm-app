@@ -44,7 +44,7 @@ export const controlTestingService = {
 
   async createTestingSchedule(controlId, scheduleData) {
     try {
-      console.log('Saving schedule to Firebase...');
+
       const schedulesRef = collection(db, 'testingSchedules');
       const docRef = await addDoc(schedulesRef, {
         ...scheduleData,
@@ -53,10 +53,10 @@ export const controlTestingService = {
         status: 'scheduled',
         organizationId: 'org-001'
       });
-      console.log('Schedule saved with ID:', docRef.id);
+
       return { id: docRef.id, ...scheduleData };
     } catch (error) {
-      console.error('Error saving schedule:', error);
+
       throw error;
     }
   },
@@ -75,7 +75,7 @@ export const controlTestingService = {
   // ADD TEST RESULT  
   async addTestResult(controlId, resultData) {
     try {
-      console.log('Saving test result to Firebase...');
+
       const resultsRef = collection(db, 'testResults');
       const docRef = await addDoc(resultsRef, {
         ...resultData,
@@ -83,10 +83,10 @@ export const controlTestingService = {
         createdAt: Timestamp.now(),
         organizationId: 'org-001'
       });
-      console.log('Test result saved with ID:', docRef.id);
+
       return { id: docRef.id, ...resultData };
     } catch (error) {
-      console.error('Error saving test result:', error);
+
       throw error;
     }
   },
@@ -119,7 +119,7 @@ async getDeficiencies(organizationId = 'org-001') {
     });
     
   } catch (error) {
-    console.error('Error getting deficiencies:', error);
+
     
     // Fallback data untuk testing
     return [
@@ -197,7 +197,7 @@ async getDeficiencies(organizationId = 'org-001') {
         };
         
       } catch (error) {
-        console.error('Error getting deficiency stats:', error);
+
         return {
           total: 0,
           open: 0,
@@ -224,11 +224,11 @@ async getDeficiencies(organizationId = 'org-001') {
           createdAt: Timestamp.now()
         });
         
-        console.log('Deficiency created with ID:', docRef.id);
+
         return { id: docRef.id, ...deficiencyData };
         
       } catch (error) {
-        console.error('Error creating deficiency:', error);
+
         throw error;
       }
     },
@@ -240,9 +240,9 @@ async getDeficiencies(organizationId = 'org-001') {
           ...updates,
           updatedAt: Timestamp.now()
         });
-        console.log('Deficiency updated:', deficiencyId);
+
       } catch (error) {
-        console.error('Error updating deficiency:', error);
+
         throw error;
       }
     }

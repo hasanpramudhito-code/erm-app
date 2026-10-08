@@ -212,15 +212,8 @@ export const getNextApprovalStep = (riskData, currentUser) => {
 export const debugUserPermissions = (userRole) => {
   const role = getUserRole(userRole);
   if (!role) {
-    console.warn(`❌ Role '${userRole}' tidak ditemukan dalam sistem`);
     return null;
   }
-  
-  console.log(`🔍 Debug Permissions untuk: ${role.name} (${userRole})`);
-  console.log('📋 Permissions:', role.permissions);
-  console.log('✅ Can Approve:', role.can_approve);
-  console.log('📊 Approval Level:', role.approval_level);
-  console.log('🎯 Can Assess:', role.can_assess);
   
   return role;
 };
@@ -322,7 +315,6 @@ export const canAccessMenu = (userRole, menuKey) => {
   const config = menuConfig[menuKey];
   
   if (!config) {
-    console.warn(`❌ Menu config untuk '${menuKey}' tidak ditemukan`);
     return false;
   }
   
@@ -345,19 +337,6 @@ export const getAccessibleMenus = (userRole) => {
 export const debugMenuAccess = (userRole) => {
   const accessibleMenus = getAccessibleMenus(userRole);
   const menuConfig = getMenuConfig();
-  
-  console.log(`🔍 Debug Menu Access untuk: ${userRole}`);
-  console.log('📋 Available Menus:');
-  
-  Object.keys(accessibleMenus).forEach(menuKey => {
-    const hasAccess = accessibleMenus[menuKey];
-    const menu = menuConfig[menuKey];
-    
-    console.log(
-      `${hasAccess ? '✅' : '❌'} ${menu.label}: ${hasAccess ? 'ACCESS GRANTED' : 'ACCESS DENIED'}`,
-      `| Permissions: ${menu.requiredPermissions?.join(', ') || 'N/A'}`
-    );
-  });
   
   return accessibleMenus;
 };

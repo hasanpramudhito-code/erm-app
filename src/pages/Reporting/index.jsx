@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Box, Card, CardContent, Typography, CircularProgress, Button } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import { RotateCcw } from 'lucide-react';
 
 import { useAuth } from '../../contexts/AuthContext';
 import { useAssessmentConfig } from '../../contexts/AssessmentConfigContext';
@@ -15,13 +15,14 @@ import ReportingActions from './ReportingActions';
 import { DEFAULT_REPORT_CONFIG } from '../../constants/reporting';
 import { fetchRisks } from '../../services/riskService';
 
-const risks = await fetchRisks();
+// Hapus fetchRisks top-level
+// const risks = await fetchRisks();
 
 const Reporting = () => {
   const { userData } = useAuth();
-  const { 
-    assessmentConfig: contextConfig, 
-    loading: configLoading, 
+  const {
+    assessmentConfig: contextConfig,
+    loading: configLoading,
     refreshConfig,
     calculateScore,
     calculateRiskLevel // ← AMBIL FUNGSI calculateScore DARI CONTEXT
@@ -45,9 +46,9 @@ const Reporting = () => {
     try {
       setLoadingDirectConfig(true);
       console.log('🔍 Verifying config in Firestore...');
-      
+
       const configDoc = await getDoc(doc(db, 'risk_assessment_config', 'default'));
-      
+
       if (configDoc.exists()) {
         const data = configDoc.data();
         console.log('✅ Direct Firestore config (risk_assessment_config):', {
@@ -82,7 +83,7 @@ const Reporting = () => {
       console.log('🎯 Using config from context (risk_assessment_config)');
       return contextConfig;
     }
-    
+
     // 2. Fallback
     console.log('🎯 Using fallback config');
     return {
@@ -126,11 +127,11 @@ const Reporting = () => {
   useEffect(() => {
     if (calculateScore && effectiveConfig) {
       console.log('🧪 Testing calculateScore function:');
-      
+
       // Test coordinate method
       const testCoordinate = calculateScore(4, 4); // L4×I4
       console.log('  Coordinate test (L4×I4):', testCoordinate);
-      
+
       // Test multiplication method (jika context config ada)
       if (contextConfig && contextConfig.assessmentMethod === 'multiplication') {
         const testMultiplication = 4 * 4; // Manual calculation
@@ -149,11 +150,11 @@ const Reporting = () => {
       try {
         console.log('📥 Loading risks and incidents...');
         setLoadingData(true);
-        
+
         const riskSnap = await getDocs(collection(db, 'risks'));
         const riskData = riskSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         console.log('📥 Risks loaded:', riskData.length);
-        
+
         // DEBUG: Lihat beberapa data risiko
         if (riskData.length > 0) {
           const sampleRisk = riskData[0];
@@ -165,11 +166,11 @@ const Reporting = () => {
             residualProbability: sampleRisk.residualProbability
           });
         }
-        
+
         const incidentSnap = await getDocs(collection(db, 'incidents'));
         const incidentData = incidentSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         console.log('📥 Incidents loaded:', incidentData.length);
-        
+
         setRisks(riskData);
         setIncidents(incidentData);
       } catch (error) {
@@ -191,10 +192,10 @@ const Reporting = () => {
   // Loading state
   if (configLoading || loadingData) {
     return (
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
+      <Box sx={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
         minHeight: '60vh',
         flexDirection: 'column',
         gap: 2
@@ -207,21 +208,21 @@ const Reporting = () => {
     );
   }
 
-const payload = {
-  risks,
-  incidents,
-  userData,
-  reportConfig: config,
+  const payload = {
+    risks,
+    incidents,
+    userData,
+    reportConfig: config,
 
-  // ⬇️ INI YANG DIPAKAI EXPORT
-  assessment: {
-    calculateScore,
-    calculateRiskLevel
-  },
+    // ⬇️ INI YANG DIPAKAI EXPORT
+    assessment: {
+      calculateScore,
+      calculateRiskLevel
+    },
 
-  // ⬇️ INI BOLEH TETAP ADA (UNTUK FILE LAIN)
-  assessmentConfig: effectiveConfig
-};
+    // ⬇️ INI BOLEH TETAP ADA (UNTUK FILE LAIN)
+    assessmentConfig: effectiveConfig
+  };
 
   console.log('📦 Final Payload for export:', {
     assessmentMethod: payload.assessmentConfig?.assessmentMethod,
@@ -241,13 +242,13 @@ const payload = {
               <Button
                 variant="outlined"
                 size="small"
-                startIcon={<RefreshIcon />}
+                startIcon={<RotateCcw size={18} />}
                 onClick={handleRefreshAll}
                 title="Refresh configuration"
               >
                 Refresh Config
               </Button>
-              
+
               {/* Debug button */}
               <Button
                 variant="outlined"
@@ -260,12 +261,12 @@ const payload = {
               </Button>
             </Box>
           </Box>
-          
+
           {/* INFO BOX dengan warna berbeda berdasarkan method */}
-          <Box sx={{ 
-            mb: 3, 
-            p: 2, 
-            bgcolor: effectiveConfig.assessmentMethod === 'coordinate' ? 'primary.light' : 'warning.light', 
+          <Box sx={{
+            mb: 3,
+            p: 2,
+            bgcolor: effectiveConfig.assessmentMethod === 'coordinate' ? 'primary.light' : 'warning.light',
             borderRadius: 1,
             border: '1px solid',
             borderColor: effectiveConfig.assessmentMethod === 'coordinate' ? 'primary.main' : 'warning.main'
@@ -277,7 +278,7 @@ const payload = {
               <Box>
                 <Typography variant="body2">
                   <strong>Method:</strong>{' '}
-                  <Box component="span" sx={{ 
+                  <Box component="span" sx={{
                     color: effectiveConfig.assessmentMethod === 'coordinate' ? 'primary.main' : 'warning.main',
                     fontWeight: 'bold'
                   }}>
@@ -285,16 +286,16 @@ const payload = {
                   </Box>
                 </Typography>
                 <Typography variant="caption" display="block">
-                  Source: {contextConfig ? 'risk_assessment_config' : 'fallback'} • 
+                  Source: {contextConfig ? 'risk_assessment_config' : 'fallback'} •
                   Risk Levels: {effectiveConfig.riskLevels?.length || 0}
                 </Typography>
               </Box>
-              
+
               {/* Tampilkan perbedaan antara context dan direct */}
               {directConfig && directConfig.assessmentMethod !== effectiveConfig.assessmentMethod && (
-                <Box sx={{ 
-                  p: 1, 
-                  bgcolor: 'error.light', 
+                <Box sx={{
+                  p: 1,
+                  bgcolor: 'error.light',
                   borderRadius: 1,
                   fontSize: '0.75rem'
                 }}>

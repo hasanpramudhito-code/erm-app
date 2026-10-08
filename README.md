@@ -1,70 +1,139 @@
-# Getting Started with Create React App
+# ERM App
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Aplikasi **Enterprise Risk Management (ERM)** untuk manajemen risiko organisasi, dibangun dengan React dan Firebase.
 
-## Available Scripts
+## Fitur Utama
 
-In the project directory, you can run:
+- Dashboard & Executive Dashboard
+- Risk Register, Assessment, dan Treatment Plans
+- KRI Monitoring & Risk Appetite
+- Control Testing (register, jadwal, hasil, deficiency)
+- Approval workflow
+- Laporan (export Excel/PDF/DOCX)
+- Manajemen organisasi dan pengguna
 
-### `npm start`
+## Tech Stack
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+| Lapisan | Teknologi |
+|---------|-----------|
+| Frontend | React 18, Create React App, Material UI |
+| Backend | Firebase Auth, Firestore, Storage |
+| Serverless | Firebase Cloud Functions (Node.js 18) |
+| Hosting | Firebase Hosting |
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Prasyarat
 
-### `npm test`
+- Node.js 18+
+- npm
+- Akun Firebase & Firebase CLI (`npm install -g firebase-tools`)
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Setup Lokal
 
-### `npm run build`
+```bash
+# Clone & install dependensi frontend
+npm install
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+# Install dependensi Cloud Functions
+cd functions && npm install && cd ..
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+# Salin environment (opsional, untuk override konfigurasi Firebase)
+cp .env.production .env.local
+# Edit .env.local sesuai project Firebase Anda
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### Cloud Functions
 
-### `npm run eject`
+Cloud Functions membutuhkan service account key:
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+1. Firebase Console → Project Settings → Service Accounts
+2. Generate new private key
+3. Simpan sebagai `functions/serviceAccountKey.json` (file ini **tidak** boleh di-commit)
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Menjalankan
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```bash
+# Development server (http://localhost:3000)
+npm start
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+# Unit test
+npm test -- --watchAll=false
 
-## Learn More
+# Build production
+npm run build
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Deploy
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```bash
+firebase login
+firebase use <project-id>    # lihat .firebaserc
+npm run build
+firebase deploy
+```
 
-### Code Splitting
+Deploy parsial:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```bash
+firebase deploy --only hosting
+firebase deploy --only firestore:rules
+firebase deploy --only functions
+```
 
-### Analyzing the Bundle Size
+## Struktur Folder
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+```
+src/
+├── components/     # UI reusable (layout, navigasi, chart)
+├── config/         # Firebase, roles, theme
+├── contexts/       # Auth, approval, settings
+├── pages/          # Halaman fitur
+├── services/       # Akses Firestore & export
+├── hooks/          # usePermissions, useApproval
+└── utils/          # Validasi & kalkulasi
 
-### Making a Progressive Web App
+functions/          # Cloud Functions (user admin, audit log)
+public/             # Asset statis
+firestore.rules     # Aturan keamanan Firestore
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+## Model Role
 
-### Advanced Configuration
+Role disimpan di koleksi Firestore `users/{uid}` dan digunakan UI untuk kontrol akses menu.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+| Role | Akses utama |
+|------|-------------|
+| `STAFF` | Lihat risiko, submit risiko, dashboard |
+| `RISK_OWNER` | Assess & review risiko milik sendiri |
+| `RISK_MANAGER` | Kelola risiko, KRI, treatment plans |
+| `ADMIN` | Akses penuh termasuk user & database management |
+| `AUDITOR` | Lihat data & laporan (read-only) |
+| `EXECUTIVE` | Executive dashboard & laporan |
 
-### Deployment
+> **Catatan:** Firestore rules memeriksa `request.auth.token.role` (custom claims JWT). Pastikan role di-sync saat membuat/mengubah user. Lihat `SECURITY_FIXES_GUIDE.md` untuk panduan keamanan lengkap.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+## Environment Variables
 
-### `npm run build` fails to minify
+Variabel `REACT_APP_*` di `.env.local` / `.env.production`:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+| Variabel | Deskripsi |
+|----------|-----------|
+| `REACT_APP_AUTH_DOMAIN` | Firebase auth domain |
+| `REACT_APP_PROJECT_ID` | Firebase project ID |
+| `REACT_APP_STORAGE_BUCKET` | Firebase storage bucket |
+| `REACT_APP_MESSAGING_SENDER_ID` | Firebase messaging sender ID |
+| `REACT_APP_APP_ID` | Firebase app ID |
+
+## Keamanan Role (Functions — belum deploy)
+
+Cloud Functions untuk manajemen user & sinkronisasi custom claims sudah disiapkan di `functions/`.
+**Default: tidak aktif.** Lihat [FUNCTIONS_SECURITY.md](./FUNCTIONS_SECURITY.md) untuk panduan deploy.
+
+```env
+# Aktifkan setelah deploy functions:
+# REACT_APP_USE_SECURE_FUNCTIONS=true
+# REACT_APP_FUNCTIONS_REGION=asia-southeast2
+```
+
+## Lisensi
+
+Proyek internal — PT Solusi Kelola Risiko.

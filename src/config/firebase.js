@@ -1,29 +1,27 @@
-// src/config/firebase.js
+// src/firebase.js
 import { initializeApp } from 'firebase/app';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getAuth } from 'firebase/auth';
-import { 
-  getFirestore, 
-  enableLogging,  // ✅ TAMBAHKAN INI
-  connectFirestoreEmulator  // Optional untuk debug
-} from 'firebase/firestore';
 
-
-// TEMPORARY CONFIG - nanti diganti dengan config asli dari Firebase Console
 const firebaseConfig = {
-  apiKey: "AIzaSyAsDoe4YD89i6RrJEDopgiQDzEg-VD-zuo",
-  authDomain: "erm-system-2449b.firebaseapp.com",
-  projectId: "erm-system-2449b",
-  storageBucket: "erm-system-2449b.firebasestorage.app",
-  messagingSenderId: "72430044646",
-  appId: "1:72430044646:web:b70a4eba1cae2dd0e74227",
-  measurementId: "G-1C2PYG5XFX"
+  apiKey: import.meta.env.VITE_API_KEY || "AIzaSyBG3gPzqbda-55msxaFJCiSAaxS8aKMGCo",
+  authDomain: import.meta.env.VITE_AUTH_DOMAIN || "tirtatuahbanuarm.firebaseapp.com",
+  projectId: import.meta.env.VITE_PROJECT_ID || "tirtatuahbanuarm",
+  storageBucket: import.meta.env.VITE_STORAGE_BUCKET || "tirtatuahbanuarm.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID || "462375281179",
+  appId: import.meta.env.VITE_APP_ID || "1:462375281179:web:4a8709924dbe792ea0cebe",
+  measurementId: import.meta.env.VITE_MEASUREMENT_ID || "G-XNNN0MLZWK"
 };
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app); // Pastikan ini ada
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
 
+if (import.meta.env.VITE_USE_FUNCTIONS_EMULATOR === 'true') {
+  connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
+  connectFirestoreEmulator(db, 'localhost', 8080);
+}
 
-export default app;
+export { auth, db, storage, app };

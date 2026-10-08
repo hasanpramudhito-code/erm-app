@@ -29,26 +29,26 @@ import {
   ListItemIcon
 } from '@mui/material';
 import {
-  Close,
+  X,
   Download,
-  Visibility,
-  Edit,
-  Warning,
+  Eye,
+  Edit2,
+  AlertTriangle,
   TrendingUp,
   TrendingDown,
-  CheckCircle,
-  Cancel,
-  Timeline,
-  CompareArrows,
-  PictureAsPdf,
-  TableChart,
-  TextFields
-} from '@mui/icons-material';
+  CheckCircle2,
+  Ban,
+  Activity,
+  ArrowLeftRight,
+  FileText,
+  LayoutGrid,
+  Type
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const RiskCellDetailModal = ({ 
-  open, 
-  onClose, 
+const RiskCellDetailModal = ({
+  open,
+  onClose,
   cellData,
   viewMode,
   assessmentMethod,
@@ -63,9 +63,9 @@ const RiskCellDetailModal = ({
     return null;
   }
 
-  const { 
-    likelihood, 
-    impact, 
+  const {
+    likelihood,
+    impact,
     risks,
     score,
     riskLevel,
@@ -75,7 +75,7 @@ const RiskCellDetailModal = ({
   // Likelihood and impact labels
   const likelihoodLabels = {
     1: 'Remote',
-    2: 'Unlikely', 
+    2: 'Unlikely',
     3: 'Possible',
     4: 'Probable',
     5: 'Highly Probable'
@@ -91,10 +91,10 @@ const RiskCellDetailModal = ({
 
   // Tab configuration
   const tabs = [
-    { label: 'Daftar Risiko', icon: <TableChart /> },
-    { label: 'Analisis', icon: <Timeline /> },
-    { label: 'Comparison', icon: <CompareArrows /> },
-    { label: 'Export', icon: <Download /> }
+    { label: 'Daftar Risiko', icon: <LayoutGrid size={18} /> },
+    { label: 'Analisis', icon: <Activity size={18} /> },
+    { label: 'Comparison', icon: <ArrowLeftRight size={18} /> },
+    { label: 'Export', icon: <Download size={18} /> }
   ];
 
   // Calculate statistics
@@ -103,7 +103,7 @@ const RiskCellDetailModal = ({
     inherent: risks.filter(r => r.inherentScore).length,
     residual: risks.filter(r => r.residualScore).length,
     withTreatment: risks.filter(r => r.treatmentPlan).length,
-    highRisk: risks.filter(r => 
+    highRisk: risks.filter(r =>
       (viewMode === 'inherent' ? r.inherentLevel : r.residualLevel)?.includes('Tinggi') ||
       (viewMode === 'inherent' ? r.inherentLevel : r.residualLevel)?.includes('High') ||
       (viewMode === 'inherent' ? r.inherentLevel : r.residualLevel)?.includes('Ekstrim')
@@ -133,20 +133,20 @@ const RiskCellDetailModal = ({
   };
 
   return (
-    <Dialog 
-      open={open} 
+    <Dialog
+      open={open}
       onClose={onClose}
       maxWidth="lg"
       fullWidth
       PaperProps={{
-        sx: { 
+        sx: {
           borderRadius: 2,
           maxHeight: '90vh'
         }
       }}
     >
       {/* Header */}
-      <DialogTitle sx={{ 
+      <DialogTitle sx={{
         backgroundColor: cellColor || '#f5f5f5',
         color: riskLevel?.includes('Medium') ? '#333' : 'white',
         py: 2,
@@ -162,14 +162,14 @@ const RiskCellDetailModal = ({
             </Typography>
           </Box>
           <IconButton onClick={onClose} sx={{ color: 'inherit' }}>
-            <Close />
+            <X />
           </IconButton>
         </Box>
-        
+
         {/* Score Badge */}
-        <Box sx={{ 
-          position: 'absolute', 
-          right: 60, 
+        <Box sx={{
+          position: 'absolute',
+          right: 60,
           top: 16,
           backgroundColor: 'rgba(255,255,255,0.2)',
           borderRadius: 2,
@@ -220,14 +220,14 @@ const RiskCellDetailModal = ({
 
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tabs 
-          value={activeTab} 
+        <Tabs
+          value={activeTab}
           onChange={(e, newValue) => setActiveTab(newValue)}
           variant="scrollable"
           scrollButtons="auto"
         >
           {tabs.map((tab, index) => (
-            <Tab 
+            <Tab
               key={index}
               label={tab.label}
               icon={tab.icon}
@@ -246,7 +246,7 @@ const RiskCellDetailModal = ({
                 <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
                   <TableCell width="15%">Risk Code</TableCell>
                   <TableCell width="30%">Description</TableCell>
-                  <TableCell width="15%">Category</TableCell>
+                  <TableCell width="15%">Risk Type</TableCell>
                   <TableCell width="15%">Owner</TableCell>
                   <TableCell width="15%">Status</TableCell>
                   <TableCell width="10%">Actions</TableCell>
@@ -254,7 +254,7 @@ const RiskCellDetailModal = ({
               </TableHead>
               <TableBody>
                 {risks.map((risk) => (
-                  <TableRow 
+                  <TableRow
                     key={risk.id}
                     hover
                     sx={{ '&:hover': { backgroundColor: '#f9f9f9' } }}
@@ -266,15 +266,15 @@ const RiskCellDetailModal = ({
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" noWrap>
-                        {risk.riskDescription || risk.riskTitle}
+                        {risk.riskDescription || risk.riskTitle || risk.title || 'No description'}
                       </Typography>
                       <Typography variant="caption" color="textSecondary">
-                        {risk.department || 'No department'}
+                        {risk.departmentName || risk.department || 'No department'}
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Chip 
-                        label={risk.category || 'Uncategorized'} 
+                      <Chip
+                        label={risk.riskTypeName || risk.riskType || risk.category || risk.type || 'Unspecified'}
                         size="small"
                         variant="outlined"
                       />
@@ -285,29 +285,29 @@ const RiskCellDetailModal = ({
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Chip 
+                      <Chip
                         label={risk.status || 'identified'}
                         size="small"
                         color={
                           risk.status === 'closed' ? 'success' :
-                          risk.status === 'treated' ? 'warning' :
-                          risk.status === 'monitored' ? 'info' : 'default'
+                            risk.status === 'treated' ? 'warning' :
+                              risk.status === 'monitored' ? 'info' : 'default'
                         }
                       />
                     </TableCell>
                     <TableCell>
                       <Box display="flex" gap={0.5}>
                         <Tooltip title="View Details">
-                          <IconButton 
+                          <IconButton
                             size="small"
                             onClick={() => handleRiskClick(risk.id)}
                           >
-                            <Visibility fontSize="small" />
+                            <Eye size={16} />
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Edit">
                           <IconButton size="small">
-                            <Edit fontSize="small" />
+                            <Edit2 size={16} />
                           </IconButton>
                         </Tooltip>
                       </Box>
@@ -333,19 +333,19 @@ const RiskCellDetailModal = ({
                       <Box display="flex" justifyContent="space-between" mb={0.5}>
                         <Typography variant="body2">
                           {stat === 'highRisk' ? 'High Risk Items' :
-                           stat === 'withTreatment' ? 'With Treatment Plan' :
-                           stat === 'inherent' ? 'Inherent Risks' : 'Residual Risks'}
+                            stat === 'withTreatment' ? 'With Treatment Plan' :
+                              stat === 'inherent' ? 'Inherent Risks' : 'Residual Risks'}
                         </Typography>
                         <Typography variant="body2" fontWeight="bold">
                           {stats[stat]} / {stats.total}
                         </Typography>
                       </Box>
-                      <LinearProgress 
-                        variant="determinate" 
+                      <LinearProgress
+                        variant="determinate"
                         value={(stats[stat] / stats.total) * 100}
                         color={
                           stat === 'highRisk' ? 'error' :
-                          stat === 'withTreatment' ? 'success' : 'primary'
+                            stat === 'withTreatment' ? 'success' : 'primary'
                         }
                         sx={{ height: 8, borderRadius: 4 }}
                       />
@@ -363,27 +363,27 @@ const RiskCellDetailModal = ({
                 <List dense>
                   <ListItem>
                     <ListItemIcon>
-                      <Warning color="error" />
+                      <AlertTriangle color="#ed6c02" />
                     </ListItemIcon>
-                    <ListItemText 
+                    <ListItemText
                       primary="High/Extreme Risks"
                       secondary={`${stats.highRisk} items need immediate attention`}
                     />
                   </ListItem>
                   <ListItem>
                     <ListItemIcon>
-                      <CheckCircle color="success" />
+                      <CheckCircle2 color="#2e7d32" />
                     </ListItemIcon>
-                    <ListItemText 
+                    <ListItemText
                       primary="With Treatment Plans"
                       secondary={`${stats.withTreatment} items are being mitigated`}
                     />
                   </ListItem>
                   <ListItem>
                     <ListItemIcon>
-                      <TrendingUp color="warning" />
+                      <TrendingUp color="#ed6c02" />
                     </ListItemIcon>
-                    <ListItemText 
+                    <ListItemText
                       primary="Risk Trend"
                       secondary="Most risks in this cell are medium to high"
                     />
@@ -407,22 +407,22 @@ const RiskCellDetailModal = ({
             <Typography variant="h6" gutterBottom fontWeight="bold">
               Inherent vs Residual Comparison
             </Typography>
-            
+
             <Grid container spacing={2} sx={{ mt: 1 }}>
               {risks.slice(0, 3).map((risk) => (
                 <Grid item xs={12} key={risk.id}>
                   <Paper sx={{ p: 2, backgroundColor: '#f9f9f9' }}>
                     <Box display="flex" justifyContent="space-between" alignItems="center">
                       <Typography variant="subtitle1" fontWeight="bold">
-                        {risk.riskCode}
+                        {risk.riskCode || risk.id}
                       </Typography>
-                      <Chip 
-                        label={risk.category}
+                      <Chip
+                        label={risk.riskTypeName || risk.riskType || risk.category || risk.type || 'Unspecified'}
                         size="small"
                         variant="outlined"
                       />
                     </Box>
-                    
+
                     <Grid container spacing={2} sx={{ mt: 1 }}>
                       <Grid item xs={6}>
                         <Paper sx={{ p: 1.5, backgroundColor: '#e3f2fd' }}>
@@ -475,27 +475,27 @@ const RiskCellDetailModal = ({
         {activeTab === 3 && (
           <Grid container spacing={3}>
             <Grid item xs={12} md={4}>
-              <Paper 
-                sx={{ 
-                  p: 3, 
+              <Paper
+                sx={{
+                  p: 3,
                   textAlign: 'center',
                   cursor: 'pointer',
                   '&:hover': { backgroundColor: '#f5f5f5' }
                 }}
                 onClick={() => handleExport('pdf')}
               >
-                <PictureAsPdf sx={{ fontSize: 48, color: '#d32f2f', mb: 2 }} />
+                <FileText size={48} />
                 <Typography variant="h6" fontWeight="bold" gutterBottom>
                   Export PDF
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
                   Format dokumen profesional dengan tabel dan analisis
                 </Typography>
-                <Button 
-                  variant="contained" 
+                <Button
+                  variant="contained"
                   sx={{ mt: 2 }}
                   disabled={exporting}
-                  startIcon={<PictureAsPdf />}
+                  startIcon={<FileText size={18} />}
                 >
                   {exporting ? 'Exporting...' : 'Export PDF'}
                 </Button>
@@ -503,27 +503,27 @@ const RiskCellDetailModal = ({
             </Grid>
 
             <Grid item xs={12} md={4}>
-              <Paper 
-                sx={{ 
-                  p: 3, 
+              <Paper
+                sx={{
+                  p: 3,
                   textAlign: 'center',
                   cursor: 'pointer',
                   '&:hover': { backgroundColor: '#f5f5f5' }
                 }}
                 onClick={() => handleExport('csv')}
               >
-                <TableChart sx={{ fontSize: 48, color: '#1976d2', mb: 2 }} />
+                <LayoutGrid size={48} />
                 <Typography variant="h6" fontWeight="bold" gutterBottom>
                   Export CSV
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
                   Data spreadsheet untuk analisis lebih lanjut
                 </Typography>
-                <Button 
-                  variant="contained" 
+                <Button
+                  variant="contained"
                   sx={{ mt: 2 }}
                   disabled={exporting}
-                  startIcon={<TableChart />}
+                  startIcon={<LayoutGrid size={18} />}
                 >
                   {exporting ? 'Exporting...' : 'Export CSV'}
                 </Button>
@@ -531,27 +531,27 @@ const RiskCellDetailModal = ({
             </Grid>
 
             <Grid item xs={12} md={4}>
-              <Paper 
-                sx={{ 
-                  p: 3, 
+              <Paper
+                sx={{
+                  p: 3,
                   textAlign: 'center',
                   cursor: 'pointer',
                   '&:hover': { backgroundColor: '#f5f5f5' }
                 }}
                 onClick={() => handleExport('text')}
               >
-                <TextFields sx={{ fontSize: 48, color: '#388e3c', mb: 2 }} />
+                <Type size={48} />
                 <Typography variant="h6" fontWeight="bold" gutterBottom>
                   Export Text
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
                   Format teks sederhana untuk laporan cepat
                 </Typography>
-                <Button 
-                  variant="contained" 
+                <Button
+                  variant="contained"
                   sx={{ mt: 2 }}
                   disabled={exporting}
-                  startIcon={<TextFields />}
+                  startIcon={<Type size={18} />}
                 >
                   {exporting ? 'Exporting...' : 'Export Text'}
                 </Button>
@@ -573,13 +573,6 @@ const RiskCellDetailModal = ({
       <DialogActions sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
         <Button onClick={onClose} color="inherit">
           Close
-        </Button>
-        <Button 
-          variant="contained" 
-          onClick={() => handleRiskClick(risks[0]?.id)}
-          startIcon={<Visibility />}
-        >
-          Open First Risk
         </Button>
       </DialogActions>
     </Dialog>

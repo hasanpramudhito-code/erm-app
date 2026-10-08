@@ -1,0 +1,237 @@
+rules_version = '2';
+
+service cloud.firestore {
+
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function hasRole(role) {
+      return request.auth.token.role == role;
+    }
+    
+    function isAdmin() {
+      return hasRole('ADMIN') || hasRole('SUPER_ADMIN');
+    }
+    
+    function isCreator() {
+      return resource.data.created_by == request.auth.uid;
+    }
+    
+    function isInvolvedInApproval() {
+      return request.auth.uid in resource.data.approvers || 
+             request.auth.uid == resource.data.requested_by;
+    }
+    
+    function canModifyUser(userId) {
+      return request.auth.uid == userId || isAdmin();
+    }
+    
+    // ============================================
+    // COLLECTION: users
+    // ============================================
+    
+    match /users/{userId} {
+      allow read: if canModifyUser(userId);
+      allow create: if request.auth.uid == userId;
+      allow update: if canModifyUser(userId);
+      allow delete: if isAdmin();
+    }
+    
+    // ============================================
+    // COLLECTION: risks (RBAC)
+    // ============================================
+    
+    match /risks/{riskId} {
+      allow read: if isAuthenticated();
+      allow create: if hasRole('RISK_MANAGER') || isAdmin();
+      allow update: if isAdmin() || (isCreator() && hasRole('RISK_MANAGER'));
+      allow delete: if isAdmin();
+    }
+    
+    // ============================================
+    // COLLECTION: treatment_plans
+    // ============================================
+    
+    match /treatment_plans/{planId} {
+      allow read: if isAuthenticated();
+      allow create: if hasRole('RISK_MANAGER') || isAdmin();
+      allow update: if isAdmin() || (isCreator() && hasRole('RISK_MANAGER'));
+      allow delete: if isAdmin();
+    }
+    
+    // ============================================
+    // COLLECTION: incidents
+    // ============================================
+    
+    match /incidents/{incidentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAdmin() || 
+                       isCreator() ||
+                       hasRole('COMPLIANCE_OFFICER');
+      allow delete: if isAdmin();
+    }
+
+    // ============================================
+    // COLLECTION: approvalRequests (MOST RESTRICTIVE)
+    // ============================================
+    
+    match /approvalRequests/{requestId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isInvolvedInApproval() ||
+        hasRole('COMPLIANCE_OFFICER')
+      );
+      
+      allow create: if isAuthenticated() && 
+                       request.resource.data.requested_by == request.auth.uid;
+      
+      allow update: if isAdmin() || 
+                       (isInvolvedInApproval() && resource.data.status == 'pending');
+      
+      allow delete: if isAdmin();
+    }
+    
+    // ============================================
+    // COLLECTION: workflows
+    // ============================================
+    
+    match /workflows/{workflowId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ============================================
+    // APPLICATION DATA COLLECTIONS
+    // ============================================
+
+    match /settings/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /organization_units/{unitId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read, update: if isAuthenticated() && resource.data.recipientId == request.auth.uid;
+      allow create, delete: if isAdmin();
+    }
+
+    match /risk_parameters/{paramId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /risk_assessment_config/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /riskAppetite/{statementId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Risk Monitoring
+    match /kris/{kriId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || hasRole('RISK_MANAGER');
+    }
+
+    match /kri_alerts/{alertId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || hasRole('RISK_MANAGER');
+    }
+
+    // Control & Testing
+    match /controls/{controlId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || hasRole('RISK_MANAGER');
+    }
+
+    match /testingSchedules/{scheduleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || hasRole('RISK_MANAGER');
+    }
+
+    match /testResults/{resultId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || hasRole('RISK_MANAGER');
+    }
+
+    match /deficiencies/{deficiencyId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || hasRole('RISK_MANAGER');
+    }
+
+    // Risk Culture
+    match /risk_culture_surveys/{surveyId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /risk_culture_responses/{responseId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // Dashboard & Performance
+    match /dashboard_summary/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /composite_scores/{scoreId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /api_connections/{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // RACI Chart
+    match /raci_assignments/{assignmentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || hasRole('RISK_MANAGER');
+    }
+
+    // Workflow Configurations
+    match /workflow_configs/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // KRI Audit Logs
+    match /kri_audit_logs/{logId} {
+      allow read: if isAdmin() || hasRole('RISK_MANAGER');
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // Audit Logs (backend only write, admin read)
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ============================================
+    // DEFAULT: DENY ALL OTHER COLLECTIONS
+    // ============================================
+    
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

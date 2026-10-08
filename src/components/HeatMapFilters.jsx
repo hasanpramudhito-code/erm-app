@@ -17,18 +17,18 @@ import {
   Autocomplete
 } from '@mui/material';
 import {
-  FilterList,
-  ClearAll,
+  Filter,
+  Eraser as ClearAll,
   Download,
   TrendingUp,
   TrendingDown,
-  CalendarMonth,
-  Category,
-  Business
-} from '@mui/icons-material';
+  Calendar,
+  Grid as GridIcon,
+  Building
+} from 'lucide-react';
 
-const HeatMapFilters = ({ 
-  filters, 
+const HeatMapFilters = ({
+  filters,
   onFilterChange,
   organizationUnits = [],
   onExport,
@@ -45,8 +45,8 @@ const HeatMapFilters = ({
 
   // Risk categories
   const riskCategories = [
-    'Strategis', 'Operasional', 'Finansial', 'HSSE', 
-    'IT & Teknologi', 'Legal & Kepatuhan', 'Fraud', 
+    'Strategis', 'Operasional', 'Finansial', 'HSSE',
+    'IT & Teknologi', 'Legal & Kepatuhan', 'Fraud',
     'Reputasi', 'Lainnya'
   ];
 
@@ -99,34 +99,34 @@ const HeatMapFilters = ({
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" alignItems="center" gap={1}>
-          <FilterList color="primary" />
+          <Filter size={20} color="#1976d2" />
           <Typography variant="h6" fontWeight="bold">
             Filter Heat Map
           </Typography>
           {activeFilterCount > 0 && (
-            <Chip 
-              label={`${activeFilterCount} aktif`} 
-              size="small" 
+            <Chip
+              label={`${activeFilterCount} aktif`}
+              size="small"
               color="primary"
               variant="outlined"
             />
           )}
         </Box>
-        
+
         <Box display="flex" gap={1}>
           <Tooltip title="Reset semua filter">
-            <IconButton 
-              size="small" 
+            <IconButton
+              size="small"
               onClick={handleReset}
               disabled={activeFilterCount === 0}
             >
-              <ClearAll />
+              <ClearAll size={18} />
             </IconButton>
           </Tooltip>
-          
+
           <Button
             variant="outlined"
-            startIcon={<Download />}
+            startIcon={<Download size={18} />}
             onClick={onExport}
             disabled={exportLoading}
             size="small"
@@ -145,7 +145,7 @@ const HeatMapFilters = ({
           <FormControl fullWidth size="small">
             <InputLabel>
               <Box display="flex" alignItems="center" gap={0.5}>
-                <Business fontSize="small" />
+                <Building size={16} />
                 <span>Departemen</span>
               </Box>
             </InputLabel>
@@ -171,7 +171,7 @@ const HeatMapFilters = ({
           <FormControl fullWidth size="small">
             <InputLabel>
               <Box display="flex" alignItems="center" gap={0.5}>
-                <Category fontSize="small" />
+                <GridIcon size={16} />
                 <span>Kategori</span>
               </Box>
             </InputLabel>
@@ -197,7 +197,7 @@ const HeatMapFilters = ({
           <FormControl fullWidth size="small">
             <InputLabel>
               <Box display="flex" alignItems="center" gap={0.5}>
-                <CalendarMonth fontSize="small" />
+                <Calendar size={16} />
                 <span>Periode Waktu</span>
               </Box>
             </InputLabel>
@@ -221,9 +221,9 @@ const HeatMapFilters = ({
             <InputLabel>
               <Box display="flex" alignItems="center" gap={0.5}>
                 {localFilters.riskLevel === 'high' || localFilters.riskLevel === 'extreme' ? (
-                  <TrendingUp fontSize="small" color="error" />
+                  <TrendingUp size={16} color="#d32f2f" />
                 ) : (
-                  <TrendingDown fontSize="small" color="success" />
+                  <TrendingDown size={16} color="#2e7d32" />
                 )}
                 <span>Tingkat Risiko</span>
               </Box>
@@ -237,13 +237,13 @@ const HeatMapFilters = ({
                 <MenuItem key={level.value} value={level.value}>
                   <Box display="flex" alignItems="center" gap={1}>
                     {level.color && (
-                      <Box 
-                        sx={{ 
-                          width: 12, 
-                          height: 12, 
+                      <Box
+                        sx={{
+                          width: 12,
+                          height: 12,
                           backgroundColor: level.color,
                           borderRadius: '50%'
-                        }} 
+                        }}
                       />
                     )}
                     {level.label}
@@ -280,28 +280,28 @@ const HeatMapFilters = ({
                 Filter aktif:
               </Typography>
               {localFilters.department !== 'all' && (
-                <Chip 
+                <Chip
                   label={`Dept: ${organizationUnits.find(u => u.id === localFilters.department)?.name || localFilters.department}`}
                   size="small"
                   onDelete={() => handleFilterChange('department', 'all')}
                 />
               )}
               {localFilters.category !== 'all' && (
-                <Chip 
+                <Chip
                   label={`Kategori: ${localFilters.category}`}
                   size="small"
                   onDelete={() => handleFilterChange('category', 'all')}
                 />
               )}
               {localFilters.timeRange !== 'all' && (
-                <Chip 
+                <Chip
                   label={`Waktu: ${timeRanges.find(t => t.value === localFilters.timeRange)?.label}`}
                   size="small"
                   onDelete={() => handleFilterChange('timeRange', 'all')}
                 />
               )}
               {localFilters.riskLevel !== 'all' && (
-                <Chip 
+                <Chip
                   label={`Level: ${riskLevels.find(l => l.value === localFilters.riskLevel)?.label}`}
                   size="small"
                   onDelete={() => handleFilterChange('riskLevel', 'all')}

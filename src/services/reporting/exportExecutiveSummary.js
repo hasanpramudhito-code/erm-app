@@ -2,7 +2,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { fetchRisks } from '../riskService';
 
-const risks = await fetchRisks();
+// Hapus fetchRisks top-level untuk mencegah call saat import
+// const risks = await fetchRisks(); 
 
 
 /**
@@ -209,51 +210,51 @@ export const exportExecutiveSummaryPDF = async (payload = {}) => {
   doc.text('Risiko Prioritas Utama:', 14, y);
   y += 6;
 
-autoTable(doc, {
-  startY: y,
-  head: [[
-    'No',
-    'Deskripsi Risiko',
-    'Likelihood',
-    'Impact',
-    'Skor',
-    'Level Risiko',
-    'Status Mitigasi'
-  ]],
-body: report.topRisks.map((risk, index) => [
-  index + 1,
-  risk.riskName,
-  risk.likelihood,
-  risk.impact,
-  risk.score,
-  risk.level,
-  risk.mitigationStatus
-]),
+  autoTable(doc, {
+    startY: y,
+    head: [[
+      'No',
+      'Deskripsi Risiko',
+      'Likelihood',
+      'Impact',
+      'Skor',
+      'Level Risiko',
+      'Status Mitigasi'
+    ]],
+    body: report.topRisks.map((risk, index) => [
+      index + 1,
+      risk.riskName,
+      risk.likelihood,
+      risk.impact,
+      risk.score,
+      risk.level,
+      risk.mitigationStatus
+    ]),
 
-  styles: {
-    fontSize: 9,
-    cellPadding: 3,
-    valign: 'top'
-  },
-  headStyles: {
-    fillColor: [0, 102, 153],
-    textColor: 255,
-    halign: 'center'
-  },
-  columnStyles: {
-    0: { halign: 'center', cellWidth: 10 },
-    2: { halign: 'center', cellWidth: 20 },
-    3: { halign: 'center', cellWidth: 18 },
-    4: { halign: 'center', cellWidth: 15 },
-    5: { halign: 'center', cellWidth: 26 },
-    6: { halign: 'center', cellWidth: 30 }
-  },
+    styles: {
+      fontSize: 9,
+      cellPadding: 3,
+      valign: 'top'
+    },
+    headStyles: {
+      fillColor: [0, 102, 153],
+      textColor: 255,
+      halign: 'center'
+    },
+    columnStyles: {
+      0: { halign: 'center', cellWidth: 10 },
+      2: { halign: 'center', cellWidth: 20 },
+      3: { halign: 'center', cellWidth: 18 },
+      4: { halign: 'center', cellWidth: 15 },
+      5: { halign: 'center', cellWidth: 26 },
+      6: { halign: 'center', cellWidth: 30 }
+    },
 
-  // ⬇️ PENTING UNTUK FOOTER
-  didDrawPage: (data) => {
-    addFooter(doc);
-  }
-});
+    // ⬇️ PENTING UNTUK FOOTER
+    didDrawPage: (data) => {
+      addFooter(doc);
+    }
+  });
 
 
   addFooter(doc);

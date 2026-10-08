@@ -21,11 +21,8 @@ class RiskCultureService {
         ...doc.data()
       }));
       
-      console.log(`Retrieved ${surveys.length} risk culture surveys`);
       return surveys;
     } catch (error) {
-      console.error('Error getting risk culture surveys:', error);
-      
       // Fallback query
       if (error.code === 'failed-precondition') {
         const fallbackQuery = query(collection(db, 'risk_culture_surveys'));
@@ -49,7 +46,6 @@ class RiskCultureService {
       }
       return null;
     } catch (error) {
-      console.error('Error getting survey:', error);
       throw error;
     }
   }
@@ -68,10 +64,8 @@ class RiskCultureService {
       };
       
       const docRef = await addDoc(collection(db, 'risk_culture_surveys'), surveyWithMetadata);
-      console.log('Risk culture survey created with ID:', docRef.id);
       return { id: docRef.id, ...surveyWithMetadata };
     } catch (error) {
-      console.error('Error creating risk culture survey:', error);
       throw error;
     }
   }
@@ -84,9 +78,7 @@ class RiskCultureService {
         ...updateData,
         updated_at: Timestamp.now()
       });
-      console.log('Survey updated:', surveyId);
     } catch (error) {
-      console.error('Error updating survey:', error);
       throw error;
     }
   }
@@ -106,10 +98,8 @@ class RiskCultureService {
       // Update survey statistics
       await this.updateSurveyStatistics(surveyId);
       
-      console.log('Survey response submitted:', docRef.id);
       return docRef.id;
     } catch (error) {
-      console.error('Error submitting survey response:', error);
       throw error;
     }
   }
@@ -152,10 +142,8 @@ class RiskCultureService {
         completion_rate: this.calculateCompletionRate(surveyId, totalResponses),
         last_response_at: Timestamp.now()
       });
-      
-      console.log(`Survey ${surveyId} statistics updated: ${averageScore}% average`);
     } catch (error) {
-      console.error('Error updating survey statistics:', error);
+      // Silent catch
     }
   }
 
@@ -181,7 +169,6 @@ class RiskCultureService {
         ...doc.data()
       }));
     } catch (error) {
-      console.error('Error getting survey responses:', error);
       return [];
     }
   }
@@ -329,7 +316,6 @@ class RiskCultureService {
       const totalScore = activeSurveys.reduce((sum, survey) => sum + (survey.average_score || 0), 0);
       return Math.round(totalScore / activeSurveys.length);
     } catch (error) {
-      console.error('Error calculating overall risk culture score:', error);
       return 0;
     }
   }
