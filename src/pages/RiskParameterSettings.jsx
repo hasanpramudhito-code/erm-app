@@ -53,18 +53,7 @@ import {
   Globe,
   Settings
 } from 'lucide-react';
-import {
-  collection,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  query,
-  orderBy,
-  where
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
 
@@ -79,9 +68,8 @@ const RiskParameterSettings = () => {
   const [editingParam, setEditingParam] = useState(null);
   const [deletingParam, setDeletingParam] = useState(null);
   const { userData } = useAuth();
-  const { assessmentConfig, calculateScore, calculateRiskLevel, updateToleranceThreshold } = useAssessmentConfig();
+  const { assessmentConfig, calculateScore, calculateRiskLevel, updateToleranceThreshold, refreshConfig } = useAssessmentConfig();
   const [riskTypes, setRiskTypes] = useState([]);
-  const [organizationUnits, setOrganizationUnits] = useState([]);
 
   // State untuk semua parameter
   const [parameters, setParameters] = useState({
@@ -106,143 +94,76 @@ const RiskParameterSettings = () => {
     parent: ''
   });
 
+  // Peta tipe parameter halaman ini -> endpoint & konversi kolom (bentuk halaman <-> kolom DB).
+  const SUMBER = {
+    likelihood: {
+      url: '/skala-kemungkinan',
+      dari: (x) => ({ id: x.id, type: 'likelihood', level: x.nilai, name: x.label, description: x.deskripsi, probability: x.probabilitas }),
+      ke: (f) => ({ nilai: Number(f.level), label: f.name, deskripsi: f.description, probabilitas: f.probability })
+    },
+    impact: {
+      url: '/skala-dampak',
+      dari: (x) => ({ id: x.id, type: 'impact', category: x.kategori, level: x.nilai, name: x.label, description: x.deskripsi, minValue: x.nilai_min, maxValue: x.nilai_maks, color: x.warna }),
+      ke: (f, kategori) => ({ kategori, nilai: Number(f.level), label: f.name, deskripsi: f.description, nilai_min: f.minValue, nilai_maks: f.maxValue, warna: f.color })
+    },
+    appetite: {
+      url: '/level-selera-risiko',
+      dari: (x) => ({ id: x.id, type: 'appetite', level: x.kode, name: x.nama, description: x.deskripsi, color: x.warna, actions: x.tindakan }),
+      ke: (f) => ({ kode: f.level, nama: f.name, deskripsi: f.description, warna: f.color, tindakan: f.actions })
+    },
+    risk_type: {
+      url: '/kategori-risiko',
+      dari: (x) => ({ id: x.id, type: 'risk_type', code: x.kode, name: x.nama, description: x.deskripsi, color: x.warna }),
+      ke: (f) => ({ kode: f.code, nama: f.name, deskripsi: f.description, warna: f.color })
+    }
+  };
+
   // Load parameters
   const loadParameters = async () => {
     try {
       setLoading(true);
 
-      // Load semua risk parameters sekaligus
-      const paramsQuery = query(collection(db, 'risk_parameters'));
-      const paramsSnapshot = await getDocs(paramsQuery);
-      const allParams = paramsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const [kemungkinan, dampak, selera, kategori] = await Promise.all(
+        ['likelihood', 'impact', 'appetite', 'risk_type'].map(async (t) => (await api.get(SUMBER[t].url)).map(SUMBER[t].dari))
+      );
 
-      // Filter untuk risk_types dan organization_units
-      const riskTypesData = allParams.filter(param => param.type === 'risk_type');
-      const orgUnitsData = allParams.filter(param => param.type === 'organization_unit');
+      setRiskTypes(kategori);
 
-      setRiskTypes(riskTypesData);
-      setOrganizationUnits(orgUnitsData);
-
-      // Filter di client side untuk parameter lainnya
-      const likelihoodData = allParams
-        .filter(param => param.type === 'likelihood')
-        .sort((a, b) => (a.level || 0) - (b.level || 0));
-
-      const impactData = allParams.reduce((acc, param) => {
-        if (param.type === 'impact') {
-          if (!acc[param.category]) acc[param.category] = [];
-          acc[param.category].push(param);
-        }
+      const impactData = dampak.reduce((acc, param) => {
+        (acc[param.category] ||= []).push(param);
         return acc;
       }, {});
 
-      // Sort each impact category by level
-      Object.keys(impactData).forEach(category => {
-        impactData[category] = impactData[category].sort((a, b) => (a.level || 0) - (b.level || 0));
-      });
-
-      const appetiteData = allParams.filter(param => param.type === 'appetite');
-      const matrixData = allParams.filter(param => param.type === 'tolerance');
-
       setParameters({
-        likelihoodScale: likelihoodData,
+        likelihoodScale: kemungkinan,
         impactScales: impactData,
-        riskAppetite: appetiteData.reduce((acc, item) => {
+        riskAppetite: selera.reduce((acc, item) => {
           acc[item.level] = item;
           return acc;
         }, {}),
-        toleranceMatrix: matrixData
+        toleranceMatrix: []
       });
-
     } catch (error) {
       showSnackbar('Error memuat parameter: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
   };
-  
+
   // Helper untuk mendapatkan data appetite berdasarkan label level risiko
   const getAppetiteForLevel = (levelLabel) => {
     if (!levelLabel) return null;
     // Cari di parameters.riskAppetite berdasarkan name (case-insensitive)
-    const appetite = Object.values(parameters.riskAppetite).find(a => 
+    const appetite = Object.values(parameters.riskAppetite).find(a =>
       a.name.toLowerCase() === levelLabel.toLowerCase()
     );
     return appetite || null;
   };
 
-  // Default parameters jika belum ada data
+  // Parameter default sudah diisi oleh seed server; tombol ini cukup memuat ulang.
   const initializeDefaultParameters = async () => {
-    try {
-      setLoading(true);
-
-      // Default Likelihood Scale
-      const defaultLikelihood = [
-        { level: 1, name: 'Sangat Rendah', description: 'Sangat jarang terjadi (>10 tahun)', probability: '0-10%' },
-        { level: 2, name: 'Rendah', description: 'Jarang terjadi (5-10 tahun)', probability: '11-30%' },
-        { level: 3, name: 'Sedang', description: 'Mungkin terjadi (1-5 tahun)', probability: '31-50%' },
-        { level: 4, name: 'Tinggi', description: 'Sering terjadi (beberapa kali/tahun)', probability: '51-70%' },
-        { level: 5, name: 'Sangat Tinggi', description: 'Sangat sering terjadi (bulanan)', probability: '71-100%' }
-      ];
-
-      for (const item of defaultLikelihood) {
-        await addDoc(collection(db, 'risk_parameters'), {
-          ...item,
-          type: 'likelihood',
-          createdAt: new Date(),
-          createdBy: userData?.name
-        });
-      }
-
-      // Default Impact Scales
-      const impactCategories = ['FINANSIAL', 'OPERASIONAL', 'REPUTASI', 'LEGAL', 'HSE'];
-      const impactLevels = [
-        { level: 1, name: 'Sangat Rendah', description: 'Dampak tidak signifikan' },
-        { level: 2, name: 'Rendah', description: 'Dampak terbatas' },
-        { level: 3, name: 'Sedang', description: 'Dampak signifikan' },
-        { level: 4, name: 'Tinggi', description: 'Dampak kritis' },
-        { level: 5, name: 'Sangat Tinggi', description: 'Dampak katastropik' }
-      ];
-
-      for (const category of impactCategories) {
-        for (const level of impactLevels) {
-          await addDoc(collection(db, 'risk_parameters'), {
-            ...level,
-            type: 'impact',
-            category: category,
-            examples: [],
-            createdAt: new Date(),
-            createdBy: userData?.name
-          });
-        }
-      }
-
-      // Default Risk Appetite
-      const defaultAppetite = [
-        { level: 'VERY_LOW', name: 'Sangat Rendah', color: '#4caf50', description: 'Dapat diterima' },
-        { level: 'LOW', name: 'Rendah', color: '#81c784', description: 'Dapat diterima dengan kontrol' },
-        { level: 'MODERATE', name: 'Sedang', color: '#ffeb3b', description: 'Perlu mitigasi' },
-        { level: 'HIGH', name: 'Tinggi', color: '#f57c00', description: 'Perlu mitigasi intensif' },
-        { level: 'EXTREME', name: 'Sangat Tinggi', color: '#d32f2f', description: 'Tidak dapat diterima' }
-      ];
-
-      for (const item of defaultAppetite) {
-        await addDoc(collection(db, 'risk_parameters'), {
-          ...item,
-          type: 'appetite',
-          createdAt: new Date(),
-          createdBy: userData?.name
-        });
-      }
-
-      showSnackbar('Parameter default berhasil diinisialisasi!', 'success');
-      loadParameters();
-
-    } catch (error) {
-      showSnackbar('Error inisialisasi parameter: ' + error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
+    await loadParameters();
+    showSnackbar('Parameter dimuat ulang dari server. Data default diisi lewat "npm run db:seed".', 'info');
   };
 
   // Handle edit parameter
@@ -275,13 +196,13 @@ const RiskParameterSettings = () => {
     try {
       setLoading(true);
 
-      await deleteDoc(doc(db, 'risk_parameters', deletingParam.id));
+      await api.delete(`${SUMBER[deletingParam._type].url}/${deletingParam.id}`);
 
       showSnackbar('Parameter berhasil dihapus!', 'success');
       setDeleteDialog(false);
       setDeletingParam(null);
       loadParameters();
-
+      refreshConfig();
     } catch (error) {
       showSnackbar('Error menghapus parameter: ' + error.message, 'error');
     } finally {
@@ -294,43 +215,30 @@ const RiskParameterSettings = () => {
     try {
       setLoading(true);
 
-      const paramData = {
-        ...formData,
-        updatedAt: new Date(),
-        updatedBy: userData?.name
-      };
-
-      // Hapus field yang kosong
-      Object.keys(paramData).forEach(key => {
-        if (paramData[key] === '' || paramData[key] === null || paramData[key] === undefined) {
-          delete paramData[key];
-        }
-      });
+      const sumber = SUMBER[formData.type];
+      if (!sumber) throw new Error(`Tipe "${formData.type}" tidak didukung`);
+      const kategori = editingParam?._category || editingParam?.category || 'OPERASIONAL';
+      const body = sumber.ke(formData, kategori);
 
       if (editingParam?.id) {
-        // Update existing
-        await updateDoc(doc(db, 'risk_parameters', editingParam.id), paramData);
+        await api.patch(`${sumber.url}/${editingParam.id}`, body);
         showSnackbar('Parameter berhasil diupdate!', 'success');
       } else {
-        // Create new
-        await addDoc(collection(db, 'risk_parameters'), {
-          ...paramData,
-          createdAt: new Date(),
-          createdBy: userData?.name
-        });
+        await api.post(sumber.url, body);
         showSnackbar('Parameter berhasil ditambahkan!', 'success');
       }
 
       setEditDialog(false);
       setEditingParam(null);
       loadParameters();
-
+      refreshConfig();
     } catch (error) {
       showSnackbar('Error menyimpan parameter: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
   };
+
 
   // Snackbar handler
   const showSnackbar = (message, severity) => {

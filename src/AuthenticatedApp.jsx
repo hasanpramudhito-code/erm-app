@@ -16,7 +16,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const ExecutiveDashboard = lazy(() => import('./pages/ExecutiveDashboard'));
 const KRIMonitoring = lazy(() => import('./pages/KRIMonitoring'));
 const Organization = lazy(() => import('./pages/Organization'));
-const OrganizationStructure = lazy(() => import('./pages/OrganizationStructure'));
+const OrganizationStructure = lazy(() => import('./components/OrganizationStructure'));
 const UserManagement = lazy(() => import('./pages/UserManagement'));
 const RiskRegister = lazy(() => import('./pages/RiskRegister'));
 const RiskAssessment = lazy(() => import('./pages/RiskAssessment'));

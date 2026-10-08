@@ -2,8 +2,7 @@ import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline, CircularProgress, Box } from '@mui/material';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from './config/firebase';
+import { api } from './services/api';
 
 import { AuthProvider } from './contexts/AuthContext';
 import DocumentTitle from './components/DocumentTitle';
@@ -27,21 +26,13 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Listen to global settings for theme changes
-    const settingsRef = doc(db, 'settings', 'global');
-    const unsubscribe = onSnapshot(settingsRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.ui && data.ui.themeMode) {
-          setThemeMode(data.ui.themeMode === 'system' ? 'light' : data.ui.themeMode);
-        }
-      }
-      setLoading(false);
-    }, (error) => {
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    // Tema dari pengaturan server; sebelum login (401) tetap tema terang.
+    api.get('/pengaturan')
+      .then((p) => {
+        if (p.ui?.themeMode) setThemeMode(p.ui.themeMode === 'system' ? 'light' : p.ui.themeMode);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const theme = useMemo(() => getTheme(themeMode), [themeMode]);

@@ -1,81 +1,50 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { doc, getDoc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import { api } from '../services/api';
 import { useAuth } from './AuthContext';
 
 const AssessmentConfigContext = createContext();
 
 export const useAssessmentConfig = () => useContext(AssessmentConfigContext);
 
+// Ubah respons /konfigurasi-penilaian ke bentuk lama yang dipakai halaman-halaman eksisting.
+const keBentukLama = (k) => {
+  const dampakPerNilai = new Map();
+  for (const d of k.dampak) if (!dampakPerNilai.has(d.nilai)) dampakPerNilai.set(d.nilai, d.label);
+  return {
+    assessmentMethod: k.metode_penilaian,
+    toleranceThreshold: k.ambang_toleransi,
+    likelihoodOptions: k.kemungkinan.map((x) => ({ id: x.id, value: x.nilai, label: `${x.nilai} - ${x.label}`, rawLabel: x.label })),
+    impactOptions: [...dampakPerNilai].map(([value, label]) => ({ value, label: `${value} - ${label}`, rawLabel: label })),
+    riskLevels: k.level.map((l) => ({ id: l.id, label: l.nama, min: l.skor_min, max: l.skor_maks, color: l.warna })),
+    impactCriteria: k.dampak,
+  };
+};
+
 export const AssessmentConfigProvider = ({ children }) => {
   const { isInitialized, currentUser } = useAuth();
   const [assessmentConfig, setAssessmentConfig] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Setup real-time listener
-  useEffect(() => {
-    if (!isInitialized) {
-      return;
+  const reload = useCallback(async () => {
+    try {
+      setAssessmentConfig(keBentukLama(await api.get('/konfigurasi-penilaian')));
+    } catch (e) {
+      console.error('Gagal memuat konfigurasi penilaian', e);
+    } finally {
+      setLoading(false);
     }
+  }, []);
 
+  useEffect(() => {
+    if (!isInitialized) return;
     if (!currentUser) {
       setAssessmentConfig(null);
       setLoading(false);
       return;
     }
-
     setLoading(true);
-    const configRef = doc(db, 'risk_assessment_config', 'default');
-
-    // Real-time listener
-    const unsubscribe = onSnapshot(configRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setAssessmentConfig(docSnap.data());
-      } else {
-        // Create default if missing
-        const defaultConfig = {
-          assessmentMethod: 'multiplication',
-          likelihoodOptions: [
-            { value: 1, label: '1 - Sangat Rendah' },
-            { value: 2, label: '2 - Rendah' },
-            { value: 3, label: '3 - Sedang' },
-            { value: 4, label: '4 - Tinggi' },
-            { value: 5, label: '5 - Sangat Tinggi' }
-          ],
-          impactOptions: [
-            { value: 1, label: '1 - Tidak Signifikan' },
-            { value: 2, label: '2 - Terbatas' },
-            { value: 3, label: '3 - Signifikan' },
-            { value: 4, label: '4 - Kritis' },
-            { value: 5, label: '5 - Katastropik' }
-          ],
-          riskLevels: [
-            { label: 'Sangat Rendah', min: 1, max: 3, color: 'success' },
-            { label: 'Rendah', min: 4, max: 6, color: 'success' },
-            { label: 'Sedang', min: 7, max: 10, color: 'warning' },
-            { label: 'Tinggi', min: 11, max: 15, color: 'error' },
-            { label: 'Sangat Tinggi', min: 16, max: 20, color: 'error' },
-            { label: 'Ekstrim', min: 21, max: 25, color: 'error' }
-          ],
-          toleranceThreshold: 15,
-          createdAt: new Date()
-        };
-
-        setDoc(configRef, defaultConfig).catch(err => {});
-        setAssessmentConfig(defaultConfig);
-      }
-      setLoading(false);
-    }, (error) => {
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [isInitialized, currentUser]);
-
-  // Manual update function (optimistic or helper)
-  const updateConfig = (newConfig) => {
-    setAssessmentConfig(newConfig);
-  };
+    reload();
+  }, [isInitialized, currentUser?.id, reload]);
 
   // Helper functions dengan fallback yang aman
   const getRatingOptions = (type = 'likelihood') => {
@@ -89,66 +58,24 @@ export const AssessmentConfigProvider = ({ children }) => {
   };
 
   const getRatingLabel = (value, type = 'likelihood') => {
-    if (!assessmentConfig) {
-      if (type === 'likelihood') {
-        const labels = { 1: '1 - Sangat Rendah', 2: '2 - Rendah', 3: '3 - Sedang', 4: '4 - Tinggi', 5: '5 - Sangat Tinggi' };
-        return labels[value] || `${value}`;
-      } else {
-        const labels = { 1: '1 - Tidak Signifikan', 2: '2 - Terbatas', 3: '3 - Signifikan', 4: '4 - Kritis', 5: '5 - Katastropik' };
-        return labels[value] || `${value}`;
-      }
-    }
-
-    if (type === 'likelihood') {
-      const option = assessmentConfig.likelihoodOptions?.find(opt => opt.value === value);
-      return option?.label || `${value}`;
-    } else {
-      const option = assessmentConfig.impactOptions?.find(opt => opt.value === value);
-      return option?.label || `${value}`;
-    }
+    const options = type === 'likelihood' ? assessmentConfig?.likelihoodOptions : assessmentConfig?.impactOptions;
+    return options?.find(opt => opt.value === value)?.label || `${value}`;
   };
 
-  const getRiskLevelOptions = () => {
-    if (!assessmentConfig?.riskLevels) {
-      return [
-        { value: 'very_low', label: 'Sangat Rendah', min: 1, max: 3, color: 'success' },
-        { value: 'low', label: 'Rendah', min: 4, max: 6, color: 'success' },
-        { value: 'medium', label: 'Sedang', min: 7, max: 10, color: 'warning' },
-        { value: 'high', label: 'Tinggi', min: 11, max: 15, color: 'error' },
-        { value: 'very_high', label: 'Sangat Tinggi', min: 16, max: 20, color: 'error' },
-        { value: 'extreme', label: 'Ekstrim', min: 21, max: 25, color: 'error' }
-      ];
-    }
-
-    return assessmentConfig.riskLevels.map(level => ({
+  const getRiskLevelOptions = () =>
+    (assessmentConfig?.riskLevels || []).map(level => ({
       value: level.label.toLowerCase().replace(/ /g, '_'),
       label: level.label,
       min: level.min,
       max: level.max,
       color: level.color
     }));
-  };
 
-  const getRiskLevelColor = (levelLabel) => {
-    if (!assessmentConfig?.riskLevels) {
-      const colors = {
-        'Sangat Rendah': 'success',
-        'Rendah': 'success',
-        'Sedang': 'warning',
-        'Tinggi': 'error',
-        'Sangat Tinggi': 'error',
-        'Ekstrim': 'error'
-      };
-      return colors[levelLabel] || 'default';
-    }
-
-    const level = assessmentConfig.riskLevels.find(l => l.label === levelLabel);
-    return level?.color || 'default';
-  };
+  const getRiskLevelColor = (levelLabel) =>
+    assessmentConfig?.riskLevels?.find(l => l.label === levelLabel)?.color || 'default';
 
   const getRiskLevelLabel = (levelValue) => {
-    const options = getRiskLevelOptions();
-    const level = options.find(opt => opt.value === levelValue);
+    const level = getRiskLevelOptions().find(opt => opt.value === levelValue);
     return level?.label || levelValue;
   };
 
@@ -177,7 +104,7 @@ export const AssessmentConfigProvider = ({ children }) => {
     const options = getRiskLevelOptions();
     const riskLevel = options.find(level =>
       score >= level.min && score <= level.max
-    ) || options[0];
+    ) || options[0] || { label: '-', color: 'default' };
 
     return {
       score,
@@ -196,20 +123,18 @@ export const AssessmentConfigProvider = ({ children }) => {
     getRiskLevelLabel,
     calculateScore,
     calculateRiskLevel,
-    updateConfig,
+    // Dipertahankan untuk kompatibilitas: kini memuat ulang dari server.
+    updateConfig: reload,
+    refreshConfig: reload,
     updateToleranceThreshold: async (newThreshold) => {
       try {
-        const configRef = doc(db, 'risk_assessment_config', 'default');
-        await updateDoc(configRef, { 
-          toleranceThreshold: parseInt(newThreshold),
-          updatedAt: new Date()
-        });
+        await api.put('/pengaturan/ambang_toleransi', { nilai: parseInt(newThreshold) });
+        await reload();
         return true;
       } catch (error) {
         return false;
       }
-    },
-    refreshConfig: () => { } // Deprecated, kept for compatibility
+    }
   };
 
   return (

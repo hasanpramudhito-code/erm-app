@@ -24,8 +24,7 @@ import {
   Palette,
   Shield as Security
 } from 'lucide-react';
-import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
 const SystemSettings = () => {
@@ -54,33 +53,24 @@ const SystemSettings = () => {
 
   const [settings, setSettings] = useState(defaultSettings);
 
-  // Load Settings Realtime
+  // Load Settings
   useEffect(() => {
-    setLoading(true);
-    const settingsRef = doc(db, 'settings', 'global');
-
-    const unsubscribe = onSnapshot(settingsRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setSettings(prev => ({
-          ...defaultSettings, // Fallback defaults
-          ...docSnap.data(), // Merge saved data
-          // Ensure nested objects are merged correctly
-          general: { ...defaultSettings.general, ...docSnap.data().general },
-          ui: { ...defaultSettings.ui, ...docSnap.data().ui },
-          notifications: { ...defaultSettings.notifications, ...docSnap.data().notifications }
-        }));
-      } else {
-        // Init if not exists
-        setSettings(defaultSettings);
-      }
-      setLoading(false);
-    }, (error) => {
-      showSnackbar('Error Loading Settings: ' + error.message, 'error');
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    api.get('/pengaturan')
+      .then((p) => setSettings({
+        general: { ...defaultSettings.general, ...p.umum },
+        ui: { ...defaultSettings.ui, ...p.ui },
+        notifications: { ...defaultSettings.notifications, ...p.notifikasi }
+      }))
+      .catch((error) => showSnackbar('Error Loading Settings: ' + error.message, 'error'))
+      .finally(() => setLoading(false));
   }, []);
+
+  // Simpan tiap bagian ke kunci pengaturan masing-masing di server.
+  const simpan = (data) => Promise.all([
+    api.put('/pengaturan/umum', { nilai: data.general }),
+    api.put('/pengaturan/ui', { nilai: data.ui }),
+    api.put('/pengaturan/notifikasi', { nilai: data.notifications })
+  ]);
 
   const handleChange = (section, key, value) => {
     setSettings(prev => ({
@@ -95,15 +85,7 @@ const SystemSettings = () => {
   const handleSave = async () => {
     try {
       setSaving(true);
-      const settingsRef = doc(db, 'settings', 'global');
-
-      const dataToSave = {
-        ...settings,
-        updatedAt: new Date(),
-        updatedBy: userData?.name || 'System'
-      };
-
-      await setDoc(settingsRef, dataToSave);
+      await simpan(settings);
       showSnackbar('Settings saved successfully!', 'success');
     } catch (error) {
       showSnackbar('Failed to save settings: ' + error.message, 'error');
@@ -116,13 +98,8 @@ const SystemSettings = () => {
     if (window.confirm('Are you sure you want to restore all settings to default values?')) {
       try {
         setSaving(true);
-        const settingsRef = doc(db, 'settings', 'global');
-        await setDoc(settingsRef, {
-          ...defaultSettings,
-          updatedAt: new Date(),
-          updatedBy: userData?.name || 'System',
-          note: 'Restored to defaults'
-        });
+        await simpan(defaultSettings);
+        setSettings(defaultSettings);
         showSnackbar('Settings restored to defaults.', 'info');
       } catch (error) {
         showSnackbar('Error restoring defaults: ' + error.message, 'error');

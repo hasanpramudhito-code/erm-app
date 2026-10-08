@@ -48,8 +48,7 @@ import {
   Palette,
   RotateCcw
 } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { api } from '../services/api';
 import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
 
 
@@ -63,7 +62,7 @@ const Configuration = () => {
   const {
     assessmentConfig,
     loading: configLoading,
-    updateConfig, // Tambah fungsi updateConfig dari context
+
     refreshConfig // Tambah fungsi refresh untuk real-time update
   } = useAssessmentConfig();
 
@@ -113,193 +112,89 @@ const Configuration = () => {
     setEditingRiskLevel(null);
   };
 
-  // Fungsi helper untuk update context secara langsung
-  const updateContextConfig = async (updates) => {
+  // Jalankan aksi ke server, lalu muat ulang konfigurasi agar semua halaman ikut terbarui.
+  const jalankan = async (aksi, pesanSukses, pesanGagal, setelah) => {
     try {
-      if (updateConfig && typeof updateConfig === 'function') {
-        // Update context secara langsung
-        const updatedConfig = {
-          ...assessmentConfig,
-          ...updates,
-          lastUpdated: new Date().toISOString()
-        };
-        updateConfig(updatedConfig);
-      }
+      setLoading(true);
+      await aksi();
+      await refreshConfig();
+      showSnackbar(pesanSukses, 'success');
+      setelah?.();
     } catch (error) {
+      showSnackbar(`${pesanGagal}: ${error.message}`, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
   // Handle save assessment method
-  const handleSaveAssessmentMethod = async () => {
-    try {
-      setLoading(true);
-
-      // Update Firestore
-      await updateDoc(doc(db, 'risk_assessment_config', 'default'), {
-        assessmentMethod,
-        lastUpdated: new Date().toISOString()
-      });
-
-      // Update context secara langsung tanpa menunggu Firestore listener
-      updateContextConfig({ assessmentMethod });
-
-      showSnackbar('Metode assessment berhasil disimpan! Perubahan akan terlihat langsung.', 'success');
-    } catch (error) {
-      showSnackbar('Error menyimpan metode assessment: ' + error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleSaveAssessmentMethod = () =>
+    jalankan(
+      () => api.put('/pengaturan/metode_penilaian', { nilai: assessmentMethod }),
+      'Metode assessment berhasil disimpan!',
+      'Error menyimpan metode assessment'
+    );
 
   // Handle save likelihood option
-  const handleSaveLikelihood = async () => {
-    try {
-      setLoading(true);
-
-      const newLikelihoodOptions = [...(assessmentConfig?.likelihoodOptions || [])];
-
-      if (editingItem) {
-        // Edit existing
-        const index = newLikelihoodOptions.findIndex(opt => opt.value === editingItem.value);
-        if (index !== -1) {
-          newLikelihoodOptions[index] = {
-            value: parseInt(likelihoodForm.value),
-            label: likelihoodForm.label
-          };
-        }
-      } else {
-        // Add new
-        newLikelihoodOptions.push({
-          value: parseInt(likelihoodForm.value),
-          label: likelihoodForm.label
-        });
-        newLikelihoodOptions.sort((a, b) => a.value - b.value);
-      }
-
-      // Update Firestore
-      await updateDoc(doc(db, 'risk_assessment_config', 'default'), {
-        likelihoodOptions: newLikelihoodOptions,
-        lastUpdated: new Date().toISOString()
-      });
-
-      // Update context secara langsung
-      updateContextConfig({ likelihoodOptions: newLikelihoodOptions });
-
-      showSnackbar('Likelihood option berhasil disimpan! Perubahan akan terlihat langsung.', 'success');
-      setOpenLikelihoodDialog(false);
-      resetLikelihoodForm();
-    } catch (error) {
-      showSnackbar('Error menyimpan likelihood option: ' + error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
+  const handleSaveLikelihood = () => {
+    const body = { nilai: parseInt(likelihoodForm.value), label: likelihoodForm.label.replace(/^\d+\s*-\s*/, '') };
+    return jalankan(
+      () => (editingItem ? api.patch(`/skala-kemungkinan/${editingItem.id}`, body) : api.post('/skala-kemungkinan', body)),
+      'Likelihood option berhasil disimpan!',
+      'Error menyimpan likelihood option',
+      () => { setOpenLikelihoodDialog(false); resetLikelihoodForm(); }
+    );
   };
 
-  // Handle save impact option
-  const handleSaveImpact = async () => {
-    try {
-      setLoading(true);
-
-      const newImpactOptions = [...(assessmentConfig?.impactOptions || [])];
-
-      if (editingItem) {
-        // Edit existing
-        const index = newImpactOptions.findIndex(opt => opt.value === editingItem.value);
-        if (index !== -1) {
-          newImpactOptions[index] = {
-            value: parseInt(impactForm.value),
-            label: impactForm.label
-          };
+  // Impact option = label skala dampak untuk satu nilai, berlaku di semua kategori dampak.
+  const handleSaveImpact = () => {
+    const nilai = parseInt(impactForm.value);
+    const label = impactForm.label.replace(/^\d+\s*-\s*/, '');
+    const kriteria = assessmentConfig?.impactCriteria || [];
+    return jalankan(
+      async () => {
+        if (editingItem) {
+          for (const k of kriteria.filter((k) => k.nilai === editingItem.value))
+            await api.patch(`/skala-dampak/${k.id}`, { nilai, label });
+        } else {
+          const kategori = [...new Set(kriteria.map((k) => k.kategori))];
+          for (const kat of kategori.length ? kategori : ['OPERASIONAL'])
+            await api.post('/skala-dampak', { kategori: kat, nilai, label });
         }
-      } else {
-        // Add new
-        newImpactOptions.push({
-          value: parseInt(impactForm.value),
-          label: impactForm.label
-        });
-        newImpactOptions.sort((a, b) => a.value - b.value);
-      }
-
-      // Update Firestore
-      await updateDoc(doc(db, 'risk_assessment_config', 'default'), {
-        impactOptions: newImpactOptions,
-        lastUpdated: new Date().toISOString()
-      });
-
-      // Update context secara langsung
-      updateContextConfig({ impactOptions: newImpactOptions });
-
-      showSnackbar('Impact option berhasil disimpan! Perubahan akan terlihat langsung.', 'success');
-      setOpenImpactDialog(false);
-      resetImpactForm();
-    } catch (error) {
-      showSnackbar('Error menyimpan impact option: ' + error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
+      },
+      'Impact option berhasil disimpan!',
+      'Error menyimpan impact option',
+      () => { setOpenImpactDialog(false); resetImpactForm(); }
+    );
   };
 
   // Handle save risk level
-  const handleSaveRiskLevel = async () => {
-    try {
-      setLoading(true);
-
-      const newRiskLevels = [...(assessmentConfig?.riskLevels || [])];
-
-      if (editingRiskLevel) {
-        // Edit existing
-        const index = newRiskLevels.findIndex(level =>
-          level.min === editingRiskLevel.min && level.max === editingRiskLevel.max
-        );
-        if (index !== -1) {
-          newRiskLevels[index] = {
-            min: parseInt(riskLevelForm.min),
-            max: parseInt(riskLevelForm.max),
-            label: riskLevelForm.label,
-            color: riskLevelForm.color
-          };
-        }
-      } else {
-        // Add new
-        newRiskLevels.push({
-          min: parseInt(riskLevelForm.min),
-          max: parseInt(riskLevelForm.max),
-          label: riskLevelForm.label,
-          color: riskLevelForm.color
-        });
-        newRiskLevels.sort((a, b) => a.min - b.min);
-      }
-
-      // Update Firestore
-      await updateDoc(doc(db, 'risk_assessment_config', 'default'), {
-        riskLevels: newRiskLevels,
-        lastUpdated: new Date().toISOString()
-      });
-
-      // Update context secara langsung
-      updateContextConfig({ riskLevels: newRiskLevels });
-
-      showSnackbar('Risk level berhasil disimpan! Perubahan akan terlihat langsung.', 'success');
-      setOpenRiskLevelDialog(false);
-      resetRiskLevelForm();
-    } catch (error) {
-      showSnackbar('Error menyimpan risk level: ' + error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
+  const handleSaveRiskLevel = () => {
+    const body = {
+      nama: riskLevelForm.label,
+      skor_min: parseInt(riskLevelForm.min),
+      skor_maks: parseInt(riskLevelForm.max),
+      warna: riskLevelForm.color
+    };
+    return jalankan(
+      () => (editingRiskLevel ? api.patch(`/level-risiko/${editingRiskLevel.id}`, body) : api.post('/level-risiko', body)),
+      'Risk level berhasil disimpan!',
+      'Error menyimpan risk level',
+      () => { setOpenRiskLevelDialog(false); resetRiskLevelForm(); }
+    );
   };
 
   // Handle edit likelihood
   const handleEditLikelihood = (option) => {
     setEditingItem(option);
-    setLikelihoodForm({ value: option.value, label: option.label });
+    setLikelihoodForm({ value: option.value, label: option.rawLabel ?? option.label });
     setOpenLikelihoodDialog(true);
   };
 
   // Handle edit impact
   const handleEditImpact = (option) => {
     setEditingItem(option);
-    setImpactForm({ value: option.value, label: option.label });
+    setImpactForm({ value: option.value, label: option.rawLabel ?? option.label });
     setOpenImpactDialog(true);
   };
 
@@ -316,80 +211,27 @@ const Configuration = () => {
   };
 
   // Handle delete likelihood
-  const handleDeleteLikelihood = async (value) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus likelihood option ini?')) {
-      try {
-        setLoading(true);
-        const newLikelihoodOptions = assessmentConfig?.likelihoodOptions?.filter(opt => opt.value !== value) || [];
-
-        // Update Firestore
-        await updateDoc(doc(db, 'risk_assessment_config', 'default'), {
-          likelihoodOptions: newLikelihoodOptions,
-          lastUpdated: new Date().toISOString()
-        });
-
-        // Update context secara langsung
-        updateContextConfig({ likelihoodOptions: newLikelihoodOptions });
-
-        showSnackbar('Likelihood option berhasil dihapus!', 'success');
-      } catch (error) {
-        showSnackbar('Error menghapus likelihood option: ' + error.message, 'error');
-      } finally {
-        setLoading(false);
-      }
-    }
+  const handleDeleteLikelihood = (value) => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus likelihood option ini?')) return;
+    const item = assessmentConfig?.likelihoodOptions?.find((o) => o.value === value);
+    return jalankan(() => api.delete(`/skala-kemungkinan/${item.id}`), 'Likelihood option berhasil dihapus!', 'Error menghapus likelihood option');
   };
 
-  // Handle delete impact
-  const handleDeleteImpact = async (value) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus impact option ini?')) {
-      try {
-        setLoading(true);
-        const newImpactOptions = assessmentConfig?.impactOptions?.filter(opt => opt.value !== value) || [];
-
-        // Update Firestore
-        await updateDoc(doc(db, 'risk_assessment_config', 'default'), {
-          impactOptions: newImpactOptions,
-          lastUpdated: new Date().toISOString()
-        });
-
-        // Update context secara langsung
-        updateContextConfig({ impactOptions: newImpactOptions });
-
-        showSnackbar('Impact option berhasil dihapus!', 'success');
-      } catch (error) {
-        showSnackbar('Error menghapus impact option: ' + error.message, 'error');
-      } finally {
-        setLoading(false);
-      }
-    }
+  // Handle delete impact (semua kategori untuk nilai tersebut)
+  const handleDeleteImpact = (value) => {
+    if (!window.confirm('Hapus impact option ini? Kriteria dampak nilai ini di semua kategori ikut terhapus.')) return;
+    const ids = (assessmentConfig?.impactCriteria || []).filter((k) => k.nilai === value).map((k) => k.id);
+    return jalankan(
+      async () => { for (const id of ids) await api.delete(`/skala-dampak/${id}`); },
+      'Impact option berhasil dihapus!',
+      'Error menghapus impact option'
+    );
   };
 
   // Handle delete risk level
-  const handleDeleteRiskLevel = async (level) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus risk level ini?')) {
-      try {
-        setLoading(true);
-        const newRiskLevels = assessmentConfig?.riskLevels?.filter(l =>
-          !(l.min === level.min && l.max === level.max)
-        ) || [];
-
-        // Update Firestore
-        await updateDoc(doc(db, 'risk_assessment_config', 'default'), {
-          riskLevels: newRiskLevels,
-          lastUpdated: new Date().toISOString()
-        });
-
-        // Update context secara langsung
-        updateContextConfig({ riskLevels: newRiskLevels });
-
-        showSnackbar('Risk level berhasil dihapus!', 'success');
-      } catch (error) {
-        showSnackbar('Error menghapus risk level: ' + error.message, 'error');
-      } finally {
-        setLoading(false);
-      }
-    }
+  const handleDeleteRiskLevel = (level) => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus risk level ini?')) return;
+    return jalankan(() => api.delete(`/level-risiko/${level.id}`), 'Risk level berhasil dihapus!', 'Error menghapus risk level');
   };
 
   // Manual refresh button

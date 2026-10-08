@@ -181,7 +181,7 @@ model unit {
   direktorat              direktorat? @relation(fields: [direktorat_id], references: [id])
   // Sub-unit (bagian/seksi di bawah unit atau cabang).
   parent_id               Int?
-  parent                  unit?       @relation("sub_unit", fields: [parent_id], references: [id])
+  parent                  unit?       @relation("sub_unit", fields: [parent_id], references: [id], onDelete: Restrict)
   sub_unit                unit[]      @relation("sub_unit")
   adalah_pengelola_risiko Boolean     @default(false)
   aktif                   Boolean     @default(true)
@@ -324,6 +324,7 @@ model level_selera_risiko {
   nama        String   @db.VarChar(100)
   warna       String   @db.VarChar(20)
   deskripsi   String?  @db.Text
+  tindakan    String?  @db.Text
   urutan      Int
   dibuat_pada DateTime @default(now())
   diubah_pada DateTime @updatedAt
