@@ -121,6 +121,11 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             badge: 'home'
           },
           {
+            text: 'Dashboard Korporat',
+            icon: <Building2 size={20} />,
+            path: '/dashboard-korporat'
+          },
+          {
             text: 'Executive Dashboard',
             icon: <BarChart3 size={20} />,
             path: '/executive-dashboard'
@@ -271,6 +276,11 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             path: '/dashboard'
           },
           {
+            text: 'Dashboard Korporat',
+            icon: <Building2 size={20} />,
+            path: '/dashboard-korporat'
+          },
+          {
             text: 'Executive Dashboard',
             icon: <BarChart3 size={20} />,
             path: '/executive-dashboard'
@@ -397,6 +407,11 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             text: 'Dashboard',
             icon: <LayoutDashboard size={20} />,
             path: '/dashboard'
+          },
+          {
+            text: 'Dashboard Korporat',
+            icon: <Building2 size={20} />,
+            path: '/dashboard-korporat'
           },
           {
             text: 'Executive Dashboard',

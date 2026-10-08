@@ -15,6 +15,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const ExecutiveDashboard = lazy(() => import('./pages/ExecutiveDashboard'));
 const KRIMonitoring = lazy(() => import('./pages/KRIMonitoring'));
 const Organization = lazy(() => import('./pages/Organization'));
+const DashboardKorporat = lazy(() => import('./pages/DashboardKorporat'));
 const RisikoUtama = lazy(() => import('./pages/RisikoUtama'));
 const PemantauanBulanan = lazy(() => import('./pages/PemantauanBulanan'));
 const OrganizationStructure = lazy(() => import('./components/OrganizationStructure'));
@@ -64,6 +65,11 @@ export default function AuthenticatedApp() {
                 <Route path="/executive-dashboard" element={
                   <RoleProtectedRoute allowedRoles={EXECUTIVE_PAGE_ROLES}>
                     <ExecutiveDashboard />
+                  </RoleProtectedRoute>
+                } />
+                <Route path="/dashboard-korporat" element={
+                  <RoleProtectedRoute allowedRoles={EXECUTIVE_PAGE_ROLES}>
+                    <DashboardKorporat />
                   </RoleProtectedRoute>
                 } />
                 <Route path="/kri-monitoring" element={<KRIMonitoring />} />
