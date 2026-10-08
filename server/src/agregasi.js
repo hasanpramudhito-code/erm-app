@@ -7,8 +7,8 @@ const { hitungSkor } = require('./skor');
 const router = express.Router();
 router.use(wajibLogin, wajibPeran('ADMIN_SISTEM', 'DIREKSI', 'PENGELOLA_RISIKO', 'KEPATUHAN'));
 
-// ASUMSI: "jauh di atas modus" = level unit >= 2 tingkat di atas level nilai utama.
-const SELISIH_LEVEL_PENANDA = 2;
+// Penanda (handoff 6.3): unit dengan level lebih tinggi dari level nilai utama (keputusan pengguna 2026-10-09).
+const SELISIH_LEVEL_PENANDA = 1;
 
 // Modus satu dimensi; seri diambil nilai tertinggi.
 function modus(nilai) {

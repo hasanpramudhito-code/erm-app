@@ -33,6 +33,12 @@ test('nilai utama = sel paling sering', () => {
   assert.deepEqual(h.penanda.map((p) => p.unit), ['C']);
 });
 
+test('penanda: cukup satu level di atas nilai utama; level sama tidak ditandai', () => {
+  // Nilai utama (2,2)=4 Rendah. D (2,3)=6 Sedang -> ditandai; E (1,5)=5 Rendah -> tidak.
+  const h = agregasi([e('A', 2, 2), e('B', 2, 2), e('D', 2, 3), e('E', 1, 5)], ctx);
+  assert.deepEqual(h.penanda.map((p) => p.unit), ['D']);
+});
+
 test('seri frekuensi -> skor terbesar; masih seri -> dampak terbesar', () => {
   // (2,3)=6 vs (3,2)=6 vs (1,4)=4: skor seri 6 -> dampak terbesar (2,3).
   const h = agregasi([e('A', 2, 3), e('B', 3, 2), e('C', 1, 4)], ctx);
