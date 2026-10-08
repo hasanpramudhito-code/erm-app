@@ -225,6 +225,7 @@ model pengguna {
   hasil_pengujian     hasil_pengujian[]
   defisiensi          defisiensi[]
   respons_budaya      respons_budaya[]
+  sesi                sesi[]
   dibuat_pada         DateTime              @default(now())
   diubah_pada         DateTime              @updatedAt
 
@@ -912,4 +913,21 @@ model koneksi_api {
   jumlah_error           Int       @default(0)
   dibuat_pada            DateTime  @default(now())
   diubah_pada            DateTime  @updatedAt
+}
+
+// ============ K. SESI LOGIN ============
+
+model sesi {
+  id          Int      @id @default(autoincrement())
+  // SHA-256 dari token di cookie; token mentah tidak pernah disimpan.
+  token_hash  String   @unique @db.Char(64)
+  pengguna_id Int
+  pengguna    pengguna @relation(fields: [pengguna_id], references: [id], onDelete: Cascade)
+  kedaluwarsa DateTime
+  alamat_ip   String?  @db.VarChar(45)
+  dibuat_pada DateTime @default(now())
+  diubah_pada DateTime @updatedAt
+
+  @@index([pengguna_id])
+  @@index([kedaluwarsa])
 }

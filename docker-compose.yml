@@ -1,0 +1,37 @@
+# Instalasi on-premise: salin .env.docker.example menjadi .env, isi password, lalu `docker compose up -d`.
+# Seed pertama kali: docker compose exec app npm run db:seed
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: erm
+      MYSQL_USER: erm
+      MYSQL_PASSWORD: ${DB_PASSWORD:?isi DB_PASSWORD di .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?isi DB_ROOT_PASSWORD di .env}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql://erm:${DB_PASSWORD}@db:3306/erm
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+    volumes:
+      - unggahan:/data/unggahan
+    # ponytail: tanpa HTTPS. Pasang reverse proxy (nginx/IIS milik klien) dengan sertifikat di depan port ini sebelum dibuka ke jaringan luar.
+    ports:
+      - "${APP_PORT:-8080}:3001"
+
+volumes:
+  db_data:
+  unggahan:
