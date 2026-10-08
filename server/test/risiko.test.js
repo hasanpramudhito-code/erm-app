@@ -78,3 +78,31 @@ test('terkunci setelah diajukan: tidak bisa ubah/hapus', async () => {
   const riwayat = await req('GET', `/risiko/${r.id}/riwayat`);
   assert.ok(riwayat.body.some((x) => x.aksi === 'BUAT'));
 });
+
+test('mitigasi & KRI ikut tersimpan lewat risiko, sinkron by id', async () => {
+  const buat = await req('POST', '/risiko', {
+    periode_id: periode.id, unit_id: unitA.id, kode: `MK-${sufiks}`, nama: 'Risiko dgn mitigasi',
+    mitigasi: [{ uraian: 'Ganti pipa', jenis: 'MITIGASI', anggaran: 1000, target_waktu: '2026-12-31' }, { uraian: 'Asuransi', jenis: 'TRANSFER' }],
+    kri: [{ nama: 'Tingkat kebocoran', satuan: '%', ambang_hijau: 10, ambang_kuning: 20, ambang_merah: 30 }],
+  });
+  assert.equal(buat.status, 201, JSON.stringify(buat.body));
+  assert.equal(buat.body.mitigasi.length, 2);
+  assert.equal(buat.body.kri.length, 1);
+
+  // Ubah mitigasi #1, hapus #2, tambah baru; KRI tidak dikirim = tidak berubah.
+  const [m1] = buat.body.mitigasi;
+  const ubah = await req('PATCH', `/risiko/${buat.body.id}`, { mitigasi: [{ id: m1.id, uraian: 'Ganti pipa tahap 1' }, { uraian: 'Pelatihan' }] });
+  assert.equal(ubah.status, 200, JSON.stringify(ubah.body));
+  assert.deepEqual(ubah.body.mitigasi.map((m) => m.uraian), ['Ganti pipa tahap 1', 'Pelatihan']);
+  assert.equal(ubah.body.mitigasi[0].id, m1.id);
+  assert.equal(ubah.body.kri.length, 1);
+
+  // Validasi
+  assert.equal((await req('PATCH', `/risiko/${buat.body.id}`, { kri: [{ nama: 'x', ambang_hijau: 30, ambang_kuning: 20, ambang_merah: 10 }] })).status, 400);
+  assert.equal((await req('PATCH', `/risiko/${buat.body.id}`, { mitigasi: [{ uraian: '' }] })).status, 400);
+  assert.equal((await req('PATCH', `/risiko/${buat.body.id}`, { mitigasi: [{ id: 999999, uraian: 'x' }] })).status, 400);
+
+  // Mitigasi yang sudah punya realisasi tidak boleh dihapus.
+  await prisma.realisasi_mitigasi.create({ data: { mitigasi_id: m1.id, tanggal: new Date(), uraian: 'progres', progres: 10 } });
+  assert.equal((await req('PATCH', `/risiko/${buat.body.id}`, { mitigasi: [] })).status, 400);
+});

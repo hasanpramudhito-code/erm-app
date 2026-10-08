@@ -46,7 +46,9 @@ import {
   InputBase,
   Popper,
   Autocomplete,
-  ListSubheader
+  ListSubheader,
+  Tabs,
+  Tab
 } from '@mui/material';
 import {
   Plus,
@@ -78,6 +80,8 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { muatRisiko, keBodyApi, usePeriode, LABEL_PERSETUJUAN } from '../services/risiko';
+import MitigasiEditor from '../components/risk/MitigasiEditor';
+import KriEditor from '../components/risk/KriEditor';
 import { useAuth } from '../contexts/AuthContext';
 import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
 import { useLocation } from 'react-router-dom';
@@ -107,6 +111,7 @@ const RiskRegister = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [codeError, setCodeError] = useState('');
   const [expandedRows, setExpandedRows] = useState({});
+  const [tabForm, setTabForm] = useState(0);
 
   // State untuk search di dropdown
   const [riskTypeSearch, setRiskTypeSearch] = useState('');
@@ -215,10 +220,9 @@ const RiskRegister = () => {
     residualProbability: '',
     residualImpact: '',
     residualRiskQuantification: '',
-    additionalControls: '',
-    controlCost: '',
     responsiblePersonId: '',
-    targetCompletion: '',
+    mitigations: [],
+    kris: [],
     status: 'Open - Baru Teridentifikasi'
   });
 
@@ -652,14 +656,14 @@ const RiskRegister = () => {
       residualProbability: '',
       residualImpact: '',
       residualRiskQuantification: '',
-      additionalControls: '',
-      controlCost: '',
       responsiblePersonId: '',
-      targetCompletion: '',
+      mitigations: [],
+      kris: [],
       status: 'Open - Baru Teridentifikasi',
       department: userData?.unit_id || ''
     });
     setCodeError('');
+    setTabForm(0);
     setRiskTypeSearch('');
     setDepartmentSearch('');
   };
@@ -701,10 +705,9 @@ const RiskRegister = () => {
       residualProbability: risk.residualProbability || '',
       residualImpact: risk.residualImpact || '',
       residualRiskQuantification: risk.residualRiskQuantification ?? '',
-      additionalControls: risk.additionalControls || '',
-      controlCost: risk.controlCost ?? '',
       responsiblePersonId: risk.responsiblePersonId || '',
-      targetCompletion: risk.targetCompletion || '',
+      mitigations: risk.mitigations,
+      kris: risk.kris,
       status: risk.status || 'Open - Baru Teridentifikasi'
     });
     setOpenDialog(true);
@@ -1984,10 +1987,18 @@ const RiskRegister = () => {
         </DialogTitle>
         <DialogContent dividers>
           <Box sx={{ mb: 3 }}>
+            <Tabs value={tabForm} onChange={(e, v) => setTabForm(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+              <Tab label="1. Identifikasi" />
+              <Tab label="2. Penilaian" />
+              <Tab label={`3. Mitigasi (${formData.mitigations.length})`} />
+              <Tab label={`4. KRI (${formData.kris.length})`} />
+            </Tabs>
+
+            <Box hidden={tabForm !== 0}>
             {/* Section 1: Identifikasi Risiko */}
             <Paper sx={{ p: 3, mb: 3, backgroundColor: 'grey.50' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <FileText size={18} /> 1. Identifikasi Risiko
+                <FileText size={18} /> Identifikasi Risiko
               </Typography>
               <Grid container spacing={2}>
                 {/* Kode Risiko */}
@@ -2155,10 +2166,13 @@ const RiskRegister = () => {
               </Grid>
             </Paper>
 
+            </Box>
+
+            <Box hidden={tabForm !== 1}>
             {/* Section 2: Penilaian Risiko Inheren */}
             <Paper sx={{ p: 3, mb: 3, backgroundColor: 'grey.50' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <BarChart3 size={18} /> 2. Penilaian Risiko Inheren (Awal)
+                <BarChart3 size={18} /> Penilaian Risiko Inheren
               </Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
@@ -2228,7 +2242,7 @@ const RiskRegister = () => {
             {/* Section 3: Kontrol dan Penilaian Residual */}
             <Paper sx={{ p: 3, mb: 3, backgroundColor: 'grey.50' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Building2 size={18} /> 3. Kontrol dan Penilaian Residual
+                <Building2 size={18} /> Kontrol yang Ada
               </Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12}>
@@ -2264,7 +2278,7 @@ const RiskRegister = () => {
             {/* Section 4: Penilaian Risiko Residual */}
             <Paper sx={{ p: 3, mb: 3, backgroundColor: 'grey.50' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <BarChart3 size={18} /> 4. Penilaian Risiko Residual (bulan berjalan)
+                <BarChart3 size={18} /> Penilaian Risiko Residual (bulan berjalan)
               </Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
@@ -2331,59 +2345,23 @@ const RiskRegister = () => {
               </Grid>
             </Paper>
 
-            {/* Section 5: Rencana Aksi */}
-            <Paper sx={{ p: 3, backgroundColor: 'grey.50' }}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <User size={18} /> 5. Rencana Aksi
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Pengendalian Tambahan yang Diperlukan"
-                    multiline
-                    rows={3}
-                    value={formData.additionalControls}
-                    onChange={(e) => setFormData({ ...formData, additionalControls: e.target.value })}
-                    placeholder="Rencana pengendalian tambahan untuk mengurangi risiko..."
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Kuantifikasi Biaya Pengendalian Tambahan"
-                    type="number"
-                    value={formData.controlCost}
-                    onChange={(e) => setFormData({ ...formData, controlCost: e.target.value })}
-                    placeholder="dalam nilai rupiah atau lainnya"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <DollarSign size={18} />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Target Selesai"
-                    type="date"
-                    InputLabelProps={{ shrink: true }}
-                    value={formData.targetCompletion}
-                    onChange={(e) => setFormData({ ...formData, targetCompletion: e.target.value })}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Clock size={18} />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </Grid>
-              </Grid>
-            </Paper>
+            </Box>
+
+            <Box hidden={tabForm !== 2}>
+              <MitigasiEditor
+                value={formData.mitigations}
+                onChange={(mitigations) => setFormData((f) => ({ ...f, mitigations }))}
+                pengguna={daftarPengguna}
+              />
+            </Box>
+
+            <Box hidden={tabForm !== 3}>
+              <KriEditor
+                value={formData.kris}
+                onChange={(kris) => setFormData((f) => ({ ...f, kris }))}
+                pengguna={daftarPengguna}
+              />
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>

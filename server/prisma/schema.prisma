@@ -187,7 +187,6 @@ model unit {
   aktif                   Boolean     @default(true)
   pengguna                pengguna[]
   risiko                  risiko[]
-  kri                     kri[]
   insiden                 insiden[]
   kontrol                 kontrol[]
   dibuat_pada             DateTime    @default(now())
@@ -428,12 +427,9 @@ model risiko {
   penanggung_jawab      pengguna?            @relation(fields: [penanggung_jawab_id], references: [id])
   kontrol_eksisting     String?              @db.Text
   efektivitas_kontrol   String?              @db.VarChar(50)
-  kontrol_tambahan      String?              @db.Text
-  biaya_kontrol         Decimal?             @db.Decimal(18, 2)
   kuantifikasi_inheren  Decimal?             @db.Decimal(18, 2)
   kuantifikasi_residual Decimal?             @db.Decimal(18, 2)
   prioritas_penanganan  Prioritas?
-  target_selesai        DateTime?            @db.Date
   catatan_penilaian     String?              @db.Text
   penyebab              risiko_penyebab[]
   dampak                risiko_dampak[]
@@ -656,14 +652,12 @@ model lampiran {
 
 model kri {
   id               Int              @id @default(autoincrement())
-  kode             String?          @unique @db.VarChar(30)
+  kode             String?          @db.VarChar(30)
   nama             String           @db.VarChar(255)
   deskripsi        String?          @db.Text
   kategori         String?          @db.VarChar(100)
-  unit_id          Int?
-  unit             unit?            @relation(fields: [unit_id], references: [id])
-  risiko_id        Int?
-  risiko           risiko?          @relation(fields: [risiko_id], references: [id])
+  risiko_id        Int
+  risiko           risiko           @relation(fields: [risiko_id], references: [id], onDelete: Cascade)
   satuan           String?          @db.VarChar(50)
   jenis_metrik     String?          @db.VarChar(30)
   // MANUAL, JUMLAH_RISIKO, PROGRES_MITIGASI, JUMLAH_RISIKO_TINGGI, MITIGASI_TERLAMBAT, JUMLAH_INSIDEN, API
@@ -686,7 +680,6 @@ model kri {
   dibuat_pada      DateTime         @default(now())
   diubah_pada      DateTime         @updatedAt
 
-  @@index([unit_id])
   @@index([risiko_id])
 }
 

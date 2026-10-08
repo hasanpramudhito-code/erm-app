@@ -26,6 +26,12 @@ export const LABEL_PRIORITAS = {
   RENDAH: 'Low - Rendah (Penanganan < 3 Bulan)',
   PEMANTAUAN: 'Monitor - Pantau Saja',
 };
+export const LABEL_JENIS_MITIGASI = { MITIGASI: 'Mitigasi (kurangi)', HINDARI: 'Hindari', TRANSFER: 'Transfer', TERIMA: 'Terima' };
+export const LABEL_STATUS_MITIGASI = { DIRENCANAKAN: 'Direncanakan', BERJALAN: 'Berjalan', SELESAI: 'Selesai', TERLAMBAT: 'Terlambat', DIBATALKAN: 'Dibatalkan' };
+export const LABEL_PRIORITAS_SINGKAT = { KRITIS: 'Kritis', TINGGI: 'Tinggi', SEDANG: 'Sedang', RENDAH: 'Rendah', PEMANTAUAN: 'Pemantauan' };
+export const LABEL_ARAH = { LEBIH_RENDAH: 'Makin rendah makin baik', LEBIH_TINGGI: 'Makin tinggi makin baik' };
+export const LABEL_FREKUENSI = { HARIAN: 'Harian', MINGGUAN: 'Mingguan', BULANAN: 'Bulanan', TRIWULANAN: 'Triwulanan', SEMESTERAN: 'Semesteran', TAHUNAN: 'Tahunan' };
+export const LABEL_STATUS_KRI = { NONAKTIF: 'Belum ada nilai', HIJAU: 'Hijau', KUNING: 'Kuning', MERAH: 'Merah' };
 export const LABEL_SUMBER = { INTERNAL: 'Internal', EKSTERNAL: 'External' };
 export const LABEL_PERSETUJUAN = {
   DRAF: 'Draf',
@@ -86,11 +92,39 @@ export function keBentukLama(r) {
     residualLikelihood: residual?.kemungkinan_residual,
     existingControls: r.kontrol_eksisting || '',
     controlEffectiveness: r.efektivitas_kontrol || '',
-    additionalControls: r.kontrol_tambahan || '',
+    mitigations: (r.mitigasi || []).map((m) => ({
+      id: m.id,
+      uraian: m.uraian,
+      jenis: m.jenis,
+      penanggung_jawab_id: m.penanggung_jawab_id || '',
+      penanggung_jawab: m.penanggung_jawab?.nama || '',
+      target_waktu: m.target_waktu ? m.target_waktu.slice(0, 10) : '',
+      anggaran: m.anggaran ?? '',
+      prioritas: m.prioritas,
+      status: m.status,
+      progres: m.progres,
+    })),
+    // Ringkasan mitigasi untuk ekspor & tabel (kolom lama).
+    additionalControls: (r.mitigasi || []).map((m) => m.uraian).join('; '),
+    controlCost: (r.mitigasi || []).reduce((t, m) => t + Number(m.anggaran || 0), 0) || '',
+    targetCompletion: (r.mitigasi || []).map((m) => m.target_waktu?.slice(0, 10)).filter(Boolean).sort().pop() || '',
+    kris: (r.kri || []).map((k) => ({
+      id: k.id,
+      nama: k.nama,
+      deskripsi: k.deskripsi || '',
+      satuan: k.satuan || '',
+      ambang_hijau: k.ambang_hijau,
+      ambang_kuning: k.ambang_kuning,
+      ambang_merah: k.ambang_merah,
+      arah_target: k.arah_target,
+      frekuensi: k.frekuensi,
+      pemilik_id: k.pemilik_id || '',
+      pemilik: k.pemilik?.nama || '',
+      status: k.status,
+      nilai_sekarang: k.nilai_sekarang,
+    })),
     inherentRiskQuantification: angkaAtauKosong(r.kuantifikasi_inheren),
     residualRiskQuantification: angkaAtauKosong(r.kuantifikasi_residual),
-    controlCost: angkaAtauKosong(r.biaya_kontrol),
-    targetCompletion: r.target_selesai ? r.target_selesai.slice(0, 10) : '',
     treatmentPriority: LABEL_PRIORITAS[r.prioritas_penanganan] || '',
     assessmentNotes: r.catatan_penilaian || '',
     createdAt: r.dibuat_pada,
@@ -116,11 +150,12 @@ export function keBodyApi(f) {
     penanggung_jawab_id: f.responsiblePersonId || null,
     kontrol_eksisting: f.existingControls,
     efektivitas_kontrol: f.controlEffectiveness,
-    kontrol_tambahan: f.additionalControls,
     kuantifikasi_inheren: f.inherentRiskQuantification === '' ? null : f.inherentRiskQuantification,
     kuantifikasi_residual: f.residualRiskQuantification === '' ? null : f.residualRiskQuantification,
-    biaya_kontrol: f.controlCost === '' ? null : f.controlCost,
-    target_selesai: f.targetCompletion || null,
+    mitigasi: (f.mitigations || []).map(({ id, uraian, jenis, penanggung_jawab_id, target_waktu, anggaran, prioritas }) =>
+      ({ id, uraian, jenis, penanggung_jawab_id: penanggung_jawab_id || null, target_waktu: target_waktu || null, anggaran: anggaran === '' ? null : anggaran, prioritas })),
+    kri: (f.kris || []).map(({ id, nama, deskripsi, satuan, ambang_hijau, ambang_kuning, ambang_merah, arah_target, frekuensi, pemilik_id }) =>
+      ({ id, nama, deskripsi, satuan, ambang_hijau, ambang_kuning, ambang_merah, arah_target, frekuensi, pemilik_id: pemilik_id || null })),
     prioritas_penanganan: KODE_PRIORITAS[f.treatmentPriority] || null,
     catatan_penilaian: f.assessmentNotes,
     inheren: pasangan(f.initialProbability, f.initialImpact),

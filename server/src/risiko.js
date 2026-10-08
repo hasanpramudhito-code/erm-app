@@ -16,6 +16,9 @@ const ENUM = {
   sumber: ['INTERNAL', 'EKSTERNAL'],
   status: ['BARU', 'DALAM_PENILAIAN', 'DINILAI', 'DALAM_PENANGANAN', 'DIPANTAU', 'DITUTUP', 'DITOLAK'],
   prioritas: ['PEMANTAUAN', 'RENDAH', 'SEDANG', 'TINGGI', 'KRITIS'],
+  jenisMitigasi: ['MITIGASI', 'HINDARI', 'TRANSFER', 'TERIMA'],
+  arah: ['LEBIH_RENDAH', 'LEBIH_TINGGI'],
+  frekuensi: ['HARIAN', 'MINGGUAN', 'BULANAN', 'TRIWULANAN', 'SEMESTERAN', 'TAHUNAN'],
 };
 
 const sertakan = {
@@ -27,6 +30,8 @@ const sertakan = {
   penyebab: { select: { id: true, uraian: true, pustaka_penyebab_id: true } },
   dampak: { select: { id: true, uraian: true, pustaka_dampak_id: true } },
   penilaian: { include: { level: { select: { id: true, nama: true, warna: true } } } },
+  mitigasi: { orderBy: { id: 'asc' }, include: { penanggung_jawab: { select: { id: true, nama: true } } } },
+  kri: { orderBy: { id: 'asc' }, include: { pemilik: { select: { id: true, nama: true } } } },
   pemantauan_bulanan: {
     orderBy: [{ tahun: 'desc' }, { bulan: 'desc' }],
     take: 1,
@@ -57,6 +62,87 @@ const daftarUraian = (arr, kunciPustaka) =>
     .map((x) => ({ uraian: String(x?.uraian ?? '').trim(), [kunciPustaka]: x?.[kunciPustaka] ? Number(x[kunciPustaka]) : null }))
     .filter((x) => x.uraian);
 
+const cekPengguna = async (id, nama) =>
+  id && !(await prisma.pengguna.findUnique({ where: { id } })) ? `${nama} tidak ditemukan` : null;
+
+// Mitigasi di register: hanya rencana. Status & progres diisi saat pemantauan.
+async function bersihkanMitigasi(arr) {
+  if (!Array.isArray(arr)) return { error: 'mitigasi harus daftar' };
+  const daftar = [];
+  for (const [i, m] of arr.entries()) {
+    const n = `Mitigasi #${i + 1}`;
+    const x = {
+      id: m.id ? Number(m.id) : undefined,
+      uraian: String(m.uraian ?? '').trim(),
+      jenis: m.jenis || 'MITIGASI',
+      penanggung_jawab_id: m.penanggung_jawab_id ? Number(m.penanggung_jawab_id) : null,
+      target_waktu: m.target_waktu ? new Date(m.target_waktu) : null,
+      anggaran: m.anggaran === '' || m.anggaran == null ? null : Number(m.anggaran),
+      prioritas: m.prioritas || 'SEDANG',
+    };
+    if (!x.uraian) return { error: `${n}: uraian wajib diisi` };
+    if (!ENUM.jenisMitigasi.includes(x.jenis)) return { error: `${n}: jenis tidak valid` };
+    if (!ENUM.prioritas.includes(x.prioritas)) return { error: `${n}: prioritas tidak valid` };
+    if (x.target_waktu && isNaN(x.target_waktu)) return { error: `${n}: target waktu bukan tanggal` };
+    if (x.anggaran !== null && !(Number.isFinite(x.anggaran) && x.anggaran >= 0)) return { error: `${n}: anggaran harus angka >= 0` };
+    const e = await cekPengguna(x.penanggung_jawab_id, `${n}: penanggung jawab`);
+    if (e) return { error: e };
+    daftar.push(x);
+  }
+  return { daftar };
+}
+
+// KRI di register: hanya definisi. Nilai diisi saat pemantauan.
+async function bersihkanKri(arr) {
+  if (!Array.isArray(arr)) return { error: 'kri harus daftar' };
+  const daftar = [];
+  for (const [i, k] of arr.entries()) {
+    const n = `KRI #${i + 1}`;
+    const x = {
+      id: k.id ? Number(k.id) : undefined,
+      nama: String(k.nama ?? '').trim(),
+      deskripsi: String(k.deskripsi ?? '').trim() || null,
+      satuan: String(k.satuan ?? '').trim() || null,
+      ambang_hijau: Number(k.ambang_hijau),
+      ambang_kuning: Number(k.ambang_kuning),
+      ambang_merah: Number(k.ambang_merah),
+      arah_target: k.arah_target || 'LEBIH_RENDAH',
+      frekuensi: k.frekuensi || 'BULANAN',
+      pemilik_id: k.pemilik_id ? Number(k.pemilik_id) : null,
+    };
+    if (!x.nama) return { error: `${n}: nama wajib diisi` };
+    if (![x.ambang_hijau, x.ambang_kuning, x.ambang_merah].every(Number.isFinite)) return { error: `${n}: ketiga ambang wajib angka` };
+    if (!ENUM.arah.includes(x.arah_target)) return { error: `${n}: arah tidak valid` };
+    if (!ENUM.frekuensi.includes(x.frekuensi)) return { error: `${n}: frekuensi tidak valid` };
+    const naik = x.ambang_hijau <= x.ambang_kuning && x.ambang_kuning <= x.ambang_merah;
+    const turun = x.ambang_hijau >= x.ambang_kuning && x.ambang_kuning >= x.ambang_merah;
+    if (x.arah_target === 'LEBIH_RENDAH' && !naik) return { error: `${n}: makin rendah makin baik, jadi ambang hijau <= kuning <= merah` };
+    if (x.arah_target === 'LEBIH_TINGGI' && !turun) return { error: `${n}: makin tinggi makin baik, jadi ambang hijau >= kuning >= merah` };
+    const e = await cekPengguna(x.pemilik_id, `${n}: pemilik`);
+    if (e) return { error: e };
+    daftar.push(x);
+  }
+  return { daftar };
+}
+
+// Sinkronkan daftar anak dengan id: ubah yang ada, buat yang baru, hapus yang tidak dikirim.
+// Baris yang sudah punya riwayat (realisasi/pengukuran) tidak boleh dihapus agar data pemantauan tidak hilang.
+async function sinkron(tx, model, risiko_id, daftar, riwayat, nama) {
+  const lama = await tx[model].findMany({ where: { risiko_id }, select: { id: true, [riwayat]: { select: { id: true }, take: 1 } } });
+  const dikirim = new Set(daftar.filter((x) => x.id).map((x) => x.id));
+  for (const l of lama) {
+    if (dikirim.has(l.id)) continue;
+    if (l[riwayat].length) throw Object.assign(new Error(`${nama} yang sudah punya catatan pemantauan tidak dapat dihapus`), { status: 400, expose: true });
+    await tx[model].delete({ where: { id: l.id } });
+  }
+  const idLama = new Set(lama.map((l) => l.id));
+  for (const { id, ...data } of daftar) {
+    if (id && !idLama.has(id)) throw Object.assign(new Error(`${nama} #${id} bukan milik risiko ini`), { status: 400, expose: true });
+    if (id) await tx[model].update({ where: { id }, data });
+    else await tx[model].create({ data: { ...data, risiko_id } });
+  }
+}
+
 // Validasi body. Kembalikan {data, penyebab, dampak, penilaian, residual} atau {error}.
 async function bersihkan(b, baru, pengguna) {
   const data = {
@@ -65,16 +151,12 @@ async function bersihkan(b, baru, pengguna) {
     deskripsi: teks(b.deskripsi),
     kontrol_eksisting: teks(b.kontrol_eksisting),
     efektivitas_kontrol: teks(b.efektivitas_kontrol),
-    kontrol_tambahan: teks(b.kontrol_tambahan),
     catatan_penilaian: teks(b.catatan_penilaian),
-    biaya_kontrol: uang(b.biaya_kontrol),
     kuantifikasi_inheren: uang(b.kuantifikasi_inheren),
     kuantifikasi_residual: uang(b.kuantifikasi_residual),
-    target_selesai: b.target_selesai === undefined ? undefined : b.target_selesai ? new Date(b.target_selesai) : null,
   };
-  for (const k of ['biaya_kontrol', 'kuantifikasi_inheren', 'kuantifikasi_residual'])
+  for (const k of ['kuantifikasi_inheren', 'kuantifikasi_residual'])
     if (data[k] !== undefined && data[k] !== null && !(Number.isFinite(data[k]) && data[k] >= 0)) return { error: `${k} harus angka >= 0` };
-  if (data.target_selesai && isNaN(data.target_selesai)) return { error: 'target_selesai bukan tanggal' };
 
   for (const [k, daftar, nama] of [['sumber', ENUM.sumber, 'Sumber'], ['status', ENUM.status, 'Status'], ['klasifikasi', ENUM.prioritas, 'Klasifikasi'], ['prioritas_penanganan', ENUM.prioritas, 'Prioritas penanganan']]) {
     const r = pilihan(b[k], daftar, nama);
@@ -113,6 +195,17 @@ async function bersihkan(b, baru, pengguna) {
   if (b.penyebab !== undefined) hasil.penyebab = daftarUraian(b.penyebab, 'pustaka_penyebab_id');
   if (b.dampak !== undefined) hasil.dampak = daftarUraian(b.dampak, 'pustaka_dampak_id');
 
+  if (b.mitigasi !== undefined) {
+    const r = await bersihkanMitigasi(b.mitigasi);
+    if (r.error) return r;
+    hasil.mitigasi = r.daftar;
+  }
+  if (b.kri !== undefined) {
+    const r = await bersihkanKri(b.kri);
+    if (r.error) return r;
+    hasil.kri = r.daftar;
+  }
+
   // Penilaian: inheren sekali per periode; residual disimpan sebagai pemantauan bulan berjalan.
   const ctx = await konteksPenilaian();
   hasil.penilaian = [];
@@ -140,6 +233,8 @@ async function simpanAnak(tx, risiko_id, h) {
     await tx.risiko_dampak.deleteMany({ where: { risiko_id } });
     await tx.risiko_dampak.createMany({ data: h.dampak.map((x) => ({ ...x, risiko_id })) });
   }
+  if (h.mitigasi) await sinkron(tx, 'mitigasi', risiko_id, h.mitigasi, 'realisasi', 'Mitigasi');
+  if (h.kri) await sinkron(tx, 'kri', risiko_id, h.kri, 'pengukuran', 'KRI');
   for (const p of h.penilaian || []) {
     const { jenis, ...nilai } = p;
     await tx.penilaian.upsert({ where: { risiko_id_jenis: { risiko_id, jenis } }, update: nilai, create: { risiko_id, jenis, ...nilai } });
