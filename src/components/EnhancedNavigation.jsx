@@ -52,6 +52,8 @@ import {
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import LoncengNotifikasi from './persetujuan/LoncengNotifikasi';
+import GantiSandi from './GantiSandi';
+import { KeyRound } from 'lucide-react';
 import { useIdentitas } from '../services/identitas';
 
 // Satu daftar menu. `peran` = siapa yang melihat (kosong = semua). Server tetap memeriksa hak akses.
@@ -122,6 +124,7 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
   const sidebarGradient = `linear-gradient(180deg, ${sidebarBg} 0%, ${alpha(sidebarBg, 0.9)} 100%)`;
 
   const [openMenus, setOpenMenus] = useState({});
+  const [gantiSandi, setGantiSandi] = useState(false);
   const peranSaya = userData?.peran || [];
   const boleh = (item) => !item.peran || item.peran.some((p) => peranSaya.includes(p));
   const menuSections = MENU
@@ -622,6 +625,15 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             }}
           />
         </Box>
+        <ListItem
+          button
+          onClick={() => setGantiSandi(true)}
+          sx={{ color: alpha(theme.palette.common.white, 0.85), borderRadius: 1, mb: 1, py: 0.5, px: 2, '&:hover': { backgroundColor: alpha(theme.palette.common.white, 0.1) } }}
+        >
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 36 }}><KeyRound size={18} /></ListItemIcon>
+          <ListItemText primary={<Typography variant="body2">Ganti kata sandi</Typography>} />
+        </ListItem>
+        <GantiSandi open={gantiSandi} onTutup={() => setGantiSandi(false)} />
         <ListItem
           button
           onClick={handleLogout}

@@ -136,4 +136,20 @@ router.post('/logout', async (req, res) => {
 
 router.get('/saya', wajibLogin, (req, res) => res.json(req.pengguna));
 
+// Ganti kata sandi sendiri: wajib sandi lama; sesi lain (perangkat lain) diputus, sesi ini tetap.
+router.post('/ganti-sandi', wajibLogin, async (req, res) => {
+  const lama = String(req.body?.sandi_lama || ''), baru = String(req.body?.sandi_baru || '');
+  if (baru.length < 10) return res.status(400).json({ error: 'Kata sandi baru minimal 10 karakter' });
+  if (baru === lama) return res.status(400).json({ error: 'Kata sandi baru harus berbeda dari yang lama' });
+  const p = await prisma.pengguna.findUnique({ where: { id: req.pengguna.id } });
+  if (!(await bcrypt.compare(lama, p.kata_sandi_hash))) return res.status(400).json({ error: 'Kata sandi lama salah' });
+  const tokenIni = hash(bacaCookie(req, NAMA_COOKIE));
+  await prisma.$transaction([
+    prisma.pengguna.update({ where: { id: p.id }, data: { kata_sandi_hash: await bcrypt.hash(baru, 12) } }),
+    prisma.sesi.deleteMany({ where: { pengguna_id: p.id, token_hash: { not: tokenIni } } }),
+  ]);
+  await catat({ req, nama_tabel: 'pengguna', id_data: p.id, aksi: 'GANTI_SANDI' });
+  res.status(204).end();
+});
+
 module.exports = { router, sesi, wajibLogin, wajibPeran, cakupanUnitKerja, hashKataSandi: (s) => bcrypt.hash(s, 12) };

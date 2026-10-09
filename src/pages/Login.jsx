@@ -7,8 +7,6 @@ import {
   Typography,
   TextField,
   Button,
-  Checkbox,
-  FormControlLabel,
   Link,
   Divider,
   InputAdornment,
@@ -34,6 +32,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [lupa, setLupa] = useState(false);
 
   const { login } = useAuth();
   const [perusahaan, setPerusahaan] = useState('');
@@ -214,15 +213,17 @@ const Login = () => {
                   }}
                 />
 
-                <Box display="flex" alignItems="center" justifyContent="space-between" mt={2} mb={3}>
-                  <FormControlLabel
-                    control={<Checkbox color="primary" sx={{ borderRadius: 1 }} />}
-                    label={<Typography variant="body2" color="text.secondary">Ingat saya</Typography>}
-                  />
-                  <Link href="#" variant="body2" fontWeight="bold" underline="hover" color="text.primary">
-                    Lupa password?
+                <Box display="flex" justifyContent="flex-end" mt={2} mb={3}>
+                  <Link component="button" type="button" variant="body2" fontWeight="bold" underline="hover" color="text.primary" onClick={() => setLupa(!lupa)}>
+                    Lupa kata sandi?
                   </Link>
                 </Box>
+                {lupa && (
+                  <Alert severity="info" sx={{ mb: 3 }}>
+                    Hubungi administrator aplikasi di kantor Anda untuk mengatur ulang kata sandi.
+                    Setelah masuk dengan kata sandi sementara, ganti lewat tombol "Ganti kata sandi" di bagian bawah menu samping.
+                  </Alert>
+                )}
 
                 <Button
                   type="submit"

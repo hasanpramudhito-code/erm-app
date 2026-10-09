@@ -80,3 +80,26 @@ test('kelola pengguna: buat, login, ubah peran memutus sesi, non-admin ditolak',
 
   await prisma.pengguna.delete({ where: { id: baru.id } });
 });
+
+test('ganti kata sandi sendiri: wajib sandi lama, minimal 10, sesi lain diputus', async () => {
+  const login = async (email, kata_sandi) => fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, kata_sandi }) });
+  const cAdmin = (await login(process.env.SEED_ADMIN_EMAIL, process.env.SEED_ADMIN_PASSWORD)).headers.get('set-cookie').split(';')[0];
+  const email = `ganti-${Date.now() % 100000}@erm.local`;
+  const p = await (await fetch(`${base}/api/pengguna`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: cAdmin }, body: JSON.stringify({ nama: 'Uji Sandi', email, kata_sandi: 'sandi-awal-panjang', peran: ['PETUGAS'] }) })).json();
+  try {
+    const c1 = (await login(email, 'sandi-awal-panjang')).headers.get('set-cookie').split(';')[0];
+    const c2 = (await login(email, 'sandi-awal-panjang')).headers.get('set-cookie').split(';')[0]; // perangkat lain
+    const ganti = (body) => fetch(`${base}/api/auth/ganti-sandi`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: c1 }, body: JSON.stringify(body) });
+    assert.equal((await ganti({ sandi_lama: 'salah-sekali-ya', sandi_baru: 'sandi-baru-panjang' })).status, 400);
+    assert.equal((await ganti({ sandi_lama: 'sandi-awal-panjang', sandi_baru: 'pendek' })).status, 400);
+    assert.equal((await ganti({ sandi_lama: 'sandi-awal-panjang', sandi_baru: 'sandi-baru-panjang' })).status, 204);
+    assert.equal((await fetch(`${base}/api/auth/saya`, { headers: { cookie: c1 } })).status, 200); // sesi ini tetap
+    assert.equal((await fetch(`${base}/api/auth/saya`, { headers: { cookie: c2 } })).status, 401); // perangkat lain keluar
+    assert.equal((await login(email, 'sandi-awal-panjang')).status, 401);
+    assert.equal((await login(email, 'sandi-baru-panjang')).status, 200);
+  } finally {
+    await prisma.sesi.deleteMany({ where: { pengguna_id: p.id } });
+    await prisma.jejak_audit.deleteMany({ where: { pengguna_id: p.id } });
+    await prisma.pengguna.delete({ where: { id: p.id } });
+  }
+});
