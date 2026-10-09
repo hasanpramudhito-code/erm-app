@@ -72,4 +72,12 @@ router.delete('/:lampiranId', async (req, res) => {
   res.status(204).end();
 });
 
-module.exports = { router, upload, DIR };
+// Hapus bukti mitigasi milik laporan-laporan yang akan/sudah dihapus (tabel lampiran tidak punya relasi FK).
+async function hapusBuktiLaporan(tx, laporan_ids) {
+  if (!laporan_ids.length) return;
+  const daftar = await tx.lampiran.findMany({ where: { entitas: 'bukti_mitigasi', entitas_id: { in: laporan_ids } }, select: { id: true, lokasi_file: true } });
+  await tx.lampiran.deleteMany({ where: { id: { in: daftar.map((l) => l.id) } } });
+  for (const l of daftar) fs.rm(path.join(DIR, path.basename(l.lokasi_file)), { force: true }, () => {});
+}
+
+module.exports = { router, upload, DIR, hapusBuktiLaporan };

@@ -330,7 +330,9 @@ router.delete('/:id', async (req, res) => {
   if (lama.status_persetujuan !== 'DRAF') return res.status(400).json({ error: 'Hanya risiko berstatus DRAF yang dapat dihapus' });
   const larang = cekTulis(req.pengguna, lama.unit_kerja_id, lama.status_persetujuan);
   if (larang) return res.status(403).json({ error: larang });
+  const laporan = await prisma.pemantauan_bulanan.findMany({ where: { risiko_id: id }, select: { id: true } });
   await prisma.risiko.delete({ where: { id } });
+  await require('./lampiran').hapusBuktiLaporan(prisma, laporan.map((l) => l.id));
   await catat({ req, nama_tabel: 'risiko', id_data: id, aksi: 'HAPUS', nilai_lama: lama });
   res.status(204).end();
 });
