@@ -88,7 +88,7 @@ const getCategoryFromScore = (score, assessmentConfig) => {
 
   if (!assessmentConfig || !assessmentConfig.riskLevels || !Array.isArray(assessmentConfig.riskLevels)) {
 
-    // Default fallback berdasarkan config Firestore
+    // Default bila konfigurasi penilaian belum dimuat
     if (scoreNum >= 20 && scoreNum <= 25) return 'Sangat Tinggi';
     if (scoreNum >= 15 && scoreNum <= 19) return 'Tinggi';
     if (scoreNum >= 10 && scoreNum <= 14) return 'Sedang';

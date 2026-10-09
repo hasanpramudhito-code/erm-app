@@ -1,139 +1,101 @@
 # ERM App
 
-Aplikasi **Enterprise Risk Management (ERM)** untuk manajemen risiko organisasi, dibangun dengan React dan Firebase.
+Aplikasi **Enterprise Risk Management (ERM)** on-premise: frontend React, backend Express, database MySQL. Tidak bergantung pada layanan cloud.
 
 ## Fitur Utama
 
-- Dashboard & Executive Dashboard
-- Risk Register, Assessment, dan Treatment Plans
-- KRI Monitoring & Risk Appetite
-- Control Testing (register, jadwal, hasil, deficiency)
-- Approval workflow
-- Laporan (export Excel/PDF/DOCX)
-- Manajemen organisasi dan pengguna
+- Risk Register, Risiko Utama & Pustaka, penilaian inheren/residual, mitigasi, KRI
+- Alur persetujuan berjenjang dan Pemantauan Bulanan (realisasi mitigasi, KRI, peristiwa risiko)
+- Dashboard, Dashboard Korporat (agregasi cabang), Executive Dashboard
+- Laporan Excel (dari server) dan PDF
+- Control Testing, Selera & Toleransi Risiko, Budaya Risiko, Matriks RACI
+- Manajemen organisasi, pengguna, parameter penilaian, pengaturan sistem
 
 ## Tech Stack
 
 | Lapisan | Teknologi |
 |---------|-----------|
-| Frontend | React 18, Create React App, Material UI |
-| Backend | Firebase Auth, Firestore, Storage |
-| Serverless | Firebase Cloud Functions (Node.js 18) |
-| Hosting | Firebase Hosting |
-
-## Prasyarat
-
-- Node.js 18+
-- npm
-- Akun Firebase & Firebase CLI (`npm install -g firebase-tools`)
-
-## Setup Lokal
-
-```bash
-# Clone & install dependensi frontend
-npm install
-
-# Install dependensi Cloud Functions
-cd functions && npm install && cd ..
-
-# Salin environment (opsional, untuk override konfigurasi Firebase)
-cp .env.production .env.local
-# Edit .env.local sesuai project Firebase Anda
-```
-
-### Cloud Functions
-
-Cloud Functions membutuhkan service account key:
-
-1. Firebase Console → Project Settings → Service Accounts
-2. Generate new private key
-3. Simpan sebagai `functions/serviceAccountKey.json` (file ini **tidak** boleh di-commit)
-
-## Menjalankan
-
-```bash
-# Development server (http://localhost:3000)
-npm start
-
-# Unit test
-npm test -- --watchAll=false
-
-# Build production
-npm run build
-```
-
-## Deploy
-
-```bash
-firebase login
-firebase use <project-id>    # lihat .firebaserc
-npm run build
-firebase deploy
-```
-
-Deploy parsial:
-
-```bash
-firebase deploy --only hosting
-firebase deploy --only firestore:rules
-firebase deploy --only functions
-```
+| Frontend | React 18, Vite, Material UI |
+| Backend | Node.js 22, Express, sesi cookie httpOnly |
+| Database | MySQL 8 / MariaDB, Prisma ORM |
+| File lampiran | Disk server (`DIR_UNGGAHAN`) |
+| Deployment | Docker Compose (aplikasi + MySQL) |
 
 ## Struktur Folder
 
 ```
-src/
-├── components/     # UI reusable (layout, navigasi, chart)
-├── config/         # Firebase, roles, theme
-├── contexts/       # Auth, approval, settings
-├── pages/          # Halaman fitur
-├── services/       # Akses Firestore & export
-├── hooks/          # usePermissions, useApproval
-└── utils/          # Validasi & kalkulasi
-
-functions/          # Cloud Functions (user admin, audit log)
-public/             # Asset statis
-firestore.rules     # Aturan keamanan Firestore
+src/                # Frontend React
+├── components/
+├── contexts/       # AuthContext (sesi dari /api/auth/saya)
+├── pages/
+└── services/       # api.js (klien HTTP), adaptor data
+server/             # Backend Express
+├── prisma/         # schema.prisma, migrations, seed.js
+├── src/            # app.js (routing), satu file per modul API
+└── test/           # node:test, berjalan terhadap DB lokal
 ```
 
-## Model Role
+## Pengembangan Lokal
 
-Role disimpan di koleksi Firestore `users/{uid}` dan digunakan UI untuk kontrol akses menu.
+Prasyarat: Node.js 22.12+ dan MySQL/MariaDB berjalan di `localhost:3306`.
 
-| Role | Akses utama |
+```bash
+# 1. Backend
+cd server
+cp .env.example .env          # isi DATABASE_URL, SEED_ADMIN_*, SEED_NAMA_PERUSAHAAN
+npm install
+npm run db:migrate            # buat tabel
+npm run db:seed               # admin, peran, parameter penilaian awal
+npm run dev                   # http://localhost:3001
+
+# 2. Frontend (terminal lain, dari root repo)
+npm install
+npm start                     # http://localhost:3000, /api diteruskan ke :3001
+```
+
+Tes backend (memakai database di `.env`; data uji dibersihkan sendiri):
+
+```bash
+cd server && npm test
+```
+
+## Instalasi di Server Klien (Docker)
+
+```bash
+cp .env.docker.example .env   # isi DB_PASSWORD, DB_ROOT_PASSWORD, SEED_ADMIN_PASSWORD
+docker compose up -d          # migrasi database berjalan otomatis saat start
+docker compose exec app npm run db:seed    # sekali saja, instalasi pertama
+```
+
+Aplikasi terbuka di `http://<server>:8080` (ubah lewat `APP_PORT`). Port ini **tanpa HTTPS**: pasang reverse proxy (nginx/IIS) dengan sertifikat di depannya sebelum dibuka ke jaringan luar.
+
+### Backup & Restore
+
+Data ada di dua volume: database (`db_data`) dan lampiran (`unggahan`).
+
+```bash
+# Backup
+docker compose exec db sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction erm' > erm-$(date +%F).sql
+docker compose run --rm -v "$PWD":/backup app tar czf /backup/unggahan-$(date +%F).tgz -C /data unggahan
+
+# Restore
+docker compose exec -T db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" erm' < erm-YYYY-MM-DD.sql
+docker compose run --rm -v "$PWD":/backup app tar xzf /backup/unggahan-YYYY-MM-DD.tgz -C /data
+```
+
+## Peran Pengguna
+
+| Kode | Akses utama |
 |------|-------------|
-| `STAFF` | Lihat risiko, submit risiko, dashboard |
-| `RISK_OWNER` | Assess & review risiko milik sendiri |
-| `RISK_MANAGER` | Kelola risiko, KRI, treatment plans |
-| `ADMIN` | Akses penuh termasuk user & database management |
-| `AUDITOR` | Lihat data & laporan (read-only) |
-| `EXECUTIVE` | Executive dashboard & laporan |
+| `ADMIN_SISTEM` | Penuh, termasuk pengguna & pengaturan |
+| `DIREKSI` | Lihat semua, persetujuan akhir |
+| `PENGELOLA_RISIKO` | Kelola parameter, risiko utama, verifikasi, modul pelengkap |
+| `PIMPINAN_UNIT_PUSAT` / `PIMPINAN_CABANG` | Persetujuan tingkat unit |
+| `PETUGAS_RISIKO_PUSAT` / `PETUGAS_RISIKO_CABANG` | Isi risiko & pemantauan unitnya |
+| `KEPATUHAN` | Lihat seluruh data |
 
-> **Catatan:** Firestore rules memeriksa `request.auth.token.role` (custom claims JWT). Pastikan role di-sync saat membuat/mengubah user. Lihat `SECURITY_FIXES_GUIDE.md` untuk panduan keamanan lengkap.
-
-## Environment Variables
-
-Variabel `REACT_APP_*` di `.env.local` / `.env.production`:
-
-| Variabel | Deskripsi |
-|----------|-----------|
-| `REACT_APP_AUTH_DOMAIN` | Firebase auth domain |
-| `REACT_APP_PROJECT_ID` | Firebase project ID |
-| `REACT_APP_STORAGE_BUCKET` | Firebase storage bucket |
-| `REACT_APP_MESSAGING_SENDER_ID` | Firebase messaging sender ID |
-| `REACT_APP_APP_ID` | Firebase app ID |
-
-## Keamanan Role (Functions — belum deploy)
-
-Cloud Functions untuk manajemen user & sinkronisasi custom claims sudah disiapkan di `functions/`.
-**Default: tidak aktif.** Lihat [FUNCTIONS_SECURITY.md](./FUNCTIONS_SECURITY.md) untuk panduan deploy.
-
-```env
-# Aktifkan setelah deploy functions:
-# REACT_APP_USE_SECURE_FUNCTIONS=true
-# REACT_APP_FUNCTIONS_REGION=asia-southeast2
-```
+Hak akses ditegakkan di server; pengguna di luar `ADMIN_SISTEM`, `DIREKSI`, `PENGELOLA_RISIKO`, `KEPATUHAN` hanya melihat data unitnya.
 
 ## Lisensi
 
-Proyek internal — PT Solusi Kelola Risiko.
+Proyek internal.

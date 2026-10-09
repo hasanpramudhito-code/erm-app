@@ -4,7 +4,7 @@ import { Box, CircularProgress } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 
 /**
- * Proteksi route berdasarkan role Firestore/JWT.
+ * Proteksi route berdasarkan role pengguna dari sesi server.
  * Bekerja tanpa Cloud Functions — cukup untuk UI guard.
  */
 const RoleProtectedRoute = ({ children, allowedRoles = [] }) => {

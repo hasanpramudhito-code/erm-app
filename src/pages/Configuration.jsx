@@ -85,9 +85,7 @@ const Configuration = () => {
   });
   const [assessmentMethod, setAssessmentMethod] = useState('multiplication');
 
-  // Setup real-time listener untuk Firestore
-  // ✅ Real-time listener sudah ditangani oleh AssessmentConfigContext
-  // Kita hanya perlu listen perubahan context
+  // Data konfigurasi dimuat oleh AssessmentConfigContext
 
 
   useEffect(() => {
