@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Grid, LinearProgress, List, ListItem, ListItemText,
-  Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography
+  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Grid, LinearProgress, List, ListItem, ListItemText, Paper, Tooltip, Typography
 } from '@mui/material';
 import { BarChart3 } from 'lucide-react';
 import { api } from '../services/api';
@@ -75,6 +74,37 @@ const Distribusi = ({ judul, data, urutan, label }) => {
   );
 };
 
+// Daftar peringkat: batang pudar = skor inheren, batang penuh = residual (selisihnya = penurunan oleh kontrol/mitigasi).
+const Peringkat = ({ judul, keterangan, baris, kosong, skorMaks }) => (
+  <Paper sx={{ p: 2, height: '100%' }}>
+    <Typography variant="h6">{judul}</Typography>
+    <Typography variant="body2" color="text.secondary" mb={2}>{keterangan}</Typography>
+    {baris.length === 0 && <Typography variant="body2" color="text.secondary">{kosong}</Typography>}
+    {baris.map((b, i) => {
+      const utama = b.residual || b.inheren;
+      return (
+        <Box key={b.id} display="flex" gap={1.5} py={1.25} sx={{ borderTop: i ? 1 : 0, borderColor: 'divider' }}>
+          <Typography variant="h6" color="text.secondary" sx={{ width: 28, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{i + 1}</Typography>
+          <Box flex={1} minWidth={0}>
+            <Box display="flex" justifyContent="space-between" gap={1} alignItems="baseline">
+              <Typography variant="body2" noWrap title={b.nama}><strong>{b.kode}</strong> {b.nama}</Typography>
+              {utama ? <Penanda warna={utama.warna} teks={`${utama.level} · ${utama.skor}`} /> : <Typography variant="caption" color="text.secondary" noWrap>Belum ada data final</Typography>}
+            </Box>
+            <Box sx={{ position: 'relative', height: 8, bgcolor: 'grey.100', borderRadius: 4, my: 0.75 }}
+              role="img" aria-label={`Inheren ${b.inheren?.skor ?? '-'}, residual ${b.residual?.skor ?? '-'} dari ${skorMaks}`}>
+              {b.inheren && <Box sx={{ position: 'absolute', inset: 0, width: `${(b.inheren.skor / skorMaks) * 100}%`, bgcolor: b.inheren.warna, opacity: 0.3, borderRadius: 4 }} />}
+              {b.residual && <Box sx={{ position: 'absolute', inset: 0, width: `${(b.residual.skor / skorMaks) * 100}%`, bgcolor: b.residual.warna, borderRadius: 4 }} />}
+            </Box>
+            <Typography variant="caption" color="text.secondary" display="block" noWrap>
+              {b.ket}{b.inheren && b.residual ? ` · inheren ${b.inheren.skor} → residual ${b.residual.skor}` : ''}
+            </Typography>
+          </Box>
+        </Box>
+      );
+    })}
+  </Paper>
+);
+
 const ExecutiveDashboard = () => {
   const { daftar: daftarPeriode, periodeId, setPeriodeId } = usePeriode();
   const { calculateScore } = useAssessmentConfig();
@@ -88,6 +118,7 @@ const ExecutiveDashboard = () => {
   }, [periodeId]);
 
   const k = data?.kpi;
+  const skorMaks = data ? Math.max(...data.level.map((l) => l.skor_maks)) : 25;
   return (
     <Box sx={{ p: 3 }}>
       <KepalaPantauan ikon={<BarChart3 size={36} color="#1976d2" />} judul="Dashboard Eksekutif"
@@ -119,32 +150,25 @@ const ExecutiveDashboard = () => {
             <Grid item xs={12} md={6}><Matriks judul="Matriks Risiko Residual" sel={data.matriks.RESIDUAL} level={data.level} calculateScore={calculateScore} onPilih={setSel} /></Grid>
           </Grid>
 
-          <Paper sx={{ mb: 3 }}>
-            <Typography variant="h6" sx={{ p: 2, pb: 0 }}>10 Risiko Teratas (residual)</Typography>
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Kode</TableCell><TableCell>Risiko</TableCell><TableCell>Unit Kerja</TableCell>
-                    <TableCell>Inheren</TableCell><TableCell>Residual</TableCell><TableCell>Status</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {data.teratas.length === 0 && <TableRow><TableCell colSpan={6} align="center">Belum ada risiko yang dinilai.</TableCell></TableRow>}
-                  {data.teratas.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell><strong>{r.kode}</strong></TableCell>
-                      <TableCell sx={{ maxWidth: 360 }}>{r.nama}</TableCell>
-                      <TableCell>{r.unit_kerja}</TableCell>
-                      <TableCell>{r.inheren ? <Penanda warna={r.inheren.level.warna} teks={`${r.inheren.level.nama} · ${r.inheren.skor}`} /> : '-'}</TableCell>
-                      <TableCell>{r.residual ? <Penanda warna={r.residual.level.warna} teks={`${r.residual.level.nama} · ${r.residual.skor}`} /> : '-'}</TableCell>
-                      <TableCell>{LABEL_PERSETUJUAN[r.status]}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            <Grid item xs={12} lg={6}>
+              <Peringkat judul="Peringkat Risiko Utama" keterangan="Nilai agregasi entri final seluruh unit kerja, dari level residual tertinggi"
+                kosong="Belum ada risiko utama pada periode ini." skorMaks={skorMaks}
+                baris={data.risiko_utama.map((ru) => ({
+                  id: ru.id, kode: ru.kode, nama: ru.nama, inheren: ru.inheren, residual: ru.residual,
+                  ket: `${ru.berlaku_untuk === 'CABANG' ? 'Cabang & Unit' : 'Pusat'} · ${ru.jumlah_final} dari ${ru.jumlah_unit} unit final${ru.residual?.penanda ? ` · ${ru.residual.penanda} unit di atas nilai utama` : ''}`,
+                }))} />
+            </Grid>
+            <Grid item xs={12} lg={6}>
+              <Peringkat judul="10 Risiko Spesifik Teratas" keterangan="Risiko di luar risiko utama, dari skor residual tertinggi"
+                kosong="Belum ada risiko spesifik yang dinilai." skorMaks={skorMaks}
+                baris={data.teratas.map((t) => ({
+                  id: t.id, kode: t.kode, nama: t.nama, ket: `${t.unit_kerja} · ${LABEL_PERSETUJUAN[t.status]}`,
+                  inheren: t.inheren && { skor: t.inheren.skor, level: t.inheren.level.nama, warna: t.inheren.level.warna },
+                  residual: t.residual && { skor: t.residual.skor, level: t.residual.level.nama, warna: t.residual.level.warna },
+                }))} />
+            </Grid>
+          </Grid>
 
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>

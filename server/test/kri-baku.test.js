@@ -71,3 +71,23 @@ test('KRI baku tersalin ke entri cabang & unit, terkunci, dan diagregasi dari an
   assert.deepEqual([g.jumlah_final, g.sebaran.HIJAU], [2, 2]);
   assert.equal(g.unit.find((x) => x.unit_kerja === 'Cabang KB2').status_laporan, 'DRAF');
 });
+
+test('ringkasan eksekutif: peringkat risiko utama (agregasi final) & 10 teratas hanya risiko spesifik', async () => {
+  const entri = await prisma.risiko.findMany({ where: { risiko_utama_id: ru.id, unit_kerja_id: { in: cabang.map((c) => c.id) } } });
+  // Dua entri final: residual (4,5) & (4,5) -> nilai utama 4x5.
+  for (const e of entri.slice(0, 2)) {
+    await req('PATCH', `/risiko/${e.id}`, { inheren: { kemungkinan: 5, dampak: 5 }, residual: { kemungkinan: 4, dampak: 5 } });
+    await prisma.risiko.update({ where: { id: e.id }, data: { status_persetujuan: 'FINAL' } });
+  }
+  const spesifik = await req('POST', '/risiko', { periode_id: periode.id, unit_kerja_id: cabang[0].id, kode: `SP-${sufiks}`, nama: 'Risiko spesifik', inheren: { kemungkinan: 5, dampak: 5 }, residual: { kemungkinan: 5, dampak: 5 } });
+  assert.equal(spesifik.status, 201, JSON.stringify(spesifik.body));
+  const d = (await req('GET', `/ringkasan/eksekutif?periode_id=${periode.id}`)).body;
+  const r = d.risiko_utama.find((x) => x.id === ru.id);
+  assert.equal(r.jumlah_final, 2);
+  assert.ok(r.residual.skor > 0 && r.inheren.skor >= r.residual.skor);
+  // Urut menurun skor residual (yang belum punya data di bawah).
+  const skor = d.risiko_utama.map((x) => x.residual?.skor ?? x.inheren?.skor ?? -1);
+  assert.deepEqual(skor, [...skor].sort((a, b) => b - a));
+  assert.ok(d.teratas.some((t) => t.kode === `SP-${sufiks}`));
+  assert.ok(d.teratas.every((t) => !entri.some((e) => e.id === t.id))); // entri risiko utama tidak masuk 10 teratas
+});

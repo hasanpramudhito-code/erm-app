@@ -218,4 +218,4 @@ router.get('/bulanan', async (req, res) => {
   });
 });
 
-module.exports = { router, agregasi, modus };
+module.exports = { router, agregasi, modus, konteks };

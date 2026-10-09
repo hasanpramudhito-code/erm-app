@@ -55,6 +55,34 @@ router.get('/dashboard', async (req, res) => {
 
 
 
+// Risiko utama dalam daftar periode beserta nilai agregasi inheren & residual (hanya entri FINAL),
+// diurutkan dari skor residual tertinggi (inheren bila residual belum ada); yang belum punya data final di bawah.
+async function peringkatRisikoUtama(periode_id) {
+  const { agregasi, konteks } = require('./agregasi');
+  const [ctx, daftar] = await Promise.all([
+    konteks(),
+    prisma.risiko_utama.findMany({
+      where: { periode: { some: { periode_id } } },
+      select: {
+        id: true, kode: true, nama: true, berlaku_untuk: true,
+        risiko: {
+          where: { periode_id },
+          select: { status_persetujuan: true, unit_kerja: { select: { nama: true } }, penilaian: { select: { jenis: true, kemungkinan: true, dampak: true } } },
+        },
+      },
+    }),
+  ]);
+  const hasil = daftar.map((ru) => {
+    const final = ru.risiko.filter((r) => r.status_persetujuan === 'FINAL');
+    const agg = (jenis) => agregasi(final.flatMap((r) => r.penilaian.filter((p) => p.jenis === jenis).map((p) => ({ unit: r.unit_kerja.nama, kemungkinan: p.kemungkinan, dampak: p.dampak }))), ctx);
+    const [inh, res] = [agg('INHEREN'), agg('RESIDUAL')];
+    const ringkas = (a) => a && { skor: a.nilai_utama.skor, level: a.nilai_utama.level, warna: a.nilai_utama.warna, tertinggi: a.tertinggi.skor, penanda: a.penanda.length };
+    return { id: ru.id, kode: ru.kode, nama: ru.nama, berlaku_untuk: ru.berlaku_untuk, jumlah_unit: ru.risiko.length, jumlah_final: final.length, inheren: ringkas(inh), residual: ringkas(res) };
+  });
+  const kunci = (r) => r.residual?.skor ?? r.inheren?.skor ?? -1;
+  return hasil.sort((a, b) => kunci(b) - kunci(a) || (b.inheren?.skor ?? -1) - (a.inheren?.skor ?? -1) || a.kode.localeCompare(b.kode));
+}
+
 // Ringkasan eksekutif: KPI, matriks inheren/residual, 10 risiko teratas, status mitigasi & KRI.
 router.get('/eksekutif', async (req, res) => {
   const periode_id = Number(req.query.periode_id);
@@ -64,7 +92,7 @@ router.get('/eksekutif', async (req, res) => {
     prisma.risiko.findMany({
       where: lingkup,
       select: {
-        id: true, kode: true, nama: true, deskripsi: true, status_persetujuan: true,
+        id: true, kode: true, nama: true, deskripsi: true, status_persetujuan: true, risiko_utama_id: true,
         unit_kerja: { select: { nama: true } },
         penilaian: { select: { jenis: true, kemungkinan: true, dampak: true, skor: true, level: { select: { nama: true, warna: true } } } },
       },
@@ -100,8 +128,10 @@ router.get('/eksekutif', async (req, res) => {
       rata_progres_mitigasi: totalMit ? Math.round(mitigasi.reduce((t, m) => t + (m._avg.progres || 0) * m._count, 0) / totalMit) : 0,
     },
     matriks: { INHEREN: matriks('INHEREN'), RESIDUAL: matriks('RESIDUAL') },
+    risiko_utama: await peringkatRisikoUtama(periode_id),
+    // 10 teratas hanya risiko spesifik (tidak terkait risiko utama); risiko utama sudah tampil teragregasi di atas.
     teratas: risiko
-      .filter((r) => ambil(r, 'RESIDUAL') || ambil(r, 'INHEREN'))
+      .filter((r) => !r.risiko_utama_id && (ambil(r, 'RESIDUAL') || ambil(r, 'INHEREN')))
       .map((r) => ({ id: r.id, kode: r.kode, nama: r.deskripsi || r.nama, unit_kerja: r.unit_kerja.nama, status: r.status_persetujuan, inheren: ambil(r, 'INHEREN'), residual: ambil(r, 'RESIDUAL') }))
       .sort((a, b) => (b.residual?.skor ?? b.inheren.skor) - (a.residual?.skor ?? a.inheren.skor) || (b.inheren?.skor ?? 0) - (a.inheren?.skor ?? 0))
       .slice(0, 10),
