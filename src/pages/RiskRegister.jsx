@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'; // TETAP useMemo saja
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -30,23 +30,14 @@ import {
   TableHead,
   TableRow,
   TablePagination,
-  Divider,
   List,
   ListItem,
   ListItemText,
   ListItemIcon,
   FormHelperText,
-  Stepper,
-  Step,
-  StepLabel,
-  Rating,
-  Slider,
   Checkbox,
   ListItemText as MuiListItemText,
-  InputBase,
-  Popper,
   Autocomplete,
-  ListSubheader,
   Tabs,
   Tab
 } from '@mui/material';
@@ -58,28 +49,21 @@ import {
   FileText,
   Building2,
   BarChart3,
-  Clock,
-  User,
-  Tag,
   DollarSign,
   Search as SearchIcon,
   Eye,
   History,
   UserCircle,
   Calendar,
-  Building,
   BarChart,
   ChevronDown,
   ChevronUp,
   Filter,
   RotateCcw,
-  X as Clear,
-  Download,
-  CheckCircle2,
-  AlertCircle
+  X as Clear
 } from 'lucide-react';
 import { api } from '../services/api';
-import { muatRisiko, keBodyApi, usePeriode, LABEL_PERSETUJUAN, WILAYAH } from '../services/risiko';
+import { muatRisiko, keBodyApi, usePeriode, LABEL_PERSETUJUAN, LABEL_JENIS_UK, WILAYAH } from '../services/risiko';
 import MitigasiEditor from '../components/risk/MitigasiEditor';
 import KriEditor from '../components/risk/KriEditor';
 import AksiPersetujuan from '../components/persetujuan/AksiPersetujuan';
@@ -93,6 +77,47 @@ import {
   exportRiskRegisterExcel
 } from '../services/reporting/exportRiskRegister';
 
+// Filter pilihan ganda. opsi: [[nilai, label]].
+const FilterGanda = ({ label, nilai, onChange, opsi }) => (
+  <FormControl fullWidth size="small">
+    <InputLabel>{label}</InputLabel>
+    <Select multiple value={nilai} label={label} onChange={(e) => onChange(e.target.value)}
+      renderValue={(v) => v.map((x) => opsi.find(([n]) => n === x)?.[1] ?? x).join(', ')}>
+      {opsi.map(([n, l]) => (
+        <MenuItem key={n} value={n}>
+          <Checkbox checked={nilai.includes(n)} />
+          <MuiListItemText primary={l} />
+        </MenuItem>
+      ))}
+    </Select>
+  </FormControl>
+);
+
+// Rentang tanggal { start: Date|null, end: Date|null }.
+const RentangTanggal = ({ label, nilai, onChange }) => {
+  const iso = (d) => (d ? d.toISOString().split('T')[0] : '');
+  const ubah = (k) => (e) => onChange({ ...nilai, [k]: e.target.value ? new Date(e.target.value) : null });
+  return (
+    <>
+      <Typography variant="body2" gutterBottom>{label}</Typography>
+      <Box display="flex" gap={1}>
+        <TextField fullWidth type="date" size="small" label="Dari" InputLabelProps={{ shrink: true }} value={iso(nilai.start)} onChange={ubah('start')} />
+        <TextField fullWidth type="date" size="small" label="Sampai" InputLabelProps={{ shrink: true }} value={iso(nilai.end)} onChange={ubah('end')} />
+      </Box>
+    </>
+  );
+};
+
+const FORM_KOSONG = {
+  riskCode: '', riskType: '', classification: '', riskSource: '', riskDescription: '', mainRiskId: '',
+  causes: [], impacts: [], department: '',
+  initialProbability: '', initialImpact: '', inherentRiskQuantification: '',
+  existingControls: '', controlEffectiveness: '',
+  residualProbability: '', residualImpact: '', residualRiskQuantification: '',
+  responsiblePersonId: '', mitigations: [], kris: [], status: 'Open - Baru Teridentifikasi',
+  treatmentPriority: '', assessmentNotes: '',
+};
+
 const RiskRegister = () => {
   const [risks, setRisks] = useState([]);
   const [riskTypes, setRiskTypes] = useState([]);
@@ -100,10 +125,8 @@ const RiskRegister = () => {
   const [loading, setLoading] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
   const [detailDialog, setDetailDialog] = useState(false);
-  const [assessmentDialog, setAssessmentDialog] = useState(false);
   const [selectedRisk, setSelectedRisk] = useState(null);
   const [editingRisk, setEditingRisk] = useState(null);
-  const [assessingRisk, setAssessingRisk] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -117,8 +140,6 @@ const RiskRegister = () => {
   const [tabForm, setTabForm] = useState(0);
 
   // State untuk search di dropdown
-  const [riskTypeSearch, setRiskTypeSearch] = useState('');
-  const [departmentSearch, setDepartmentSearch] = useState('');
 
   // State untuk filter
   const [filters, setFilters] = useState({
@@ -161,7 +182,7 @@ const RiskRegister = () => {
     getRiskLevelLabel,
     getRatingOptions,
     getRatingLabel,
-    refreshConfig
+    
   } = useAssessmentConfig();
 
   // ========== FUNGSI UNTUK INHERENT DAN RESIDUAL RISK LEVEL ==========
@@ -175,72 +196,13 @@ const RiskRegister = () => {
   const getInherentRiskLevelInfo = (risk) => levelInfo(risk.inherentScore, risk.inherentLevel);
   const getResidualRiskLevelInfo = (risk) => levelInfo(risk.residualScore, risk.residualLevel);
 
-  // Helper function untuk mendapatkan warna Chip yang valid
-  const getValidChipColor = (color, fallback = 'default') => {
-    const validColors = ['default', 'primary', 'secondary', 'error', 'warning', 'info', 'success'];
+  // Warna chip MUI yang sah; kode level (very_low..extreme) dipetakan ke warnanya.
+  const WARNA_LEVEL = { very_low: 'success', low: 'success', medium: 'warning', high: 'error', very_high: 'error', extreme: 'error' };
+  const getValidChipColor = (color, fallback = 'default') =>
+    (['default', 'primary', 'secondary', 'error', 'warning', 'info', 'success'].includes(color) ? color : WARNA_LEVEL[color] || fallback);
 
-    if (color && validColors.includes(color)) {
-      return color;
-    }
+  const [formData, setFormData] = useState(FORM_KOSONG);
 
-    const colorMap = {
-      'success': 'success',
-      'warning': 'warning',
-      'error': 'error',
-      'info': 'info',
-      'primary': 'primary',
-      'secondary': 'secondary',
-      'very_low': 'success',
-      'low': 'success',
-      'medium': 'warning',
-      'high': 'error',
-      'very_high': 'error',
-      'extreme': 'error'
-    };
-
-    if (color && colorMap[color]) {
-      return colorMap[color];
-    }
-
-    return fallback;
-  };
-
-  // Form data structure
-  const [formData, setFormData] = useState({
-    riskCode: '',
-    riskType: '',
-    classification: '',
-    riskSource: '',
-    riskDescription: '',
-    mainRiskId: '',
-    causes: [],
-    impacts: [],
-    riskOwner: '',
-    department: '',
-    initialProbability: '',
-    initialImpact: '',
-    inherentRiskQuantification: '',
-    existingControls: '',
-    controlEffectiveness: '',
-    residualProbability: '',
-    residualImpact: '',
-    residualRiskQuantification: '',
-    responsiblePersonId: '',
-    mitigations: [],
-    kris: [],
-    status: 'Open - Baru Teridentifikasi'
-  });
-
-  // Assessment form data
-  const [assessmentData, setAssessmentData] = useState({
-    likelihood: 1,
-    impact: 1,
-    controlEffectiveness: '',
-    residualLikelihood: 1,
-    residualImpact: 1,
-    treatmentPriority: 'Medium - Sedang (Penanganan < 1 Bulan)',
-    assessmentNotes: ''
-  });
 
   // Data dropdown yang lebih lengkap
   const riskSources = [
@@ -284,152 +246,16 @@ const RiskRegister = () => {
     'Rejected - Ditolak'
   ];
 
-  // Helper functions yang menggunakan konfigurasi dari context
-  const getRatingOptionsFromConfig = () => {
-    if (getRatingOptions) {
-      return getRatingOptions();
-    }
-    return [1, 2, 3, 4, 5];
-  };
-
-  const getRatingLabelFromConfig = (value, type = 'likelihood') => {
-    if (getRatingLabel) {
-      return getRatingLabel(value, type);
-    }
-    if (type === 'likelihood') {
-      const labels = {
-        1: '1 - Sangat Rendah',
-        2: '2 - Rendah',
-        3: '3 - Sedang',
-        4: '4 - Tinggi',
-        5: '5 - Sangat Tinggi'
-      };
-      return labels[value] || `${value}`;
-    } else {
-      const labels = {
-        1: '1 - Dampak tidak signifikan',
-        2: '2 - Dampak terbatas',
-        3: '3 - Dampak signifikan',
-        4: '4 - Dampak kritis',
-        5: '5 - Dampak katastropik'
-      };
-      return labels[value] || `${value}`;
-    }
-  };
-
-  const getRiskLevelOptionsFromConfig = () => {
-    if (getRiskLevelOptions) {
-      return getRiskLevelOptions();
-    }
-
-    return [
-      { value: 'very_low', label: 'Sangat Rendah', min: 1, max: 3, color: 'success' },
-      { value: 'low', label: 'Rendah', min: 4, max: 6, color: 'success' },
-      { value: 'medium', label: 'Sedang', min: 7, max: 10, color: 'warning' },
-      { value: 'high', label: 'Tinggi', min: 11, max: 15, color: 'error' },
-      { value: 'very_high', label: 'Sangat Tinggi', min: 16, max: 20, color: 'error' },
-      { value: 'extreme', label: 'Ekstrim', min: 21, max: 25, color: 'error' }
-    ];
-  };
-
-  const getRiskLevelColorFromConfig = (levelLabel) => {
-    if (getRiskLevelColor) {
-      return getRiskLevelColor(levelLabel);
-    }
-
-    const level = getRiskLevelOptionsFromConfig().find(opt =>
-      opt.label.toLowerCase() === levelLabel.toLowerCase()
-    );
-    return level?.color || 'default';
-  };
-
-  const getRiskLevelLabelFromConfig = (levelValue) => {
-    if (getRiskLevelLabel) {
-      return getRiskLevelLabel(levelValue);
-    }
-
-    const level = getRiskLevelOptionsFromConfig().find(opt =>
-      opt.value.toLowerCase() === levelValue.toLowerCase()
-    );
-    return level?.label || levelValue;
-  };
-
   // Helper untuk mendapatkan nama dari ID
   const getRiskTypeName = (id) => riskTypes.find((r) => r.id === id)?.name || '-';
   const getDepartmentName = (id) => departments.find((d) => d.id === id)?.name || '';
 
-  // Filter risk types berdasarkan search
-  const filteredRiskTypes = useMemo(() => {
-    if (!riskTypeSearch) return riskTypes;
-    return riskTypes.filter(type =>
-      type.name.toLowerCase().includes(riskTypeSearch.toLowerCase()) ||
-      (type.description && type.description.toLowerCase().includes(riskTypeSearch.toLowerCase()))
-    );
-  }, [riskTypes, riskTypeSearch]);
-
-  // Filter departments berdasarkan search
-  const filteredDepartments = useMemo(() => {
-    if (!departmentSearch) return departments;
-    return departments.filter(dept =>
-      dept.name.toLowerCase().includes(departmentSearch.toLowerCase()) ||
-      (dept.code && dept.code.toLowerCase().includes(departmentSearch.toLowerCase())) ||
-      (dept.description && dept.description.toLowerCase().includes(departmentSearch.toLowerCase()))
-    );
-  }, [departments, departmentSearch]);
-
-  // Render inherent risk level
-  const renderInherentRiskLevel = (risk) => {
-    try {
-      const riskLevelInfo = getInherentRiskLevelInfo(risk);
-      const validColor = getValidChipColor(riskLevelInfo.color, 'default');
-
-      // Debug output removed
-
-      return (
-        <Chip
-          label={`${riskLevelInfo.level} (${riskLevelInfo.score})`}
-          size="small"
-          color={validColor}
-        />
-      );
-    } catch (error) {
-      return (
-        <Chip
-          label="Error"
-          size="small"
-          color="error"
-        />
-      );
-    }
-  };
-
-  // Render residual risk level
-  const renderResidualRiskLevel = (risk) => {
-    try {
-      const riskLevelInfo = getResidualRiskLevelInfo(risk);
-      const validColor = getValidChipColor(riskLevelInfo.color, 'default');
-
-      // Debug output removed
-
-      return (
-        <Chip
-          label={`${riskLevelInfo.level} (${riskLevelInfo.score})`}
-          size="small"
-          color={validColor}
-          variant="outlined"
-        />
-      );
-    } catch (error) {
-      return (
-        <Chip
-          label="Error"
-          size="small"
-          color="error"
-          variant="outlined"
-        />
-      );
-    }
-  };
+  // Chip level risiko; residual bergaris tepi agar beda dari inheren.
+  const chipLevel = (info, variant) => (
+    <Chip label={`${info.level} (${info.score})`} size="small" color={getValidChipColor(info.color, 'default')} variant={variant} />
+  );
+  const renderInherentRiskLevel = (risk) => chipLevel(getInherentRiskLevelInfo(risk));
+  const renderResidualRiskLevel = (risk) => chipLevel(getResidualRiskLevelInfo(risk), 'outlined');
 
   // Load data risiko periode terpilih
   const loadData = async () => {
@@ -555,25 +381,18 @@ const RiskRegister = () => {
       // Inherent Risk Level menggunakan fungsi baru
       if (filters.inherentLevels.length > 0) {
         const inherentLevelInfo = getInherentRiskLevelInfo(risk);
-        if (!filters.inherentLevels.some(level => getRiskLevelLabelFromConfig(level) === inherentLevelInfo.level)) return false;
+        if (!filters.inherentLevels.some(level => getRiskLevelLabel(level) === inherentLevelInfo.level)) return false;
       }
 
       // Residual Risk Level menggunakan fungsi baru
       if (filters.residualLevels.length > 0) {
         const residualLevelInfo = getResidualRiskLevelInfo(risk);
-        if (!filters.residualLevels.some(level => getRiskLevelLabelFromConfig(level) === residualLevelInfo.level)) return false;
+        if (!filters.residualLevels.some(level => getRiskLevelLabel(level) === residualLevelInfo.level)) return false;
       }
 
       // Date Created Range
       if (filters.dateCreatedRange.start || filters.dateCreatedRange.end) {
-        // Safe timestamp handling
-        const getRiskDate = (val) => {
-          if (!val) return new Date();
-          if (val.toDate) return val.toDate();
-          if (val.seconds) return new Date(val.seconds * 1000);
-          return new Date(val);
-        };
-        const riskDate = getRiskDate(risk.createdAt);
+        const riskDate = risk.createdAt ? new Date(risk.createdAt) : new Date();
 
         if (filters.dateCreatedRange.start && riskDate < filters.dateCreatedRange.start) {
           return false;
@@ -642,37 +461,12 @@ const RiskRegister = () => {
     }
   };
 
-  // Reset form
+  // Reset form; unit kerja default = unit kerja pengguna.
   const resetForm = () => {
-    setFormData({
-      riskCode: '',
-      riskType: '',
-      classification: '',
-      riskSource: '',
-      riskDescription: '',
-      mainRiskId: '',
-      causes: [],
-      impacts: [],
-      riskOwner: '',
-      department: '',
-      initialProbability: '',
-      initialImpact: '',
-      inherentRiskQuantification: '',
-      existingControls: '',
-      controlEffectiveness: '',
-      residualProbability: '',
-      residualImpact: '',
-      residualRiskQuantification: '',
-      responsiblePersonId: '',
-      mitigations: [],
-      kris: [],
-      status: 'Open - Baru Teridentifikasi',
-      department: userData?.unit_kerja_id || ''
-    });
+    setFormData({ ...FORM_KOSONG, department: userData?.unit_kerja_id || '' });
+
     setCodeError('');
     setTabForm(0);
-    setRiskTypeSearch('');
-    setDepartmentSearch('');
   };
 
   // Reset filter
@@ -692,8 +486,9 @@ const RiskRegister = () => {
   };
 
   // Handle edit
-  const handleEdit = (risk) => {
+  const handleEdit = (risk, tab = 0) => {
     setEditingRisk(risk);
+    setTabForm(tab);
     setFormData({
       riskCode: risk.riskCode || '',
       riskType: risk.riskType || '',
@@ -703,7 +498,6 @@ const RiskRegister = () => {
       mainRiskId: risk.mainRiskId,
       causes: risk.causes,
       impacts: risk.impacts,
-      riskOwner: risk.riskOwner || '',
       department: risk.department || '',
       initialProbability: risk.initialProbability || '',
       initialImpact: risk.initialImpact || '',
@@ -716,24 +510,11 @@ const RiskRegister = () => {
       responsiblePersonId: risk.responsiblePersonId || '',
       mitigations: risk.mitigations,
       kris: risk.kris,
-      status: risk.status || 'Open - Baru Teridentifikasi'
-    });
-    setOpenDialog(true);
-  };
-
-  // Handle assessment
-  const handleAssessment = (risk) => {
-    setAssessingRisk(risk);
-    setAssessmentData({
-      likelihood: risk.initialProbability || 1,
-      impact: risk.initialImpact || 1,
-      controlEffectiveness: risk.controlEffectiveness || '',
-      residualLikelihood: risk.residualProbability || risk.initialProbability || 1,
-      residualImpact: risk.residualImpact || risk.initialImpact || 1,
-      treatmentPriority: risk.treatmentPriority || 'Medium - Sedang (Penanganan < 1 Bulan)',
+      status: risk.status || 'Open - Baru Teridentifikasi',
+      treatmentPriority: risk.treatmentPriority || '',
       assessmentNotes: risk.assessmentNotes || ''
     });
-    setAssessmentDialog(true);
+    setOpenDialog(true);
   };
 
   // Handle Export PDF
@@ -753,7 +534,7 @@ const RiskRegister = () => {
           company: (await muatIdentitas()).nama_perusahaan
         },
         userData,
-        assessmentConfig, // INI PENTING - kirim konfigurasi
+        assessmentConfig,
       });
 
       showSnackbar('Export PDF berhasil!', 'success');
@@ -777,7 +558,7 @@ const RiskRegister = () => {
       await exportRiskRegisterExcel({
         risks: filteredRisks,
         userData,
-        assessmentConfig, // INI PENTING - kirim konfigurasi
+        assessmentConfig,
       });
 
       showSnackbar('Export Excel berhasil!', 'success');
@@ -800,42 +581,7 @@ const RiskRegister = () => {
     api.get(`/risiko/${risk.id}/riwayat`).then(setRiwayat).catch(() => {});
   };
 
-  // Handle assessment submit
-  const handleAssessmentSubmit = async () => {
-    if (!assessingRisk) return;
 
-    try {
-      setLoading(true);
-
-      await api.patch(`/risiko/${assessingRisk.id}`, {
-        inheren: { kemungkinan: Number(assessmentData.likelihood), dampak: Number(assessmentData.impact) },
-        residual: { kemungkinan: Number(assessmentData.residualLikelihood), dampak: Number(assessmentData.residualImpact) },
-        efektivitas_kontrol: assessmentData.controlEffectiveness || null,
-        prioritas_penanganan: keBodyApi({ treatmentPriority: assessmentData.treatmentPriority }).prioritas_penanganan,
-        catatan_penilaian: assessmentData.assessmentNotes,
-        status: 'DINILAI'
-      });
-
-      showSnackbar('Assessment risiko berhasil disimpan!', 'success');
-      setAssessmentDialog(false);
-      setAssessingRisk(null);
-      setAssessmentData({
-        likelihood: 1,
-        impact: 1,
-        controlEffectiveness: '',
-        residualLikelihood: 1,
-        residualImpact: 1,
-        treatmentPriority: 'Medium - Sedang (Penanganan < 1 Bulan)',
-        assessmentNotes: ''
-      });
-      loadData();
-
-    } catch (error) {
-      showSnackbar('Error menyimpan assessment: ' + error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Handle delete
   const handleDelete = async (riskId) => {
@@ -906,178 +652,22 @@ const RiskRegister = () => {
     return count;
   };
 
-  // Komponen Select dengan Search untuk Jenis Risiko
-  const RiskTypeSelectWithSearch = () => {
-    const MenuProps = {
-      PaperProps: {
-        style: {
-          maxHeight: 300,
-        },
-      },
-    };
-
-    return (
-      <FormControl fullWidth>
-        <InputLabel>Jenis Risiko</InputLabel>
-        <Select
-          value={formData.riskType}
-          label="Jenis Risiko"
-          onChange={(e) => setFormData({ ...formData, riskType: e.target.value })}
-          MenuProps={MenuProps}
-          renderValue={(selected) => {
-            const selectedType = riskTypes.find(type => type.id === selected);
-            return selectedType ? selectedType.name : '';
-          }}
-        >
-          {/* Search Box */}
-          <ListSubheader>
-            <Box sx={{ p: 1 }}>
-              <TextField
-                size="small"
-                autoFocus
-                placeholder="Cari jenis risiko..."
-                fullWidth
-                value={riskTypeSearch}
-                onChange={(e) => setRiskTypeSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Escape') {
-                    e.stopPropagation();
-                  }
-                }}
-                InputProps={{
-                  startAdornment: <SearchIcon size={18} style={{ marginRight: 8, color: 'rgba(0, 0, 0, 0.54)' }} />,
-                  endAdornment: riskTypeSearch && (
-                    <IconButton
-                      size="small"
-                      onClick={() => setRiskTypeSearch('')}
-                    >
-                      <Clear size={18} />
-                    </IconButton>
-                  )
-                }}
-                variant="outlined"
-              />
-            </Box>
-          </ListSubheader>
-
-          {/* Hasil Filter */}
-          {filteredRiskTypes.length === 0 ? (
-            <MenuItem disabled>
-              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                Tidak ditemukan jenis risiko "{riskTypeSearch}"
-              </Typography>
-            </MenuItem>
-          ) : (
-            filteredRiskTypes.map((type) => (
-              <MenuItem key={type.id} value={type.id}>
-                <Box>
-                  <Typography variant="body1">{type.name}</Typography>
-                  {type.description && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      {type.description}
-                    </Typography>
-                  )}
-                </Box>
-              </MenuItem>
-            ))
-          )}
-        </Select>
-        <FormHelperText>
-          {filteredRiskTypes.length} jenis risiko tersedia
-        </FormHelperText>
-      </FormControl>
-    );
-  };
-
-  // Komponen Select dengan Search untuk Departemen
-  const DepartmentSelectWithSearch = () => {
-    const MenuProps = {
-      PaperProps: {
-        style: {
-          maxHeight: 300,
-        },
-      },
-    };
-
-    return (
-      <FormControl fullWidth>
-        <InputLabel>Unit Kerja</InputLabel>
-        <Select
-          value={formData.department}
-          label="Unit Kerja"
-          onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-          MenuProps={MenuProps}
-          renderValue={(selected) => {
-            const selectedDept = departments.find(dept => dept.id === selected);
-            return selectedDept ? selectedDept.name : '';
-          }}
-        >
-          {/* Search Box */}
-          <ListSubheader>
-            <Box sx={{ p: 1 }}>
-              <TextField
-                size="small"
-                autoFocus
-                placeholder="Cari departemen..."
-                fullWidth
-                value={departmentSearch}
-                onChange={(e) => setDepartmentSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Escape') {
-                    e.stopPropagation();
-                  }
-                }}
-                InputProps={{
-                  startAdornment: <SearchIcon size={18} style={{ marginRight: 8, color: 'rgba(0, 0, 0, 0.54)' }} />,
-                  endAdornment: departmentSearch && (
-                    <IconButton
-                      size="small"
-                      onClick={() => setDepartmentSearch('')}
-                    >
-                      <Clear size={18} />
-                    </IconButton>
-                  )
-                }}
-                variant="outlined"
-              />
-            </Box>
-          </ListSubheader>
-
-          {/* Hasil Filter */}
-          {filteredDepartments.length === 0 ? (
-            <MenuItem disabled>
-              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                Tidak ditemukan departemen "{departmentSearch}"
-              </Typography>
-            </MenuItem>
-          ) : (
-            filteredDepartments.map((dept) => (
-              <MenuItem key={dept.id} value={dept.id}>
-                <Box>
-                  <Typography variant="body1">{dept.name}</Typography>
-                  {dept.code && (
-                    <Typography variant="caption" color="textSecondary" sx={{ mr: 1 }}>
-                      Kode: {dept.code}
-                    </Typography>
-                  )}
-                  {dept.parent && (
-                    <Typography variant="caption" color="textSecondary">
-                      Parent: {dept.parent}
-                    </Typography>
-                  )}
-                </Box>
-              </MenuItem>
-            ))
-          )}
-        </Select>
-        <FormHelperText>
-          {filteredDepartments.length} departemen tersedia
-        </FormHelperText>
-      </FormControl>
-    );
-  };
-
-  // Debug log removed
+  // Pilihan dengan pencarian (Autocomplete) untuk jenis risiko & unit kerja.
+  const PilihCari = ({ label, opsi, value, onChange, ket }) => (
+    <Autocomplete
+      options={opsi}
+      value={opsi.find((o) => o.id === value) || null}
+      onChange={(_, o) => onChange(o?.id ?? '')}
+      getOptionLabel={(o) => o.name}
+      isOptionEqualToValue={(x, y) => x.id === y.id}
+      renderOption={(props, o) => (
+        <li {...props} key={o.id}>
+          <Box>{o.name}{ket?.(o) && <Typography variant="caption" display="block" color="text.secondary">{ket(o)}</Typography>}</Box>
+        </li>
+      )}
+      renderInput={(params) => <TextField {...params} label={label} />}
+    />
+  );
 
   // Jika config belum loading, tampilkan loading state
   if (configLoading) {
@@ -1086,9 +676,6 @@ const RiskRegister = () => {
         <CircularProgress />
         <Typography variant="h6" sx={{ mt: 2 }}>
           Memuat konfigurasi assessment...
-        </Typography>
-        <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-          Method: {assessmentConfig?.assessmentMethod || 'Loading...'}
         </Typography>
       </Box>
     );
@@ -1111,13 +698,14 @@ const RiskRegister = () => {
               </Box>
               <Box>
                 <Typography variant="h4" fontWeight="bold" gutterBottom>
-                  Risk Register
+                  Register Risiko
                 </Typography>
                 <Typography variant="subtitle1" color="textSecondary">
                   Identifikasi dan kelola seluruh risiko organisasi
                 </Typography>
                 <Typography variant="caption" color="primary">
-                  Total {risks.length} risiko teridentifikasi • {risks.filter(r => r.status === 'Assessed - Telah Dinilai').length} telah dinilai
+                  Total {risks.length} risiko • {risks.filter(r => r.status === 'Assessed - Telah Dinilai').length} telah dinilai •
+                  Skor dihitung dengan {assessmentConfig?.assessmentMethod === 'coordinate' ? 'matriks koordinat' : 'perkalian kemungkinan × dampak'}
                 </Typography>
               </Box>
             </Box>
@@ -1144,73 +732,6 @@ const RiskRegister = () => {
           </Box>
         </CardContent>
       </Card>
-
-      {/* Config Status Panel - TAMBAHAN BARU */}
-      <Card sx={{ mb: 2, backgroundColor: assessmentConfig ? '#e8f5e9' : '#ffebee' }}>
-        <CardContent sx={{ py: 1 }}>
-          <Box display="flex" alignItems="center" justifyContent="space-between">
-            <Box display="flex" alignItems="center" gap={1}>
-              <Typography variant="body2" fontWeight="bold">
-                ⚙️ Assessment Configuration
-              </Typography>
-              {assessmentConfig ? (
-                <Chip
-                  label={assessmentConfig.assessmentMethod || 'multiplication'}
-                  size="small"
-                  color={assessmentConfig.assessmentMethod === 'coordinate' ? 'primary' : 'default'}
-                  sx={{ textTransform: 'capitalize' }}
-                />
-              ) : (
-                <Chip
-                  label="Not Loaded"
-                  size="small"
-                  color="warning"
-                />
-              )}
-            </Box>
-            {refreshConfig && (
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => {
-                  refreshConfig();
-                  showSnackbar('Configuration refreshed!', 'info');
-                }}
-                disabled={configLoading}
-                startIcon={configLoading ? <CircularProgress size={16} /> : <RotateCcw size={16} />}
-              >
-                {configLoading ? 'Loading...' : 'Refresh'}
-              </Button>
-            )}
-          </Box>
-          <Typography variant="caption" color="textSecondary">
-            {assessmentConfig
-              ? `Using: ${assessmentConfig.assessmentMethod === 'coordinate' ? 'Coordinate Matrix' : 'Multiplication'}`
-              : 'Loading configuration...'}
-          </Typography>
-        </CardContent>
-      </Card>
-
-      {/* Debug Panel - Hanya di development */}
-      {process.env.NODE_ENV === 'development' && (
-        <Card sx={{ mb: 2, backgroundColor: '#fff3cd', borderColor: '#ffeaa7' }}>
-          <CardContent sx={{ py: 1 }}>
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-              <Typography variant="body2" fontWeight="bold">
-                🔧 Debug Assessment Method
-              </Typography>
-              <Chip
-                label={assessmentConfig?.assessmentMethod || 'multiplication'}
-                size="small"
-                color={assessmentConfig?.assessmentMethod === 'coordinate' ? 'primary' : 'default'}
-              />
-            </Box>
-            <Typography variant="caption">
-              Hitung skor dengan: {assessmentConfig?.assessmentMethod === 'coordinate' ? 'Coordinate Matrix (IxL)' : 'Multiplication (I*L)'}
-            </Typography>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Search and Filter Box */}
       <Card sx={{ mb: 3, boxShadow: 2 }}>
@@ -1290,306 +811,30 @@ const RiskRegister = () => {
             </Box>
 
             <Grid container spacing={2}>
-              {/* Filter Status */}
+              {[
+                ['status', 'Status', statusOptions],
+                ['riskSources', 'Sumber Risiko', riskSources],
+                ['departments', 'Unit Kerja', uniqueDepartmentNames],
+                ['riskOwners', 'Pemilik Risiko', uniqueRiskOwners],
+                ['treatmentPriorities', 'Prioritas Penanganan', treatmentPriorities],
+              ].map(([k, label, opsi]) => (
+                <Grid item xs={12} sm={6} md={4} key={k}>
+                  <FilterGanda label={label} nilai={filters[k]} onChange={(v) => setFilters({ ...filters, [k]: v })} opsi={opsi.map((o) => [o, o])} />
+                </Grid>
+              ))}
               <Grid item xs={12} sm={6} md={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Status</InputLabel>
-                  <Select
-                    multiple
-                    value={filters.status}
-                    onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                    label="Status"
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
-                          <Chip key={value} label={value} size="small" />
-                        ))}
-                      </Box>
-                    )}
-                  >
-                    {statusOptions.map((status) => (
-                      <MenuItem key={status} value={status}>
-                        <Checkbox checked={filters.status.indexOf(status) > -1} />
-                        <MuiListItemText primary={status} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <FilterGanda label="Level Risiko Inheren" nilai={filters.inherentLevels} onChange={(v) => setFilters({ ...filters, inherentLevels: v })}
+                opsi={getRiskLevelOptions().map((l) => [l.value, l.label])} />
               </Grid>
-
-              {/* Filter Risk Source */}
               <Grid item xs={12} sm={6} md={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Sumber Risiko</InputLabel>
-                  <Select
-                    multiple
-                    value={filters.riskSources}
-                    onChange={(e) => setFilters({ ...filters, riskSources: e.target.value })}
-                    label="Sumber Risiko"
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
-                          <Chip key={value} label={value} size="small" />
-                        ))}
-                      </Box>
-                    )}
-                  >
-                    {riskSources.map((source) => (
-                      <MenuItem key={source} value={source}>
-                        <Checkbox checked={filters.riskSources.indexOf(source) > -1} />
-                        <MuiListItemText primary={source} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <FilterGanda label="Level Risiko Residual" nilai={filters.residualLevels} onChange={(v) => setFilters({ ...filters, residualLevels: v })}
+                opsi={getRiskLevelOptions().map((l) => [l.value, l.label])} />
               </Grid>
-
-              {/* Filter Department */}
-              <Grid item xs={12} sm={6} md={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Unit Kerja</InputLabel>
-                  <Select
-                    multiple
-                    value={filters.departments}
-                    onChange={(e) => setFilters({ ...filters, departments: e.target.value })}
-                    label="Unit Kerja"
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
-                          <Chip key={value} label={value} size="small" />
-                        ))}
-                      </Box>
-                    )}
-                  >
-                    {uniqueDepartmentNames.map((dept) => (
-                      <MenuItem key={dept} value={dept}>
-                        <Checkbox checked={filters.departments.indexOf(dept) > -1} />
-                        <MuiListItemText primary={dept} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {/* Filter Risk Owner */}
-              <Grid item xs={12} sm={6} md={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Pemilik Risiko</InputLabel>
-                  <Select
-                    multiple
-                    value={filters.riskOwners}
-                    onChange={(e) => setFilters({ ...filters, riskOwners: e.target.value })}
-                    label="Pemilik Risiko"
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
-                          <Chip key={value} label={value} size="small" />
-                        ))}
-                      </Box>
-                    )}
-                  >
-                    {uniqueRiskOwners.map((owner) => (
-                      <MenuItem key={owner} value={owner}>
-                        <Checkbox checked={filters.riskOwners.indexOf(owner) > -1} />
-                        <MuiListItemText primary={owner} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {/* Filter Treatment Priority */}
-              <Grid item xs={12} sm={6} md={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Treatment Priority</InputLabel>
-                  <Select
-                    multiple
-                    value={filters.treatmentPriorities}
-                    onChange={(e) => setFilters({ ...filters, treatmentPriorities: e.target.value })}
-                    label="Treatment Priority"
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
-                          <Chip key={value} label={value} size="small" />
-                        ))}
-                      </Box>
-                    )}
-                  >
-                    {treatmentPriorities.map((priority) => (
-                      <MenuItem key={priority} value={priority}>
-                        <Checkbox checked={filters.treatmentPriorities.indexOf(priority) > -1} />
-                        <MuiListItemText primary={priority} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {/* Filter Inherent Risk Level */}
-              <Grid item xs={12} sm={6} md={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Inherent Risk Level</InputLabel>
-                  <Select
-                    multiple
-                    value={filters.inherentLevels}
-                    onChange={(e) => setFilters({ ...filters, inherentLevels: e.target.value })}
-                    label="Inherent Risk Level"
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => {
-                          const levelOption = getRiskLevelOptionsFromConfig().find(opt => opt.value === value);
-                          const chipColor = getValidChipColor(
-                            getRiskLevelColorFromConfig(levelOption?.label || value),
-                            'default'
-                          );
-                          return (
-                            <Chip
-                              key={value}
-                              label={getRiskLevelLabelFromConfig(value)}
-                              size="small"
-                              color={chipColor}
-                            />
-                          );
-                        })}
-                      </Box>
-                    )}
-                  >
-                    {getRiskLevelOptionsFromConfig().map((level) => (
-                      <MenuItem key={level.value} value={level.value}>
-                        <Checkbox checked={filters.inherentLevels.indexOf(level.value) > -1} />
-                        <MuiListItemText primary={level.label} />
-                        <Box sx={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: '50%',
-                          bgcolor: `${getValidChipColor(level.color, 'default')}.main`,
-                          ml: 1
-                        }} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {/* Filter Residual Risk Level */}
-              <Grid item xs={12} sm={6} md={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Residual Risk Level</InputLabel>
-                  <Select
-                    multiple
-                    value={filters.residualLevels}
-                    onChange={(e) => setFilters({ ...filters, residualLevels: e.target.value })}
-                    label="Residual Risk Level"
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => {
-                          const levelOption = getRiskLevelOptionsFromConfig().find(opt => opt.value === value);
-                          const chipColor = getValidChipColor(
-                            getRiskLevelColorFromConfig(levelOption?.label || value),
-                            'default'
-                          );
-                          return (
-                            <Chip
-                              key={value}
-                              label={getRiskLevelLabelFromConfig(value)}
-                              size="small"
-                              color={chipColor}
-                              variant="outlined"
-                            />
-                          );
-                        })}
-                      </Box>
-                    )}
-                  >
-                    {getRiskLevelOptionsFromConfig().map((level) => (
-                      <MenuItem key={level.value} value={level.value}>
-                        <Checkbox checked={filters.residualLevels.indexOf(level.value) > -1} />
-                        <MuiListItemText primary={level.label} />
-                        <Box sx={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: '50%',
-                          bgcolor: `${getValidChipColor(level.color, 'default')}.main`,
-                          ml: 1
-                        }} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {/* Filter Date Created Range */}
               <Grid item xs={12} sm={6}>
-                <Typography variant="body2" gutterBottom>Tanggal Dibuat</Typography>
-                <Box display="flex" gap={1}>
-                  <TextField
-                    fullWidth
-                    type="date"
-                    size="small"
-                    label="Dari"
-                    InputLabelProps={{ shrink: true }}
-                    value={filters.dateCreatedRange.start ? filters.dateCreatedRange.start.toISOString().split('T')[0] : ''}
-                    onChange={(e) => setFilters({
-                      ...filters,
-                      dateCreatedRange: {
-                        ...filters.dateCreatedRange,
-                        start: e.target.value ? new Date(e.target.value) : null
-                      }
-                    })}
-                  />
-                  <TextField
-                    fullWidth
-                    type="date"
-                    size="small"
-                    label="Sampai"
-                    InputLabelProps={{ shrink: true }}
-                    value={filters.dateCreatedRange.end ? filters.dateCreatedRange.end.toISOString().split('T')[0] : ''}
-                    onChange={(e) => setFilters({
-                      ...filters,
-                      dateCreatedRange: {
-                        ...filters.dateCreatedRange,
-                        end: e.target.value ? new Date(e.target.value) : null
-                      }
-                    })}
-                  />
-                </Box>
+                <RentangTanggal label="Tanggal Dibuat" nilai={filters.dateCreatedRange} onChange={(v) => setFilters({ ...filters, dateCreatedRange: v })} />
               </Grid>
-
-              {/* Filter Target Date Range */}
               <Grid item xs={12} sm={6}>
-                <Typography variant="body2" gutterBottom>Target Selesai</Typography>
-                <Box display="flex" gap={1}>
-                  <TextField
-                    fullWidth
-                    type="date"
-                    size="small"
-                    label="Dari"
-                    InputLabelProps={{ shrink: true }}
-                    value={filters.targetDateRange.start ? filters.targetDateRange.start.toISOString().split('T')[0] : ''}
-                    onChange={(e) => setFilters({
-                      ...filters,
-                      targetDateRange: {
-                        ...filters.targetDateRange,
-                        start: e.target.value ? new Date(e.target.value) : null
-                      }
-                    })}
-                  />
-                  <TextField
-                    fullWidth
-                    type="date"
-                    size="small"
-                    label="Sampai"
-                    InputLabelProps={{ shrink: true }}
-                    value={filters.targetDateRange.end ? filters.targetDateRange.end.toISOString().split('T')[0] : ''}
-                    onChange={(e) => setFilters({
-                      ...filters,
-                      targetDateRange: {
-                        ...filters.targetDateRange,
-                        end: e.target.value ? new Date(e.target.value) : null
-                      }
-                    })}
-                  />
-                </Box>
+                <RentangTanggal label="Target Selesai" nilai={filters.targetDateRange} onChange={(v) => setFilters({ ...filters, targetDateRange: v })} />
               </Grid>
 
               {/* Summary Filter Aktif */}
@@ -1834,11 +1079,12 @@ const RiskRegister = () => {
                                     <Eye size={18} />
                                   </IconButton>
                                 </Tooltip>
-                                <Tooltip title="Assessment">
+                                <Tooltip title="Penilaian">
                                   <IconButton
                                     color="warning"
                                     size="small"
-                                    onClick={() => handleAssessment(risk)}
+                                    aria-label="Penilaian"
+                                    onClick={() => handleEdit(risk, 1)}
                                     disabled={!['DRAF', 'DIKEMBALIKAN'].includes(risk.approvalStatus) && !userData?.peran?.includes('DIREKSI')}
                                   >
                                     <BarChart3 size={18} />
@@ -2064,7 +1310,8 @@ const RiskRegister = () => {
 
                 {/* Jenis Risiko dengan Search */}
                 <Grid item xs={12} sm={6}>
-                  <RiskTypeSelectWithSearch />
+                  <PilihCari label="Jenis Risiko" opsi={riskTypes} value={formData.riskType} ket={(o) => o.description}
+                    onChange={(v) => setFormData((f) => ({ ...f, riskType: v }))} />
                 </Grid>
 
                 {/* Klasifikasi */}
@@ -2106,7 +1353,8 @@ const RiskRegister = () => {
 
                 {/* Departemen dengan Search */}
                 <Grid item xs={12} sm={6}>
-                  <DepartmentSelectWithSearch />
+                  <PilihCari label="Unit Kerja" opsi={departments} value={formData.department} ket={(o) => LABEL_JENIS_UK[o.parent]}
+                    onChange={(v) => setFormData((f) => ({ ...f, department: v }))} />
                 </Grid>
 
                 {/* Status */}
@@ -2215,9 +1463,9 @@ const RiskRegister = () => {
                       label="Probabilitas Awal"
                       onChange={(e) => setFormData({ ...formData, initialProbability: e.target.value })}
                     >
-                      {getRatingOptionsFromConfig().map((option) => (
+                      {getRatingOptions().map((option) => (
                         <MenuItem key={option} value={option}>
-                          {getRatingLabelFromConfig(option, 'likelihood')}
+                          {getRatingLabel(option, 'likelihood')}
                         </MenuItem>
                       ))}
                     </Select>
@@ -2231,9 +1479,9 @@ const RiskRegister = () => {
                       label="Dampak Awal"
                       onChange={(e) => setFormData({ ...formData, initialImpact: e.target.value })}
                     >
-                      {getRatingOptionsFromConfig().map((option) => (
+                      {getRatingOptions().map((option) => (
                         <MenuItem key={option} value={option}>
-                          {getRatingLabelFromConfig(option, 'impact')}
+                          {getRatingLabel(option, 'impact')}
                         </MenuItem>
                       ))}
                     </Select>
@@ -2262,7 +1510,7 @@ const RiskRegister = () => {
                     <Alert severity="info">
                       {(() => {
                         const score = calculateScore(Number(formData.initialProbability), Number(formData.initialImpact));
-                        const level = calculateRiskLevel ? calculateRiskLevel(score) : { level: 'Unknown', color: 'default' };
+                        const level = calculateRiskLevel(score);
                         return <>Risk Score: {score} • Level: {level.level}</>;
                       })()}
                     </Alert>
@@ -2321,9 +1569,9 @@ const RiskRegister = () => {
                       label="Probabilitas Residual"
                       onChange={(e) => setFormData({ ...formData, residualProbability: e.target.value })}
                     >
-                      {getRatingOptionsFromConfig().map((option) => (
+                      {getRatingOptions().map((option) => (
                         <MenuItem key={option} value={option}>
-                          {getRatingLabelFromConfig(option, 'likelihood')}
+                          {getRatingLabel(option, 'likelihood')}
                         </MenuItem>
                       ))}
                     </Select>
@@ -2337,9 +1585,9 @@ const RiskRegister = () => {
                       label="Dampak Residual"
                       onChange={(e) => setFormData({ ...formData, residualImpact: e.target.value })}
                     >
-                      {getRatingOptionsFromConfig().map((option) => (
+                      {getRatingOptions().map((option) => (
                         <MenuItem key={option} value={option}>
-                          {getRatingLabelFromConfig(option, 'impact')}
+                          {getRatingLabel(option, 'impact')}
                         </MenuItem>
                       ))}
                     </Select>
@@ -2368,12 +1616,23 @@ const RiskRegister = () => {
                     <Alert severity="info">
                       {(() => {
                         const score = calculateScore(Number(formData.residualProbability), Number(formData.residualImpact));
-                        const level = calculateRiskLevel ? calculateRiskLevel(score) : { level: 'Unknown', color: 'default' };
+                        const level = calculateRiskLevel(score);
                         return <>Risk Score: {score} • Level: {level.level}</>;
                       })()}
                     </Alert>
                   </Grid>
                 )}
+                <Grid item xs={12} sm={6}>
+                  <TextField select fullWidth label="Prioritas penanganan" value={formData.treatmentPriority || ''}
+                    onChange={(e) => setFormData({ ...formData, treatmentPriority: e.target.value })}>
+                    <MenuItem value="">-</MenuItem>
+                    {treatmentPriorities.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField fullWidth multiline minRows={2} label="Catatan penilaian" value={formData.assessmentNotes || ''}
+                    onChange={(e) => setFormData({ ...formData, assessmentNotes: e.target.value })} />
+                </Grid>
               </Grid>
             </Paper>
 
@@ -2416,221 +1675,6 @@ const RiskRegister = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Assessment Dialog */}
-      <Dialog
-        open={assessmentDialog}
-        onClose={() => {
-          setAssessmentDialog(false);
-          setAssessingRisk(null);
-        }}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box display="flex" alignItems="center" gap={1}>
-            <BarChart3 size={18} />
-            Risk Assessment - {assessingRisk?.riskCode}
-          </Box>
-        </DialogTitle>
-        <DialogContent dividers>
-          {assessingRisk && (
-            <Box sx={{ mt: 2 }}>
-              <Stepper activeStep={0} sx={{ mb: 4 }}>
-                <Step><StepLabel>Inherent Risk</StepLabel></Step>
-                <Step><StepLabel>Control Assessment</StepLabel></Step>
-                <Step><StepLabel>Residual Risk</StepLabel></Step>
-              </Stepper>
-
-              <Grid container spacing={3}>
-                {/* Inherent Risk Assessment */}
-                <Grid item xs={12}>
-                  <Typography variant="h6" gutterBottom>
-                    Inherent Risk Assessment
-                  </Typography>
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <Typography variant="body2" gutterBottom>Likelihood</Typography>
-                    <Select
-                      value={assessmentData.likelihood}
-                      onChange={(e) => setAssessmentData({ ...assessmentData, likelihood: e.target.value })}
-                    >
-                      {getRatingOptionsFromConfig().map((option) => (
-                        <MenuItem key={option} value={option}>
-                          {getRatingLabelFromConfig(option, 'likelihood')}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <Typography variant="body2" gutterBottom>Impact</Typography>
-                    <Select
-                      value={assessmentData.impact}
-                      onChange={(e) => setAssessmentData({ ...assessmentData, impact: e.target.value })}
-                    >
-                      {getRatingOptionsFromConfig().map((option) => (
-                        <MenuItem key={option} value={option}>
-                          {getRatingLabelFromConfig(option, 'impact')}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-
-                {/* Control Effectiveness */}
-                <Grid item xs={12}>
-                  <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-                    Control Effectiveness
-                  </Typography>
-                  <FormControl fullWidth>
-                    <Typography variant="body2" gutterBottom>
-                      Efektivitas Kontrol
-                    </Typography>
-                    <Select
-                      value={assessmentData.controlEffectiveness}
-                      displayEmpty
-                      onChange={(e) => setAssessmentData({ ...assessmentData, controlEffectiveness: e.target.value })}
-                    >
-                      <MenuItem value="">-</MenuItem>
-                      {effectivenessLevels.map((level) => (
-                        <MenuItem key={level} value={level}>{level}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-
-                {/* Residual Risk Assessment */}
-                <Grid item xs={12}>
-                  <Typography variant="h6" gutterBottom>
-                    Residual Risk Assessment
-                  </Typography>
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <Typography variant="body2" gutterBottom>Residual Likelihood</Typography>
-                    <Select
-                      value={assessmentData.residualLikelihood}
-                      onChange={(e) => setAssessmentData({ ...assessmentData, residualLikelihood: e.target.value })}
-                    >
-                      {getRatingOptionsFromConfig().map((option) => (
-                        <MenuItem key={option} value={option}>
-                          {getRatingLabelFromConfig(option, 'likelihood')}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <Typography variant="body2" gutterBottom>Residual Impact</Typography>
-                    <Select
-                      value={assessmentData.residualImpact}
-                      onChange={(e) => setAssessmentData({ ...assessmentData, residualImpact: e.target.value })}
-                    >
-                      {getRatingOptionsFromConfig().map((option) => (
-                        <MenuItem key={option} value={option}>
-                          {getRatingLabelFromConfig(option, 'impact')}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-
-                {/* Treatment Priority */}
-                <Grid item xs={12}>
-                  <FormControl fullWidth>
-                    <InputLabel>Treatment Priority</InputLabel>
-                    <Select
-                      value={assessmentData.treatmentPriority}
-                      label="Treatment Priority"
-                      onChange={(e) => setAssessmentData({ ...assessmentData, treatmentPriority: e.target.value })}
-                    >
-                      {treatmentPriorities.map((priority) => (
-                        <MenuItem key={priority} value={priority}>
-                          {priority}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-
-                {/* Assessment Notes */}
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Assessment Notes"
-                    multiline
-                    rows={3}
-                    value={assessmentData.assessmentNotes}
-                    onChange={(e) => setAssessmentData({ ...assessmentData, assessmentNotes: e.target.value })}
-                    placeholder="Catatan tambahan untuk assessment..."
-                  />
-                </Grid>
-
-                {/* Risk Score Display */}
-                <Grid item xs={12}>
-                  <Card variant="outlined" sx={{ backgroundColor: 'grey.50', p: 2 }}>
-                    <Grid container spacing={2}>
-                      {/* Inherent preview */}
-                      <Grid item xs={6}>
-                        {(() => {
-                          const inhScore = calculateScore(Number(assessmentData.likelihood), Number(assessmentData.impact));
-                          const inhLevel = calculateRiskLevel ? calculateRiskLevel(inhScore) : { level: 'Unknown', color: 'default' };
-                          return (
-                            <>
-                              <Typography variant="h4" color="primary">{inhScore}</Typography>
-                              <Chip
-                                label={inhLevel.level}
-                                color={getValidChipColor(inhLevel.color, 'default')}
-                              />
-                            </>
-                          );
-                        })()}
-                      </Grid>
-
-                      {/* Residual preview */}
-                      <Grid item xs={6}>
-                        {(() => {
-                          const resScore = calculateScore(Number(assessmentData.residualLikelihood), Number(assessmentData.residualImpact));
-                          const resLevel = calculateRiskLevel ? calculateRiskLevel(resScore) : { level: 'Unknown', color: 'default' };
-                          return (
-                            <>
-                              <Typography variant="h4" color="secondary">{resScore}</Typography>
-                              <Chip
-                                label={resLevel.level}
-                                color={getValidChipColor(resLevel.color, 'default')}
-                                variant="outlined"
-                              />
-                            </>
-                          );
-                        })()}
-                      </Grid>
-                    </Grid>
-                  </Card>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setAssessmentDialog(false)}>
-            Batal
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleAssessmentSubmit}
-            disabled={loading}
-          >
-            {loading ? <CircularProgress size={24} /> : 'Simpan Assessment'}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {/* Detail Dialog */}
       <Dialog
