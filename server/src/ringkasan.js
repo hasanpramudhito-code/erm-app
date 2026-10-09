@@ -3,6 +3,7 @@ const express = require('express');
 const prisma = require('./db');
 const { wajibLogin, cakupanUnitKerja } = require('./auth');
 const { frekuensi } = require('./pemantauan');
+const PERAN_LIHAT_SEMUA = ['ADMIN', 'DIREKSI', 'PENGELOLA_RISIKO', 'AUDITOR'];
 
 const router = express.Router();
 router.use(wajibLogin);
@@ -84,10 +85,15 @@ async function peringkatRisikoUtama(periode_id) {
 }
 
 // Ringkasan eksekutif: KPI, matriks inheren/residual, 10 risiko teratas, status mitigasi & KRI.
+// ?unit_kerja_id=: Dashboard Unit Kerja. Pengguna unit hanya boleh unitnya sendiri (cakupan); peran lihat-semua boleh unit mana pun.
 router.get('/eksekutif', async (req, res) => {
   const periode_id = Number(req.query.periode_id);
   if (!periode_id) return res.status(400).json({ error: 'periode_id wajib' });
-  const lingkup = { periode_id, ...cakupanUnitKerja(req.pengguna) };
+  const unit_kerja_id = Number(req.query.unit_kerja_id) || null;
+  const lihatSemua = req.pengguna.peran.some((p) => PERAN_LIHAT_SEMUA.includes(p));
+  if (!unit_kerja_id && !lihatSemua) return res.status(403).json({ error: 'Akses ditolak' });
+  if (unit_kerja_id && !lihatSemua && unit_kerja_id !== req.pengguna.unit_kerja_id) return res.status(403).json({ error: 'Hanya boleh melihat unit kerja sendiri' });
+  const lingkup = { periode_id, ...cakupanUnitKerja(req.pengguna), ...(unit_kerja_id ? { unit_kerja_id } : {}) };
   const [risiko, level, mitigasi, kri, insiden] = await Promise.all([
     prisma.risiko.findMany({
       where: lingkup,
@@ -128,15 +134,47 @@ router.get('/eksekutif', async (req, res) => {
       rata_progres_mitigasi: totalMit ? Math.round(mitigasi.reduce((t, m) => t + (m._avg.progres || 0) * m._count, 0) / totalMit) : 0,
     },
     matriks: { INHEREN: matriks('INHEREN'), RESIDUAL: matriks('RESIDUAL') },
-    risiko_utama: await peringkatRisikoUtama(periode_id),
+    // Unit kerja: tidak ada agregasi antarunit, jadi daftar teratas memuat semua risiko unit itu.
+    risiko_utama: unit_kerja_id ? [] : await peringkatRisikoUtama(periode_id),
     // 10 teratas hanya risiko spesifik (tidak terkait risiko utama); risiko utama sudah tampil teragregasi di atas.
     teratas: risiko
-      .filter((r) => !r.risiko_utama_id && (ambil(r, 'RESIDUAL') || ambil(r, 'INHEREN')))
+      .filter((r) => (unit_kerja_id || !r.risiko_utama_id) && (ambil(r, 'RESIDUAL') || ambil(r, 'INHEREN')))
       .map((r) => ({ id: r.id, kode: r.kode, nama: r.deskripsi || r.nama, unit_kerja: r.unit_kerja.nama, status: r.status_persetujuan, inheren: ambil(r, 'INHEREN'), residual: ambil(r, 'RESIDUAL') }))
       .sort((a, b) => (b.residual?.skor ?? b.inheren.skor) - (a.residual?.skor ?? a.inheren.skor) || (b.inheren?.skor ?? 0) - (a.inheren?.skor ?? 0))
       .slice(0, 10),
     mitigasi: Object.fromEntries(mitigasi.map((m) => [m.status, m._count])),
     kri: Object.fromEntries(kri.map((k) => [k.status, k._count])),
+    ...(unit_kerja_id ? await rincianUnit(lingkup, risiko) : {}),
   });
 });
+
+// Tambahan khusus Dashboard Unit Kerja: KRI kuning/merah, mitigasi lewat target, status laporan pemantauan masa terakhir.
+async function rincianUnit(lingkup, risiko) {
+  const n = await frekuensi();
+  const kini = new Date();
+  let tahun = kini.getFullYear(), bulan = Math.floor(kini.getMonth() / n) * n;
+  if (bulan === 0) { tahun--; bulan = 12; }
+  const [kri, terlambat, laporan] = await Promise.all([
+    prisma.kri.findMany({
+      where: { risiko: lingkup, aktif: true, status: { in: ['KUNING', 'MERAH'] } },
+      select: { id: true, nama: true, satuan: true, nilai_sekarang: true, status: true, risiko: { select: { kode: true } } },
+      orderBy: { status: 'desc' },
+    }),
+    prisma.mitigasi.findMany({
+      where: { risiko: lingkup, target_waktu: { lt: kini }, status: { notIn: ['SELESAI', 'DIBATALKAN'] } },
+      select: { id: true, uraian: true, target_waktu: true, progres: true, risiko: { select: { kode: true } }, penanggung_jawab: { select: { nama: true } } },
+      orderBy: { target_waktu: 'asc' },
+    }),
+    prisma.pemantauan_bulanan.findMany({ where: { tahun, bulan, risiko: lingkup }, select: { status_persetujuan: true } }),
+  ]);
+  const hitung = (s) => laporan.filter((l) => l.status_persetujuan === s).length;
+  return {
+    kri_perhatian: kri.map((k) => ({ ...k, nilai_sekarang: k.nilai_sekarang == null ? null : Number(k.nilai_sekarang) })),
+    mitigasi_terlambat: terlambat,
+    pemantauan: {
+      tahun, bulan, frekuensi: n, total: risiko.length, belum_diisi: risiko.length - laporan.length,
+      draf: hitung('DRAF') + hitung('DIKEMBALIKAN'), menunggu: hitung('DIAJUKAN') + hitung('DISETUJUI_PIMPINAN'), final: hitung('FINAL'),
+    },
+  };
+}
 module.exports = { router };

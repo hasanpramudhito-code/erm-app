@@ -5,6 +5,7 @@ import { muatIdentitas } from '../services/identitas';
 const JUDUL_HALAMAN = {
   '/dashboard': 'Dashboard',
   '/dashboard-korporat': 'Dashboard Korporat',
+  '/dashboard-unit': 'Dashboard Unit Kerja',
   '/executive-dashboard': 'Dashboard Eksekutif',
   '/risk-register': 'Register Risiko',
   '/risiko-utama': 'Risiko Utama & Pustaka',

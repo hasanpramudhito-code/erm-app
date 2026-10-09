@@ -46,6 +46,7 @@ import {
   Workflow,
   Zap,
   CalendarCheck,
+  Gauge,
   Library
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -61,6 +62,7 @@ const MENU = [
     section: 'Ringkasan',
     items: [
       { text: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/dashboard' },
+      { text: 'Dashboard Unit Kerja', icon: <Gauge size={20} />, path: '/dashboard-unit', peran: [...SEMUA_LIHAT, 'PIMPINAN', 'PETUGAS'] },
       { text: 'Dashboard Korporat', icon: <Building2 size={20} />, path: '/dashboard-korporat', peran: SEMUA_LIHAT },
       { text: 'Dashboard Eksekutif', icon: <BarChart3 size={20} />, path: '/executive-dashboard', peran: SEMUA_LIHAT },
     ]

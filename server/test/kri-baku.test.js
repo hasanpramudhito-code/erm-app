@@ -91,3 +91,21 @@ test('ringkasan eksekutif: peringkat risiko utama (agregasi final) & 10 teratas 
   assert.ok(d.teratas.some((t) => t.kode === `SP-${sufiks}`));
   assert.ok(d.teratas.every((t) => !entri.some((e) => e.id === t.id))); // entri risiko utama tidak masuk 10 teratas
 });
+
+test('dashboard unit kerja: petugas hanya unitnya sendiri; pengelola boleh unit mana pun', async () => {
+  const email = `pt-du-${sufiks}@erm.local`;
+  const pid = (await req('POST', '/pengguna', { nama: 'Petugas DU', email, kata_sandi: 'sandi-uji-panjang', peran: ['PETUGAS'], unit_kerja_id: cabang[0].id })).body.id;
+  try {
+    const ck = (await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, kata_sandi: 'sandi-uji-panjang' }) })).headers.get('set-cookie').split(';')[0];
+    const lihat = (u, c = ck) => fetch(`${base}/api/ringkasan/eksekutif?periode_id=${periode.id}${u ? `&unit_kerja_id=${u}` : ''}`, { headers: { cookie: c } });
+    assert.equal((await lihat(null)).status, 403); // dashboard eksekutif tertutup bagi petugas
+    assert.equal((await lihat(cabang[1].id)).status, 403); // unit lain
+    const d = await (await lihat(cabang[0].id)).json();
+    assert.ok(d.pemantauan && Array.isArray(d.kri_perhatian) && Array.isArray(d.mitigasi_terlambat));
+    assert.ok(d.teratas.every((t) => t.unit_kerja === cabang[0].nama));
+    assert.equal((await lihat(cabang[1].id, admin)).status, 200);
+  } finally {
+    await prisma.jejak_audit.deleteMany({ where: { pengguna_id: pid } });
+    await prisma.pengguna.delete({ where: { id: pid } });
+  }
+});

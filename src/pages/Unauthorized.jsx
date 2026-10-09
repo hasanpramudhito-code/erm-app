@@ -32,12 +32,12 @@ const Unauthorized = () => {
           <AlertTriangle size={80} color="#ed6c02" style={{ marginBottom: '16px' }} />
 
           <Typography variant="h4" gutterBottom color="error">
-            Access Denied
+            Akses Ditolak
           </Typography>
 
           <Typography variant="body1" color="textSecondary" paragraph>
-            You don't have permission to access this page.
-            Please contact your administrator if you believe this is an error.
+            Anda tidak memiliki izin untuk membuka halaman ini.
+            Hubungi administrator bila menurut Anda ini keliru.
           </Typography>
 
           <Box mt={4} display="flex" gap={2} justifyContent="center">
@@ -45,14 +45,14 @@ const Unauthorized = () => {
               variant="outlined"
               onClick={() => navigate(-1)}
             >
-              Go Back
+              Kembali
             </Button>
             <Button
               variant="contained"
               startIcon={<Home size={18} />}
               onClick={() => navigate('/')}
             >
-              Go to Dashboard
+              Ke Dashboard
             </Button>
           </Box>
         </Paper>

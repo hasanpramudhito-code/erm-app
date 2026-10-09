@@ -18,7 +18,7 @@ const warnaTeks = (hex) => {
 };
 
 // Matriks 5x5: sel diwarnai level skornya, angka = jumlah risiko. Klik/Enter membuka daftar risiko sel itu.
-const Matriks = ({ judul, sel, level, calculateScore, onPilih }) => {
+export const Matriks = ({ judul, sel, level, calculateScore, onPilih }) => {
   const levelDari = (s) => level.find((l) => s >= l.skor_min && s <= l.skor_maks);
   return (
     <Paper sx={{ p: 2, height: '100%' }}>
@@ -56,7 +56,7 @@ const Matriks = ({ judul, sel, level, calculateScore, onPilih }) => {
 };
 
 // Distribusi status: baris label + nilai + bar tipis (bukan pie), urutan tetap.
-const Distribusi = ({ judul, data, urutan, label }) => {
+export const Distribusi = ({ judul, data, urutan, label }) => {
   const total = urutan.reduce((t, k) => t + (data[k] || 0), 0);
   return (
     <Paper sx={{ p: 2, height: '100%' }}>
@@ -75,7 +75,7 @@ const Distribusi = ({ judul, data, urutan, label }) => {
 };
 
 // Daftar peringkat: batang pudar = skor inheren, batang penuh = residual (selisihnya = penurunan oleh kontrol/mitigasi).
-const Peringkat = ({ judul, keterangan, baris, kosong, skorMaks }) => (
+export const Peringkat = ({ judul, keterangan, baris, kosong, skorMaks }) => (
   <Paper sx={{ p: 2, height: '100%' }}>
     <Typography variant="h6">{judul}</Typography>
     <Typography variant="body2" color="text.secondary" mb={2}>{keterangan}</Typography>
@@ -103,6 +103,21 @@ const Peringkat = ({ judul, keterangan, baris, kosong, skorMaks }) => (
       );
     })}
   </Paper>
+);
+
+// Daftar risiko pada sel matriks yang diklik.
+export const DialogSel = ({ sel, onTutup }) => (
+  <Dialog open={!!sel} onClose={onTutup} maxWidth="sm" fullWidth>
+    <DialogTitle>{sel?.judul}</DialogTitle>
+    <DialogContent dividers>
+      <List dense disablePadding>
+        {sel?.risiko.map((r) => (
+          <ListItem key={r.id} divider><ListItemText primary={<><strong>{r.kode}</strong> {r.nama}</>} secondary={r.unit_kerja} /></ListItem>
+        ))}
+      </List>
+    </DialogContent>
+    <DialogActions><Button onClick={onTutup}>Tutup</Button></DialogActions>
+  </Dialog>
 );
 
 const ExecutiveDashboard = () => {
@@ -182,17 +197,7 @@ const ExecutiveDashboard = () => {
         </>
       )}
 
-      <Dialog open={!!sel} onClose={() => setSel(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>{sel?.judul}</DialogTitle>
-        <DialogContent dividers>
-          <List dense disablePadding>
-            {sel?.risiko.map((r) => (
-              <ListItem key={r.id} divider><ListItemText primary={<><strong>{r.kode}</strong> {r.nama}</>} secondary={r.unit_kerja} /></ListItem>
-            ))}
-          </List>
-        </DialogContent>
-        <DialogActions><Button onClick={() => setSel(null)}>Tutup</Button></DialogActions>
-      </Dialog>
+      <DialogSel sel={sel} onTutup={() => setSel(null)} />
     </Box>
   );
 };
