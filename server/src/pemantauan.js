@@ -199,6 +199,87 @@ async function perbaruiTerkini(tx, risiko_id) {
   }
 }
 
+// ---- Bukti pelaksanaan mitigasi: file/foto per mitigasi per laporan (tabel lampiran, entitas "realisasi_mitigasi:<laporan>:<mitigasi>"). ----
+// Kunci entitas memakai id laporan & id mitigasi, sehingga bukti tetap ada walau realisasi disimpan ulang.
+const { upload, DIR } = require('./lampiran');
+const path = require('path');
+const fsBukti = require('fs');
+const ENTITAS_BUKTI = 'bukti_mitigasi';
+
+// Cek laporan & mitigasi milik risiko yang terlihat pengguna; bila tulis, cek hak tulis & laporan belum terkunci.
+async function cekBukti(req, tulis) {
+  const [laporan_id, mitigasi_id] = [Number(req.params.laporanId), Number(req.params.mitigasiId)];
+  const lap = await prisma.pemantauan_bulanan.findFirst({
+    where: { id: laporan_id || -1, risiko: cakupanUnitKerja(req.pengguna) },
+    select: { id: true, status_persetujuan: true, risiko: { select: { unit_kerja_id: true, mitigasi: { where: { id: mitigasi_id || -1 }, select: { id: true } } } } },
+  });
+  if (!lap || !lap.risiko.mitigasi.length) throw galat(404, 'Laporan atau mitigasi tidak ditemukan');
+  if (tulis) {
+    const boleh = punya(req.pengguna, PERAN_GLOBAL_TULIS) || (punya(req.pengguna, PERAN_UNIT_TULIS) && req.pengguna.unit_kerja_id === lap.risiko.unit_kerja_id);
+    if (!boleh) throw galat(403, 'Akses ditolak');
+    if (!STATUS_BISA_DIUBAH.includes(lap.status_persetujuan) && !req.pengguna.peran.includes('DIREKSI')) throw galat(403, 'Laporan sudah diajukan/final dan terkunci');
+  }
+  return { lap, entitas_id: lap.id, kunci: `${mitigasi_id}` };
+}
+const whereBukti = (laporan_id) => ({ entitas: ENTITAS_BUKTI, entitas_id: laporan_id });
+const pilihBukti = { id: true, nama_file: true, tipe_mime: true, ukuran: true, lokasi_file: true, dibuat_pada: true, diunggah_oleh: { select: { nama: true } } };
+
+// Daftar bukti satu laporan, dikelompokkan per mitigasi.
+router.get('/laporan/:laporanId/bukti', async (req, res) => {
+  const lap = await prisma.pemantauan_bulanan.findFirst({ where: { id: Number(req.params.laporanId) || -1, risiko: cakupanUnitKerja(req.pengguna) }, select: { id: true } });
+  if (!lap) throw galat(404, 'Laporan tidak ditemukan');
+  const daftar = await prisma.lampiran.findMany({ where: whereBukti(lap.id), select: pilihBukti, orderBy: { dibuat_pada: 'asc' } });
+  const hasil = {};
+  // lokasi_file berformat "<mitigasi_id>/<nama acak>" agar bukti bisa dikelompokkan tanpa kolom baru.
+  for (const { lokasi_file, ...b } of daftar) (hasil[lokasi_file.split('/')[0]] ??= []).push(b);
+  res.json(hasil);
+});
+
+router.post('/laporan/:laporanId/mitigasi/:mitigasiId/bukti', async (req, res, next) => {
+  try { await cekBukti(req, true); } catch (e) { return next(e); }
+  upload.single('file')(req, res, async (err) => {
+    try {
+      if (err) throw galat(400, err.code === 'LIMIT_FILE_SIZE' ? 'Ukuran file maksimal 20 MB' : 'Gagal mengunggah file');
+      if (!req.file) throw galat(400, 'File tidak ada atau jenisnya tidak diizinkan. Gunakan foto JPG/PNG/WebP, PDF, Word, atau Excel (foto HEIC dari iPhone: ubah ke JPG dulu)');
+      const { entitas_id, kunci } = await cekBukti(req, true);
+      const l = await prisma.lampiran.create({
+        data: {
+          entitas: ENTITAS_BUKTI, entitas_id, nama_file: req.file.originalname, lokasi_file: `${kunci}/${req.file.filename}`,
+          tipe_mime: req.file.mimetype, ukuran: req.file.size, diunggah_oleh_id: req.pengguna.id,
+        },
+        select: pilihBukti,
+      });
+      await catat({ req, nama_tabel: 'lampiran', id_data: l.id, aksi: 'UNGGAH', nilai_baru: { laporan: entitas_id, mitigasi: kunci, nama_file: l.nama_file } });
+      const { lokasi_file, ...tanpa } = l;
+      res.status(201).json(tanpa);
+    } catch (e) {
+      if (req.file) fsBukti.rm(path.join(DIR, req.file.filename), { force: true }, () => {});
+      next(e);
+    }
+  });
+});
+
+// Unduh / tampilkan (foto dibuka di tab baru).
+router.get('/bukti/:lampiranId', async (req, res) => {
+  const l = await prisma.lampiran.findFirst({ where: { id: Number(req.params.lampiranId) || -1, entitas: ENTITAS_BUKTI } });
+  if (!l) throw galat(404, 'Bukti tidak ditemukan');
+  if (!(await prisma.pemantauan_bulanan.findFirst({ where: { id: l.entitas_id, risiko: cakupanUnitKerja(req.pengguna) }, select: { id: true } }))) throw galat(404, 'Bukti tidak ditemukan');
+  const file = path.join(DIR, path.basename(l.lokasi_file));
+  if ((l.tipe_mime || '').startsWith('image/') && req.query.lihat) return res.type(l.tipe_mime).sendFile(file);
+  res.download(file, l.nama_file);
+});
+
+router.delete('/bukti/:lampiranId', async (req, res) => {
+  const l = await prisma.lampiran.findFirst({ where: { id: Number(req.params.lampiranId) || -1, entitas: ENTITAS_BUKTI } });
+  if (!l) throw galat(404, 'Bukti tidak ditemukan');
+  req.params.laporanId = l.entitas_id; req.params.mitigasiId = l.lokasi_file.split('/')[0];
+  await cekBukti(req, true);
+  await prisma.lampiran.delete({ where: { id: l.id } });
+  fsBukti.rm(path.join(DIR, path.basename(l.lokasi_file)), { force: true }, () => {});
+  await catat({ req, nama_tabel: 'lampiran', id_data: l.id, aksi: 'HAPUS', nilai_lama: l });
+  res.status(204).end();
+});
+
 // Ringkasan status laporan satu masa (jendela berakhir di `bulan`) untuk semua risiko dalam cakupan pengguna.
 router.get('/ringkasan', async (req, res) => {
   const periode_id = Number(req.query.periode_id), tahun = Number(req.query.tahun), bulan = Number(req.query.bulan);

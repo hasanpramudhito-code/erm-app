@@ -5,8 +5,9 @@ import {
 } from '@mui/material';
 import { CheckSquare } from 'lucide-react';
 import { api } from '../services/api';
-import { LABEL_PERSETUJUAN } from '../services/risiko';
+import { LABEL_PERSETUJUAN, useFrekuensi } from '../services/risiko';
 import AksiPersetujuan from '../components/persetujuan/AksiPersetujuan';
+import { FormLaporan } from './Pemantauan';
 
 const NAMA_BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
@@ -27,6 +28,8 @@ const AntreanVerifikasi = () => {
   useEffect(muat, []);
 
   const entitas = tab === 0 ? 'risiko' : 'pemantauan';
+  const n = useFrekuensi();
+  const [lihat, setLihat] = useState(null);
   const daftar = data[entitas];
   // Aksi massal hanya untuk satu status sekaligus agar aksinya jelas.
   const statusPilihan = [...new Set(daftar.filter((d) => pilih.includes(d.id)).map((d) => d.status_persetujuan))];
@@ -116,10 +119,12 @@ const AntreanVerifikasi = () => {
                     <TableCell sx={{ maxWidth: 320 }}>
                       {r.deskripsi || r.nama}
                       {tab === 1 && d.peristiwa_terjadi && <Chip size="small" color="warning" label="Peristiwa terjadi" sx={{ ml: 1 }} />}
+                      {tab === 1 && d.jumlah_bukti > 0 && <Chip size="small" variant="outlined" label={`${d.jumlah_bukti} bukti`} sx={{ ml: 1 }} />}
                     </TableCell>
                     <TableCell>{r.unit_kerja?.nama}</TableCell>
                     <TableCell><Chip size="small" label={LABEL_PERSETUJUAN[d.status_persetujuan]} /></TableCell>
                     <TableCell>
+                      {tab === 1 && <Button size="small" onClick={() => setLihat(d)} sx={{ mb: 0.5 }}>Lihat laporan</Button>}
                       <AksiPersetujuan entitas={entitas} id={d.id} status={d.status_persetujuan} unitId={r.unit_kerja_id} alur={r.unit_kerja?.alur_persetujuan} onSelesai={muat} />
                     </TableCell>
                   </TableRow>
@@ -129,6 +134,10 @@ const AntreanVerifikasi = () => {
           </Table>
         </TableContainer>
       </Paper>
+      {lihat && n && (
+        <FormLaporan risikoId={lihat.risiko.id} tahun={lihat.tahun} bulan={lihat.bulan} n={n}
+          onTutup={() => setLihat(null)} onTersimpan={() => { setLihat(null); muat(); }} />
+      )}
       <Snackbar open={!!pesan} autoHideDuration={5000} onClose={() => setPesan('')} message={pesan} />
     </Box>
   );

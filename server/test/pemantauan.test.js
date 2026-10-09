@@ -136,3 +136,35 @@ test('KRI rasio (NRW): nilai dihitung dari angka nyata yang diinput', async () =
   const p = l.body.pengukuran_kri[0];
   assert.deepEqual([Number(p.nilai), Number(p.pembilang), Number(p.penyebut), p.status], [27.5, 27500, 100000, 'KUNING']);
 });
+
+test('bukti mitigasi: unggah foto ke laporan, daftar per mitigasi, unduh, terkunci saat diajukan, hapus', async () => {
+  const r = (await req('POST', '/risiko', { periode_id: periode.id, unit_kerja_id: unit.id, kode: `BK-${sufiks}`, nama: 'Risiko bukti', mitigasi: [{ uraian: 'Ganti meter' }] })).body;
+  const m = r.mitigasi[0];
+  const lap = (await req('PUT', `/pemantauan/risiko/${r.id}/${T}/${B}`, { mitigasi: [{ mitigasi_id: m.id, status: 'BERJALAN', progres: 50 }] })).body;
+  const unggah = (nama, isi, mid = m.id) => {
+    const fd = new FormData(); fd.append('file', new Blob([isi]), nama);
+    return fetch(`${base}/api/pemantauan/laporan/${lap.id}/mitigasi/${mid}/bukti`, { method: 'POST', headers: { cookie: admin }, body: fd });
+  };
+  assert.equal((await unggah('virus.exe', 'x')).status, 400); // jenis file ditolak
+  assert.equal((await unggah('foto.jpg', 'x', 999999)).status, 404); // mitigasi bukan milik risiko
+  const u = await unggah('foto lapangan.jpg', 'isi-foto');
+  assert.equal(u.status, 201);
+  const b = await u.json();
+  assert.equal(b.lokasi_file, undefined); // lokasi disk tidak dibocorkan
+
+  const daftar = (await req('GET', `/pemantauan/laporan/${lap.id}/bukti`)).body;
+  assert.equal(daftar[m.id][0].nama_file, 'foto lapangan.jpg');
+  // Bukti tetap ada walau laporan disimpan ulang (realisasi dibuat ulang).
+  await req('PUT', `/pemantauan/risiko/${r.id}/${T}/${B}`, { mitigasi: [{ mitigasi_id: m.id, status: 'SELESAI', progres: 100 }] });
+  assert.equal((await req('GET', `/pemantauan/laporan/${lap.id}/bukti`)).body[m.id].length, 1);
+  const dl = await fetch(`${base}/api/pemantauan/bukti/${b.id}`, { headers: { cookie: admin } });
+  assert.equal(await dl.text(), 'isi-foto');
+
+  // Terkunci setelah diajukan: unggah & hapus ditolak (admin bukan direksi).
+  await prisma.pemantauan_bulanan.update({ where: { id: lap.id }, data: { status_persetujuan: 'DIAJUKAN' } });
+  assert.equal((await unggah('lagi.png', 'y')).status, 403);
+  assert.equal((await req('DELETE', `/pemantauan/bukti/${b.id}`)).status, 403);
+  await prisma.pemantauan_bulanan.update({ where: { id: lap.id }, data: { status_persetujuan: 'DRAF' } });
+  assert.equal((await req('DELETE', `/pemantauan/bukti/${b.id}`)).status, 204);
+  assert.equal((await req('GET', `/pemantauan/laporan/${lap.id}/bukti`)).body[m.id], undefined);
+});

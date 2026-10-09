@@ -7,6 +7,7 @@ import {
 import { CalendarCheck, Plus, Trash2, Edit2 } from 'lucide-react';
 import { api } from '../services/api';
 import AksiPersetujuan from '../components/persetujuan/AksiPersetujuan';
+import BuktiMitigasi from '../components/risk/BuktiMitigasi';
 import {
   usePeriode, LABEL_PERSETUJUAN, LABEL_STATUS_MITIGASI, LABEL_STATUS_KRI, LABEL_FREKUENSI, LABEL_FREKUENSI_PEMANTAUAN,
   useFrekuensi, namaMasa, daftarMasa, masaDefault
@@ -16,11 +17,12 @@ const BISA_DIUBAH = ['DRAF', 'DIKEMBALIKAN'];
 const PERISTIWA_BARU = { tanggal_kejadian: '', deskripsi: '', dampak: '', kerugian: '', tindakan_segera: '' };
 
 
-const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan }) => {
+export const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan }) => {
   const [data, setData] = useState(null);
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
   const [menyimpan, setMenyimpan] = useState(false);
+  const [info, setInfo] = useState('');
 
   useEffect(() => {
     api.get(`/pemantauan/risiko/${risikoId}/${tahun}/${bulan}`).then((d) => {
@@ -48,6 +50,10 @@ const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan }) => {
   }, [risikoId, tahun, bulan]);
 
   const terkunci = data?.laporan && !BISA_DIUBAH.includes(data.laporan.status_persetujuan);
+  // Bukti pelaksanaan per mitigasi ({ mitigasi_id: [lampiran] }); butuh laporan yang sudah tersimpan.
+  const [bukti, setBukti] = useState({});
+  const muatBukti = () => data?.laporan && api.get(`/pemantauan/laporan/${data.laporan.id}/bukti`).then(setBukti).catch(() => {});
+  useEffect(() => { muatBukti(); }, [data?.laporan?.id]);
   const ubahBaris = (kunci, i, field, v) => setForm((f) => ({ ...f, [kunci]: f[kunci].map((x, j) => (j === i ? { ...x, [field]: v } : x)) }));
   const sebelumnyaKri = (id) => data?.sebelumnya?.pengukuran_kri?.find((p) => p.kri_id === id);
 
@@ -55,12 +61,16 @@ const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan }) => {
     setMenyimpan(true);
     setError('');
     try {
-      await api.put(`/pemantauan/risiko/${risikoId}/${tahun}/${bulan}`, {
+      const lap = await api.put(`/pemantauan/risiko/${risikoId}/${tahun}/${bulan}`, {
         ...form,
         mitigasi: form.mitigasi.map((m) => ({ ...m, progres: Number(m.progres) })),
         peristiwa: form.peristiwa_terjadi ? form.peristiwa : [],
       });
-      onTersimpan();
+      // Laporan baru yang punya mitigasi: biarkan dialog terbuka agar bukti bisa langsung diunggah.
+      if (!data.laporan && form.mitigasi.length) {
+        setData((d) => ({ ...d, laporan: lap }));
+        setInfo('Laporan tersimpan. Sekarang Anda bisa mengunggah bukti pelaksanaan mitigasi.');
+      } else onTersimpan();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -72,7 +82,7 @@ const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan }) => {
   const bulanMaks = new Date(tahun, bulan, 0).toISOString().slice(0, 10);
 
   return (
-    <Dialog open onClose={onTutup} maxWidth="md" fullWidth>
+    <Dialog open onClose={info ? onTersimpan : onTutup} maxWidth="md" fullWidth>
       <DialogTitle>
         Laporan {namaMasa(tahun, bulan, n)}
         {data && <Typography variant="body2" color="text.secondary">{data.risiko.kode} · {data.risiko.deskripsi || data.risiko.nama}</Typography>}
@@ -82,6 +92,7 @@ const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan }) => {
         {!form ? <Box textAlign="center" py={4}><CircularProgress /></Box> : (
           <fieldset disabled={terkunci} style={{ border: 0, padding: 0, margin: 0 }}>
             {terkunci && <Alert severity="info" sx={{ mb: 2 }}>Laporan sudah {LABEL_PERSETUJUAN[data.laporan.status_persetujuan]} dan terkunci.</Alert>}
+            {info && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setInfo('')}>{info}</Alert>}
 
             <Typography variant="h6" gutterBottom>1. Progres Mitigasi</Typography>
             {form.mitigasi.length === 0 && <Alert severity="info" sx={{ mb: 2 }}>Risiko ini belum punya rencana mitigasi. Tambahkan di Risk Register.</Alert>}
@@ -107,6 +118,7 @@ const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan }) => {
                       <TextField fullWidth size="small" label="Keterangan realisasi" value={m.keterangan} onChange={(e) => ubahBaris('mitigasi', i, 'keterangan', e.target.value)} />
                     </Grid>
                   </Grid>
+                  <BuktiMitigasi laporanId={data.laporan?.id} mitigasiId={m.mitigasi_id} daftar={bukti[m.mitigasi_id]} terkunci={terkunci} onBerubah={muatBukti} />
                 </Paper>
               );
             })}
@@ -221,7 +233,7 @@ const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan }) => {
             unitId={data.risiko.unit_kerja_id} alur={data.risiko.unit_kerja?.alur_persetujuan} onSelesai={onTersimpan} />
         ) : <span />}
         <Box>
-        <Button onClick={onTutup}>Tutup</Button>
+        <Button onClick={info ? onTersimpan : onTutup}>Tutup</Button>
         {!terkunci && <Button variant="contained" onClick={simpan} disabled={!form || menyimpan}>{menyimpan ? 'Menyimpan...' : 'Simpan'}</Button>}
         </Box>
       </DialogActions>

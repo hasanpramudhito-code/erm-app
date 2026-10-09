@@ -179,7 +179,10 @@ router.get('/antrean', async (req, res) => {
       orderBy: [{ tahun: 'asc' }, { bulan: 'asc' }],
     }),
   ]);
-  res.json({ risiko, pemantauan });
+  // Jumlah bukti pelaksanaan mitigasi per laporan, agar penyetuju tahu ada lampiran.
+  const bukti = await prisma.lampiran.groupBy({ by: ['entitas_id'], where: { entitas: 'bukti_mitigasi', entitas_id: { in: pemantauan.map((p) => p.id) } }, _count: true });
+  const jumlah = new Map(bukti.map((b) => [b.entitas_id, b._count]));
+  res.json({ risiko, pemantauan: pemantauan.map((p) => ({ ...p, jumlah_bukti: jumlah.get(p.id) || 0 })) });
 });
 
 // ---- Notifikasi ----

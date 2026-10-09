@@ -11,7 +11,7 @@ const DIR = path.resolve(process.env.DIR_UNGGAHAN || path.join(__dirname, '..', 
 fs.mkdirSync(DIR, { recursive: true });
 
 const ENTITAS = ['mitigasi', 'realisasi_mitigasi', 'pemantauan_bulanan', 'insiden', 'hasil_pengujian', 'defisiensi', 'risiko'];
-const EKSTENSI = /\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|csv|txt|zip)$/i;
+const EKSTENSI = /\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|webp|csv|txt|zip)$/i;
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -72,4 +72,4 @@ router.delete('/:lampiranId', async (req, res) => {
   res.status(204).end();
 });
 
-module.exports = { router };
+module.exports = { router, upload, DIR };
