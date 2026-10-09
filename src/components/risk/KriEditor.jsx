@@ -9,11 +9,6 @@ const BARU = {
   nama: '', deskripsi: '', satuan: '', ambang_hijau: '', ambang_kuning: '', ambang_merah: '', arah_target: 'LEBIH_RENDAH', frekuensi: 'BULANAN', pemilik_id: '',
   rumus: 'LANGSUNG', label_pembilang: '', label_penyebut: '', pengali: 100,
 };
-// Contoh siap pakai untuk KRI rasio yang umum di PDAM.
-const CONTOH = [
-  { nama: 'Tingkat kehilangan air (NRW)', satuan: '%', rumus: 'RASIO', label_pembilang: 'Air hilang (m³)', label_penyebut: 'Air didistribusikan (m³)', arah_target: 'LEBIH_RENDAH', ambang_hijau: 20, ambang_kuning: 25, ambang_merah: 30 },
-  { nama: 'Efektivitas penagihan', satuan: '%', rumus: 'RASIO', label_pembilang: 'Rekening tertagih (Rp)', label_penyebut: 'Total tagihan (Rp)', arah_target: 'LEBIH_TINGGI', ambang_hijau: 95, ambang_kuning: 90, ambang_merah: 85 },
-];
 const WARNA = { HIJAU: 'success', KUNING: 'warning', MERAH: 'error', NONAKTIF: 'default' };
 
 // Definisi KRI dalam form risiko (atau KRI baku di risiko utama: tanpaPemilik). Nilai aktual diisi saat pemantauan.
@@ -69,7 +64,7 @@ const KriEditor = ({ value = [], onChange, pengguna = [], tanpaPemilik = false }
                 <TextField fullWidth required label="Nama indikator" value={k.nama} onChange={(e) => ubah(i, 'nama', e.target.value)} />
               </Grid>
               <Grid item xs={12} sm={4}>
-                <TextField fullWidth label="Satuan" placeholder="%, kali, m³, jam" value={k.satuan} onChange={(e) => ubah(i, 'satuan', e.target.value)} />
+                <TextField fullWidth label="Satuan" placeholder="%, kali, jam" value={k.satuan} onChange={(e) => ubah(i, 'satuan', e.target.value)} />
               </Grid>
               <Grid item xs={12} sm={4}>
                 <TextField select fullWidth label="Cara menghitung" value={k.rumus || 'LANGSUNG'} onChange={(e) => ubah(i, 'rumus', e.target.value)}>
@@ -80,13 +75,13 @@ const KriEditor = ({ value = [], onChange, pengguna = [], tanpaPemilik = false }
               {k.rumus === 'RASIO' && (
                 <>
                   <Grid item xs={12} sm={3}>
-                    <TextField fullWidth required label="Angka pembilang" placeholder="Air hilang (m³)" value={k.label_pembilang || ''} onChange={(e) => ubah(i, 'label_pembilang', e.target.value)} />
+                    <TextField fullWidth required label="Nama angka pertama (pembilang)" placeholder="mis. Jumlah kejadian" value={k.label_pembilang || ''} onChange={(e) => ubah(i, 'label_pembilang', e.target.value)} />
                   </Grid>
                   <Grid item xs={12} sm={3}>
-                    <TextField fullWidth required label="Angka penyebut" placeholder="Air didistribusikan (m³)" value={k.label_penyebut || ''} onChange={(e) => ubah(i, 'label_penyebut', e.target.value)} />
+                    <TextField fullWidth required label="Nama angka kedua (penyebut)" placeholder="mis. Jumlah total" value={k.label_penyebut || ''} onChange={(e) => ubah(i, 'label_penyebut', e.target.value)} />
                   </Grid>
                   <Grid item xs={12} sm={2}>
-                    <TextField fullWidth type="number" label="Pengali" value={k.pengali ?? 100} onChange={(e) => ubah(i, 'pengali', e.target.value)} />
+                    <TextField fullWidth type="number" label="Pengali" helperText="100 = persen, 1 = rasio" value={k.pengali ?? 100} onChange={(e) => ubah(i, 'pengali', e.target.value)} />
                   </Grid>
                   <Grid item xs={12}>
                     <Typography variant="caption" color="text.secondary">
@@ -130,12 +125,7 @@ const KriEditor = ({ value = [], onChange, pengguna = [], tanpaPemilik = false }
           </Paper>
         );
       })}
-      <Box display="flex" gap={1} flexWrap="wrap">
-        <Button startIcon={<Plus size={18} />} onClick={() => onChange([...value, { ...BARU }])}>Tambah KRI</Button>
-        {CONTOH.map((c) => (
-          <Button key={c.nama} size="small" variant="outlined" onClick={() => onChange([...value, { ...BARU, ...c }])}>+ {c.nama}</Button>
-        ))}
-      </Box>
+      <Button startIcon={<Plus size={18} />} onClick={() => onChange([...value, { ...BARU }])}>Tambah KRI</Button>
     </Box>
   );
 };
