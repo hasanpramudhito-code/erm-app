@@ -48,4 +48,59 @@ router.get('/dashboard', async (req, res) => {
   });
 });
 
+
+
+// Ringkasan eksekutif: KPI, matriks inheren/residual, 10 risiko teratas, status mitigasi & KRI.
+router.get('/eksekutif', async (req, res) => {
+  const periode_id = Number(req.query.periode_id);
+  if (!periode_id) return res.status(400).json({ error: 'periode_id wajib' });
+  const lingkup = { periode_id, ...cakupanUnit(req.pengguna) };
+  const [risiko, level, mitigasi, kri, insiden] = await Promise.all([
+    prisma.risiko.findMany({
+      where: lingkup,
+      select: {
+        id: true, kode: true, nama: true, deskripsi: true, status_persetujuan: true,
+        unit: { select: { nama: true } },
+        penilaian: { select: { jenis: true, kemungkinan: true, dampak: true, skor: true, level: { select: { nama: true, warna: true } } } },
+      },
+    }),
+    prisma.level_risiko.findMany({ orderBy: { skor_min: 'asc' }, select: { nama: true, warna: true, skor_min: true, skor_maks: true } }),
+    prisma.mitigasi.groupBy({ by: ['status'], where: { risiko: lingkup }, _count: true, _avg: { progres: true } }),
+    prisma.kri.groupBy({ by: ['status'], where: { risiko: lingkup }, _count: true }),
+    prisma.insiden.aggregate({ where: { risiko: lingkup }, _count: true, _sum: { kerugian: true } }),
+  ]);
+  const ambil = (r, j) => r.penilaian.find((p) => p.jenis === j);
+  const matriks = (jenis) => {
+    const sel = {};
+    for (const r of risiko) {
+      const p = ambil(r, jenis);
+      if (p) sel[`${p.kemungkinan}-${p.dampak}`] = (sel[`${p.kemungkinan}-${p.dampak}`] || 0) + 1;
+    }
+    return sel;
+  };
+  const dinilai = risiko.filter((r) => ambil(r, 'INHEREN'));
+  const sumInh = dinilai.reduce((t, r) => t + ambil(r, 'INHEREN').skor, 0);
+  const sumRes = dinilai.reduce((t, r) => t + (ambil(r, 'RESIDUAL')?.skor ?? ambil(r, 'INHEREN').skor), 0);
+  const totalMit = mitigasi.reduce((t, m) => t + m._count, 0);
+  res.json({
+    level,
+    kpi: {
+      total_risiko: risiko.length,
+      dinilai: dinilai.length,
+      final: risiko.filter((r) => r.status_persetujuan === 'FINAL').length,
+      penurunan_risiko: sumInh ? Math.round(((sumInh - sumRes) / sumInh) * 100) : 0,
+      peristiwa: insiden._count,
+      kerugian: Number(insiden._sum.kerugian || 0),
+      rata_progres_mitigasi: totalMit ? Math.round(mitigasi.reduce((t, m) => t + (m._avg.progres || 0) * m._count, 0) / totalMit) : 0,
+    },
+    matriks: { INHEREN: matriks('INHEREN'), RESIDUAL: matriks('RESIDUAL') },
+    teratas: risiko
+      .filter((r) => ambil(r, 'RESIDUAL') || ambil(r, 'INHEREN'))
+      .map((r) => ({ id: r.id, kode: r.kode, nama: r.deskripsi || r.nama, unit: r.unit.nama, status: r.status_persetujuan, inheren: ambil(r, 'INHEREN'), residual: ambil(r, 'RESIDUAL') }))
+      .sort((a, b) => (b.residual?.skor ?? b.inheren.skor) - (a.residual?.skor ?? a.inheren.skor) || (b.inheren?.skor ?? 0) - (a.inheren?.skor ?? 0))
+      .slice(0, 10),
+    mitigasi: Object.fromEntries(mitigasi.map((m) => [m.status, m._count])),
+    kri: Object.fromEntries(kri.map((k) => [k.status, k._count])),
+  });
+});
 module.exports = { router };
