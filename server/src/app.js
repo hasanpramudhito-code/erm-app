@@ -26,6 +26,7 @@ app.use('/api/pemantauan', require('./pemantauan').router);
 app.use('/api/persetujuan', require('./persetujuan').router);
 app.use('/api/agregasi', require('./agregasi').router);
 app.use('/api/ringkasan', require('./ringkasan').router);
+app.use('/api/pantauan', require('./pantauan').router);
 app.use('/api', require('./master').router);
 app.use(require('./crud').errorPrisma);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan' }));

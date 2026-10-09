@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { Box, CircularProgress } from '@mui/material';
 
 import ProtectedRoute from './components/ProtectedRoute';
@@ -31,7 +31,6 @@ const APIIntegration = lazy(() => import('./pages/APIIntegration'));
 
 const RiskParameterSettings = lazy(() => import('./pages/RiskParameterSettings'));
 const RiskAppetiteDashboard = lazy(() => import('./pages/RiskAppetite/RiskAppetiteDashboard'));
-const KRISettings = lazy(() => import('./pages/KRIMonitoring/KRISettings'));
 const RiskToleranceSettings = lazy(() => import('./pages/RiskAppetite/RiskToleranceSettings'));
 const ControlRegister = lazy(() => import('./pages/ControlTesting/ControlRegister'));
 const TestingSchedule = lazy(() => import('./pages/ControlTesting/TestingSchedule'));
@@ -108,7 +107,7 @@ export default function AuthenticatedApp() {
                 <Route path="/risk-parameters" element={<RiskParameterSettings />} />
 
                 <Route path="/risk-appetite" element={<RiskAppetiteDashboard />} />
-                <Route path="/kri-settings" element={<KRISettings />} />
+                <Route path="/kri-settings" element={<Navigate to="/kri-monitoring" replace />} />
                 <Route path="/risk-tolerance" element={<RiskToleranceSettings />} />
 
                 <Route path="/control-register" element={<ControlRegister />} />

@@ -475,11 +475,6 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             text: 'KRI Monitoring',
             icon: <Activity size={20} />,
             path: '/kri-monitoring'
-          },
-          {
-            text: 'KRI Settings',
-            icon: <Settings size={20} />,
-            path: '/kri-settings'
           }
         ]
       },
