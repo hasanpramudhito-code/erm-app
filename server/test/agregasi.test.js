@@ -66,12 +66,13 @@ test('endpoint: hanya FINAL dihitung, kelengkapan X dari Y cabang', async () => 
   const base = `http://127.0.0.1:${server.address().port}`;
   const sufiks = Date.now() % 100000;
   const unit = [];
-  let ru;
+  let ru, periode;
   try {
     const l = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: process.env.SEED_ADMIN_EMAIL, kata_sandi: process.env.SEED_ADMIN_PASSWORD }) });
     const cookie = l.headers.get('set-cookie').split(';')[0];
     const req = async (m, u, b) => (await fetch(`${base}/api${u}`, { method: m, headers: { 'content-type': 'application/json', cookie }, body: b && JSON.stringify(b) })).json();
-    const periode = await prisma.periode.findFirst({ where: { status: 'TERBUKA' } });
+    // Periode khusus tes agar tidak bergantung/tidak menulis ke periode berjalan.
+    periode = await prisma.periode.create({ data: { nama: `AG ${sufiks}`, tanggal_mulai: new Date('2098-01-01'), tanggal_selesai: new Date('2098-12-31'), status: 'TERBUKA' } });
     for (const i of [1, 2, 3]) unit.push(await req('POST', '/unit', { kode: `AG${i}${sufiks}`, nama: `Cabang AG${i}`, jenis: 'CABANG' }));
     ru = await req('POST', '/risiko-utama', { kode: `AG${sufiks}`, nama: 'Agregasi uji', berlaku_untuk: 'CABANG', periode_id: periode.id });
     const entri = await prisma.risiko.findMany({ where: { risiko_utama_id: ru.id }, orderBy: { unit_id: 'asc' } });
@@ -91,6 +92,7 @@ test('endpoint: hanya FINAL dihitung, kelengkapan X dari Y cabang', async () => 
       await prisma.risiko_utama.delete({ where: { id: ru.id } });
     }
     await prisma.unit.deleteMany({ where: { id: { in: unit.map((u) => u.id).filter(Boolean) } } });
+    if (periode) await prisma.periode.delete({ where: { id: periode.id } });
     server.close();
     await prisma.$disconnect();
   }
