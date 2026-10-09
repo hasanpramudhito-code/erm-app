@@ -1,5 +1,5 @@
 // Akses data risiko lewat API + adapter ke bentuk lama (riskCode, initialProbability, ...) yang
-// masih dipakai halaman RiskRegister, RiskAssessment, dan layanan ekspor.
+// masih dipakai halaman RiskRegister dan layanan ekspor.
 import { useEffect, useState } from 'react';
 import { api } from './api';
 

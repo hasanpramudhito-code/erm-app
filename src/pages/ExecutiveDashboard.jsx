@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Box, Grid, LinearProgress, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography
+  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Grid, LinearProgress, List, ListItem, ListItemText,
+  Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography
 } from '@mui/material';
 import { BarChart3 } from 'lucide-react';
 import { api } from '../services/api';
@@ -17,8 +18,8 @@ const warnaTeks = (hex) => {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) > 0.4 ? '#0b0b0b' : '#ffffff';
 };
 
-// Matriks 5x5: sel diwarnai level skornya, angka = jumlah risiko. Tooltip & fokus keyboard per sel.
-const Matriks = ({ judul, sel, level, calculateScore }) => {
+// Matriks 5x5: sel diwarnai level skornya, angka = jumlah risiko. Klik/Enter membuka daftar risiko sel itu.
+const Matriks = ({ judul, sel, level, calculateScore, onPilih }) => {
   const levelDari = (s) => level.find((l) => s >= l.skor_min && s <= l.skor_maks);
   return (
     <Paper sx={{ p: 2, height: '100%' }}>
@@ -30,10 +31,13 @@ const Matriks = ({ judul, sel, level, calculateScore }) => {
             {SKALA.map((d) => {
               const skor = calculateScore(k, d);
               const lv = levelDari(skor);
-              const n = sel[`${k}-${d}`] || 0;
+              const isi = sel[`${k}-${d}`] || [];
+              const n = isi.length;
+              const buka = () => n && onPilih({ judul: `${judul} · K${k} × D${d} · ${lv?.nama || '-'}`, risiko: isi });
               return (
                 <Tooltip key={d} arrow title={`Kemungkinan ${k} · Dampak ${d} · skor ${skor} (${lv?.nama || '-'}): ${n} risiko`}>
-                  <Box tabIndex={0} role="gridcell" sx={{
+                  <Box tabIndex={0} role="gridcell" onClick={buka} onKeyDown={(e) => e.key === 'Enter' && buka()} sx={{
+                    cursor: n ? 'pointer' : 'default',
                     aspectRatio: '1.4', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px',
                     bgcolor: lv?.warna || '#eee', opacity: n ? 1 : 0.35, color: warnaTeks(lv?.warna),
                     fontWeight: 600, fontSize: 18, '&:hover, &:focus-visible': { outline: '2px solid #0b0b0b', outlineOffset: -2 },
@@ -76,6 +80,7 @@ const ExecutiveDashboard = () => {
   const { calculateScore } = useAssessmentConfig();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [sel, setSel] = useState(null);
 
   useEffect(() => {
     if (!periodeId) return;
@@ -86,7 +91,7 @@ const ExecutiveDashboard = () => {
   return (
     <Box sx={{ p: 3 }}>
       <KepalaPantauan ikon={<BarChart3 size={36} color="#1976d2" />} judul="Dashboard Eksekutif"
-        keterangan="Profil risiko, efektivitas mitigasi, dan indikator risiko pada periode terpilih">
+        keterangan="Profil risiko, efektivitas mitigasi, dan indikator risiko pada periode terpilih. Klik sel matriks untuk melihat risikonya.">
         <PilihPeriode daftar={daftarPeriode} value={periodeId} onChange={setPeriodeId} />
       </KepalaPantauan>
 
@@ -110,8 +115,8 @@ const ExecutiveDashboard = () => {
             {data.level.map((l) => <Penanda key={l.nama} warna={l.warna} teks={l.nama} />)}
           </Box>
           <Grid container spacing={3} sx={{ mb: 3 }}>
-            <Grid item xs={12} md={6}><Matriks judul="Matriks Risiko Inheren" sel={data.matriks.INHEREN} level={data.level} calculateScore={calculateScore} /></Grid>
-            <Grid item xs={12} md={6}><Matriks judul="Matriks Risiko Residual" sel={data.matriks.RESIDUAL} level={data.level} calculateScore={calculateScore} /></Grid>
+            <Grid item xs={12} md={6}><Matriks judul="Matriks Risiko Inheren" sel={data.matriks.INHEREN} level={data.level} calculateScore={calculateScore} onPilih={setSel} /></Grid>
+            <Grid item xs={12} md={6}><Matriks judul="Matriks Risiko Residual" sel={data.matriks.RESIDUAL} level={data.level} calculateScore={calculateScore} onPilih={setSel} /></Grid>
           </Grid>
 
           <Paper sx={{ mb: 3 }}>
@@ -152,6 +157,18 @@ const ExecutiveDashboard = () => {
           </Grid>
         </>
       )}
+
+      <Dialog open={!!sel} onClose={() => setSel(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>{sel?.judul}</DialogTitle>
+        <DialogContent dividers>
+          <List dense disablePadding>
+            {sel?.risiko.map((r) => (
+              <ListItem key={r.id} divider><ListItemText primary={<><strong>{r.kode}</strong> {r.nama}</>} secondary={r.unit_kerja} /></ListItem>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions><Button onClick={() => setSel(null)}>Tutup</Button></DialogActions>
+      </Dialog>
     </Box>
   );
 };

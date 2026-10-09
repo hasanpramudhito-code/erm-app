@@ -70,7 +70,6 @@ const MENU = [
     items: [
       { text: 'Register Risiko', icon: <AlertTriangle size={20} />, path: '/risk-register' },
       { text: 'Risiko Utama & Pustaka', icon: <Library size={20} />, path: '/risiko-utama' },
-      { text: 'Penilaian Risiko', icon: <BarChart3 size={20} />, path: '/risk-assessment' },
       { text: 'Pemantauan', icon: <CalendarCheck size={20} />, path: '/pemantauan' },
       { text: 'Antrean Verifikasi', icon: <CheckSquare size={20} />, path: '/approval', peran: [...PENGELOLA, 'PIMPINAN'] },
     ]

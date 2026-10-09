@@ -8,7 +8,6 @@ const JUDUL_HALAMAN = {
   '/executive-dashboard': 'Dashboard Eksekutif',
   '/risk-register': 'Register Risiko',
   '/risiko-utama': 'Risiko Utama & Pustaka',
-  '/risk-assessment': 'Penilaian Risiko',
   '/pemantauan': 'Pemantauan',
   '/approval': 'Antrean Verifikasi',
   '/treatment-plans': 'Rencana Mitigasi',

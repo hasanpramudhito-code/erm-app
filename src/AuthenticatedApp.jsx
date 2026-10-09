@@ -19,7 +19,6 @@ const DashboardKorporat = lazy(() => import('./pages/DashboardKorporat'));
 const RisikoUtama = lazy(() => import('./pages/RisikoUtama'));
 const Pemantauan = lazy(() => import('./pages/Pemantauan'));
 const RiskRegister = lazy(() => import('./pages/RiskRegister'));
-const RiskAssessment = lazy(() => import('./pages/RiskAssessment'));
 const RiskTreatmentPlans = lazy(() => import('./pages/RiskTreatmentPlans'));
 const RiskCulture = lazy(() => import('./pages/RiskCulture'));
 const IncidentReporting = lazy(() => import('./pages/IncidentReporting'));
@@ -71,7 +70,7 @@ export default function AuthenticatedApp() {
 
                 <Route path="/risk-register" element={<RiskRegister />} />
                 <Route path="/risiko-utama" element={<RisikoUtama />} />
-                <Route path="/risk-assessment" element={<RiskAssessment />} />
+                <Route path="/risk-assessment" element={<Navigate to="/executive-dashboard" replace />} />
                 <Route path="/pemantauan" element={<Pemantauan />} />
                 <Route path="/pemantauan-bulanan" element={<Navigate to="/pemantauan" replace />} />
                 <Route path="/treatment-plans" element={<RiskTreatmentPlans />} />
