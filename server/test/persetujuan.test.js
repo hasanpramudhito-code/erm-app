@@ -142,3 +142,46 @@ test('auditor: lihat semua, tidak bisa menulis atau memverifikasi', async () => 
   assert.equal((await req('POST', `/persetujuan/risiko/${r.id}/ajukan`, {}, ck.auditor)).status, 403);
   assert.equal((await req('GET', `/risiko/${r.id}/riwayat`, null, ck.auditor)).status, 200);
 });
+
+test('revisi risiko FINAL: usulan disimpan terpisah, data berlaku tetap sampai revisi final', async () => {
+  const r = (await req('POST', '/risiko', {
+    periode_id: periode.id, unit_kerja_id: unitA.id, kode: `RV-${sufiks}`, nama: 'Risiko revisi',
+    penyebab: [{ uraian: 'Penyebab awal' }], inheren: { kemungkinan: 2, dampak: 2 }, mitigasi: [{ uraian: 'Mitigasi awal' }],
+  }, ck.petugas)).body;
+  // Belum FINAL: revisi ditolak (ubah langsung saja).
+  assert.equal((await req('PUT', `/risiko/${r.id}/revisi`, { alasan: 'x', inheren: { kemungkinan: 5, dampak: 5 } }, ck.petugas)).status, 400);
+  for (const [a, who] of [['ajukan', 'petugas'], ['setujui', 'pimpinan'], ['finalkan', 'pengelola']])
+    assert.equal((await req('POST', `/persetujuan/risiko/${r.id}/${a}`, {}, ck[who])).status, 200);
+
+  assert.equal((await req('PUT', `/risiko/${r.id}/revisi`, { inheren: { kemungkinan: 5, dampak: 5 } }, ck.petugas)).status, 400); // alasan wajib
+  const usul = { alasan: 'Ada kejadian baru', inheren: { kemungkinan: 5, dampak: 5 }, penyebab: [{ uraian: 'Penyebab awal' }, { uraian: 'Penyebab baru' }], mitigasi: [{ id: r.mitigasi[0].id, uraian: 'Mitigasi diperketat' }] };
+  const rev = await req('PUT', `/risiko/${r.id}/revisi`, usul, ck.petugas);
+  assert.equal(rev.status, 201, JSON.stringify(rev.body));
+  assert.equal(rev.body.nomor_revisi, 1);
+  assert.equal(rev.body.salinan_data.sebelum.inheren.kemungkinan, 2);
+  assert.equal((await req('PUT', `/risiko/${r.id}/revisi`, { ...usul, alasan: 'Diperbarui' }, ck.petugas)).status, 200); // ubah draf yang sama
+
+  const aksiRev = (a, who, catatan) => req('POST', `/persetujuan/revisi/${rev.body.id}/${a}`, catatan ? { catatan } : {}, ck[who]);
+  assert.equal((await aksiRev('ajukan', 'petugas')).status, 200);
+  assert.equal((await req('PUT', `/risiko/${r.id}/revisi`, usul, ck.petugas)).status, 400); // sedang diproses
+  assert.equal((await aksiRev('setujui', 'pimpinan')).status, 200);
+  // Belum final: data berlaku masih versi lama.
+  let kini = (await req('GET', `/risiko/${r.id}`)).body;
+  assert.equal(kini.penilaian.find((p) => p.jenis === 'INHEREN').kemungkinan, 2);
+  assert.equal(kini.status_persetujuan, 'FINAL');
+
+  assert.equal((await aksiRev('finalkan', 'pengelola')).status, 200);
+  kini = (await req('GET', `/risiko/${r.id}`)).body;
+  assert.equal(kini.penilaian.find((p) => p.jenis === 'INHEREN').kemungkinan, 5);
+  assert.equal(kini.penyebab.length, 2);
+  assert.equal(kini.mitigasi[0].uraian, 'Mitigasi diperketat');
+  assert.equal(kini.mitigasi[0].id, r.mitigasi[0].id); // mitigasi yang sama (riwayat pemantauan tetap terkait)
+  assert.equal(kini.versi_aktif, 2);
+  assert.equal(kini.status_persetujuan, 'FINAL');
+  assert.equal((await aksiRev('buka', 'pengelola', 'x')).status, 400); // revisi final tidak dibuka
+
+  // Revisi berikutnya bernomor 2; bisa dibatalkan selagi draf.
+  assert.equal((await req('PUT', `/risiko/${r.id}/revisi`, { alasan: 'Lagi', catatan_penilaian: 'baru' }, ck.petugas)).body.nomor_revisi, 2);
+  assert.equal((await req('DELETE', `/risiko/${r.id}/revisi`, null, ck.petugas)).status, 204);
+  assert.equal((await req('GET', `/risiko/${r.id}/revisi`, null, ck.petugas)).body.length, 1);
+});

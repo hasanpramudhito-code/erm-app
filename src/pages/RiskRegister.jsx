@@ -67,6 +67,7 @@ import { muatRisiko, keBodyApi, usePeriode, LABEL_PERSETUJUAN, LABEL_JENIS_UK, W
 import MitigasiEditor from '../components/risk/MitigasiEditor';
 import KriEditor from '../components/risk/KriEditor';
 import AksiPersetujuan from '../components/persetujuan/AksiPersetujuan';
+import PanelRevisi from '../components/risk/PanelRevisi';
 import UraianPustakaEditor from '../components/risk/UraianPustakaEditor';
 import { muatIdentitas } from '../services/identitas';
 import { useAuth } from '../contexts/AuthContext';
@@ -138,6 +139,10 @@ const RiskRegister = () => {
   const [codeError, setCodeError] = useState('');
   const [expandedRows, setExpandedRows] = useState({});
   const [tabForm, setTabForm] = useState(0);
+  // Mode revisi: risiko FINAL diubah lewat usulan revisi (disetujui dulu sebelum berlaku).
+  const [modeRevisi, setModeRevisi] = useState(false);
+  const [alasanRevisi, setAlasanRevisi] = useState('');
+  const [revisiTerbuka, setRevisiTerbuka] = useState(null);
 
   // State untuk search di dropdown
 
@@ -444,7 +449,12 @@ const RiskRegister = () => {
       }
 
       const body = keBodyApi(formData);
-      if (editingRisk) {
+      if (modeRevisi) {
+        if (!alasanRevisi.trim()) { showSnackbar('Alasan revisi wajib diisi', 'error'); return; }
+        const kolom = ['deskripsi', 'penyebab', 'dampak', 'inheren', 'kontrol_eksisting', 'efektivitas_kontrol', 'kuantifikasi_inheren', 'mitigasi', 'prioritas_penanganan', 'catatan_penilaian'];
+        await api.put(`/risiko/${editingRisk.id}/revisi`, { alasan: alasanRevisi, ...Object.fromEntries(kolom.map((k) => [k, body[k]])) });
+        showSnackbar('Usulan revisi tersimpan sebagai draf. Ajukan dari detail risiko agar diproses.', 'success');
+      } else if (editingRisk) {
         await api.patch(`/risiko/${editingRisk.id}`, body);
         showSnackbar('Risiko berhasil diupdate!', 'success');
       } else {
@@ -486,7 +496,20 @@ const RiskRegister = () => {
   };
 
   // Handle edit
-  const handleEdit = (risk, tab = 0) => {
+  const handleEdit = async (risk, tab = 0) => {
+    const revisi = risk.approvalStatus === 'FINAL';
+    setModeRevisi(revisi);
+    setAlasanRevisi('');
+    setRevisiTerbuka(null);
+    if (revisi) {
+      const daftar = await api.get(`/risiko/${risk.id}/revisi`).catch(() => []);
+      const t = daftar.find((x) => ['DRAF', 'DIKEMBALIKAN', 'DIAJUKAN', 'DISETUJUI_PIMPINAN'].includes(x.status_persetujuan));
+      if (t && !['DRAF', 'DIKEMBALIKAN'].includes(t.status_persetujuan)) {
+        showSnackbar(`Revisi #${t.nomor_revisi} sedang dalam persetujuan (${LABEL_PERSETUJUAN[t.status_persetujuan]})`, 'info');
+        return;
+      }
+      if (t) { setRevisiTerbuka(t); setAlasanRevisi(t.alasan_revisi); }
+    }
     setEditingRisk(risk);
     setTabForm(tab);
     setFormData({
@@ -574,6 +597,8 @@ const RiskRegister = () => {
   // Risiko utama CABANG berlaku untuk Cabang dan Unit; PUSAT untuk Bagian.
   const jenisUnitForm = WILAYAH.includes(departments.find((d) => d.id === formData.department)?.parent ?? 'CABANG') ? 'CABANG' : 'PUSAT';
   const risikoUtamaTerpilih = daftarRisikoUtama.find((r) => r.id === formData.mainRiskId);
+  // Boleh diubah: draf/dikembalikan (langsung), atau FINAL (lewat usulan revisi). Direksi selalu boleh.
+  const bisaUbah = (risk) => ['DRAF', 'DIKEMBALIKAN', 'FINAL'].includes(risk.approvalStatus) || userData?.peran?.includes('DIREKSI');
   const handleViewDetail = (risk) => {
     setSelectedRisk(risk);
     setRiwayat([]);
@@ -1074,6 +1099,7 @@ const RiskRegister = () => {
                                   <IconButton
                                     color="info"
                                     size="small"
+                                    aria-label="Lihat Detail"
                                     onClick={() => handleViewDetail(risk)}
                                   >
                                     <Eye size={18} />
@@ -1085,17 +1111,18 @@ const RiskRegister = () => {
                                     size="small"
                                     aria-label="Penilaian"
                                     onClick={() => handleEdit(risk, 1)}
-                                    disabled={!['DRAF', 'DIKEMBALIKAN'].includes(risk.approvalStatus) && !userData?.peran?.includes('DIREKSI')}
+                                    disabled={!bisaUbah(risk)}
                                   >
                                     <BarChart3 size={18} />
                                   </IconButton>
                                 </Tooltip>
-                                <Tooltip title="Edit">
+                                <Tooltip title={risk.approvalStatus === 'FINAL' ? 'Usulkan revisi' : 'Edit'}>
                                   <IconButton
                                     color="primary"
                                     size="small"
+                                    aria-label={risk.approvalStatus === 'FINAL' ? 'Usulkan revisi' : 'Edit'}
                                     onClick={() => handleEdit(risk)}
-                                    disabled={!['DRAF', 'DIKEMBALIKAN'].includes(risk.approvalStatus) && !userData?.peran?.includes('DIREKSI')}
+                                    disabled={!bisaUbah(risk)}
                                   >
                                     <Edit2 size={18} />
                                   </IconButton>
@@ -1104,6 +1131,7 @@ const RiskRegister = () => {
                                   <IconButton
                                     color="error"
                                     size="small"
+                                    aria-label="Hapus"
                                     onClick={() => handleDelete(risk.id)}
                                     disabled={risk.approvalStatus !== 'DRAF'}
                                   >
@@ -1239,10 +1267,19 @@ const RiskRegister = () => {
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
             <AlertTriangle size={18} />
-            {editingRisk ? 'Edit Risiko' : 'Tambah Risiko Baru'}
+            {modeRevisi ? `Usulan Revisi · ${editingRisk?.riskCode}` : editingRisk ? 'Edit Risiko' : 'Tambah Risiko Baru'}
           </Box>
         </DialogTitle>
         <DialogContent dividers>
+          {modeRevisi && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Risiko ini sudah FINAL. Perubahan disimpan sebagai <strong>usulan revisi{revisiTerbuka ? ` #${revisiTerbuka.nomor_revisi}` : ''}</strong> dan baru berlaku setelah disetujui
+              melalui alur persetujuan yang sama; sampai itu data lama tetap dipakai. Yang bisa direvisi: deskripsi, penyebab, dampak,
+              penilaian inheren, kontrol, prioritas, catatan, dan mitigasi.
+              <TextField fullWidth required multiline minRows={2} size="small" label="Alasan revisi" sx={{ mt: 1.5, bgcolor: 'background.paper' }}
+                value={alasanRevisi} onChange={(e) => setAlasanRevisi(e.target.value)} />
+            </Alert>
+          )}
           <Box sx={{ mb: 3 }}>
             <Tabs value={tabForm} onChange={(e, v) => setTabForm(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
               <Tab label="1. Identifikasi" />
@@ -1670,7 +1707,7 @@ const RiskRegister = () => {
             onClick={handleSubmit}
             disabled={!formData.riskCode || !formData.riskDescription || !formData.riskSource || !formData.department || !!codeError || !periodeId}
           >
-            {editingRisk ? 'Update Risiko' : 'Simpan Risiko'}
+            {modeRevisi ? 'Simpan Usulan Revisi' : editingRisk ? 'Update Risiko' : 'Simpan Risiko'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1955,6 +1992,8 @@ const RiskRegister = () => {
                       </Grid>
                     </CardContent>
                   </Card>
+
+                  <PanelRevisi risiko={selectedRisk} onBerubah={loadData} />
 
                   {/* Audit Trail */}
                   <Card>

@@ -73,6 +73,21 @@ const ENTITAS = {
     label: (e) => `Laporan ${e.bulan}/${e.tahun} risiko ${e.kode}`,
     tautan: () => '/pemantauan',
   },
+  revisi: {
+    jenis: 'REVISI', tabel: 'revisi_risiko',
+    ambil: async (id, p) => {
+      const e = await prisma.revisi_risiko.findFirst({
+        where: { id, risiko: cakupanUnitKerja(p) },
+        select: { id: true, nomor_revisi: true, status_persetujuan: true, risiko: { select: { kode: true, unit_kerja_id: true, unit_kerja: { select: { alur_persetujuan: true } } } } },
+      });
+      return e && { ...e, unit_kerja_id: e.risiko.unit_kerja_id, alur: e.risiko.unit_kerja.alur_persetujuan, kode: e.risiko.kode };
+    },
+    label: (e) => `Revisi #${e.nomor_revisi} risiko ${e.kode}`,
+    tautan: () => '/risk-register',
+    // Revisi FINAL diterapkan ke risiko; revisi final tidak bisa dibuka lagi (ajukan revisi baru).
+    saatFinal: (tx, id) => require('./risiko').terapkanRevisi(tx, id),
+    tanpaBuka: true,
+  },
 };
 
 // Penerima notifikasi untuk status baru. Pengguna sub-bagian ikut unit kerja induknya.
@@ -92,6 +107,7 @@ async function jalankan(req, jenisEntitas, id, aksi, catatan) {
   const e = await E.ambil(id, req.pengguna);
   if (!e) throw galat(404, 'Data tidak ditemukan');
   if (!A.dari.includes(e.status_persetujuan)) throw galat(400, `Tidak dapat ${aksi} dari status ${e.status_persetujuan}`);
+  if (aksi === 'buka' && E.tanpaBuka) throw galat(400, 'Revisi yang sudah final tidak bisa dibuka; ajukan revisi baru');
   if (!A.boleh(req.pengguna, e)) throw galat(403, 'Anda tidak berwenang untuk aksi ini');
   const ke = typeof A.ke === 'function' ? A.ke(e) : A.ke;
   if (A.wajibCatatan && !catatan) throw galat(400, 'Catatan wajib diisi');
@@ -115,6 +131,7 @@ async function jalankan(req, jenisEntitas, id, aksi, catatan) {
     const data = { status_persetujuan: ke, ...(jenisEntitas === 'pemantauan' && aksi === 'ajukan' ? { diajukan_pada: sekarang } : {}) };
     const n = await tx[E.tabel].updateMany({ where: { id, status_persetujuan: e.status_persetujuan }, data });
     if (n.count !== 1) throw galat(409, 'Data sudah diproses orang lain, muat ulang halaman');
+    if (ke === 'FINAL' && E.saatFinal) await E.saatFinal(tx, id);
     await tx.riwayat_persetujuan.create({
       data: { entitas: E.jenis, entitas_id: id, dari_status: e.status_persetujuan, ke_status: ke, pengguna_id: req.pengguna.id, catatan },
     });
@@ -170,29 +187,39 @@ router.get('/antrean', async (req, res) => {
   const status = [];
   if (punya(p, [...PIMPINAN, ...ADMIN])) status.push('DIAJUKAN');
   if (punya(p, [...PENGELOLA, ...ADMIN])) status.push('DISETUJUI_PIMPINAN');
-  if (!status.length) return res.json({ risiko: [], pemantauan: [] });
+  if (!status.length) return res.json({ risiko: [], pemantauan: [], revisi: [] });
   // Pimpinan hanya untuk unitnya; pengelola/admin semua unit.
   const unitFilter = (s) => (s === 'DIAJUKAN' && !punya(p, [...ADMIN])) ? { unit_kerja_id: p.unit_kerja_id ?? -1 } : {};
   const or = status.map((s) => ({ status_persetujuan: s, ...unitFilter(s) }));
-  const [risiko, pemantauan] = await Promise.all([
+  const lewatRisiko = or.map(({ unit_kerja_id, ...s }) => ({ ...s, ...(unit_kerja_id !== undefined ? { risiko: { unit_kerja_id } } : {}) }));
+  const [risiko, pemantauan, revisi] = await Promise.all([
     prisma.risiko.findMany({
       where: { OR: or },
       select: { id: true, kode: true, nama: true, deskripsi: true, status_persetujuan: true, diubah_pada: true, unit_kerja_id: true, unit_kerja: { select: { nama: true, alur_persetujuan: true } }, periode: { select: { nama: true } } },
       orderBy: { diubah_pada: 'asc' },
     }),
     prisma.pemantauan_bulanan.findMany({
-      where: { OR: or.map(({ unit_kerja_id, ...s }) => ({ ...s, ...(unit_kerja_id !== undefined ? { risiko: { unit_kerja_id } } : {}) })) },
+      where: { OR: lewatRisiko },
       select: {
         id: true, tahun: true, bulan: true, status_persetujuan: true, diajukan_pada: true, peristiwa_terjadi: true,
         risiko: { select: { id: true, kode: true, nama: true, deskripsi: true, unit_kerja_id: true, unit_kerja: { select: { nama: true, alur_persetujuan: true } } } },
       },
       orderBy: [{ tahun: 'asc' }, { bulan: 'asc' }],
     }),
+    prisma.revisi_risiko.findMany({
+      where: { OR: lewatRisiko },
+      select: {
+        id: true, nomor_revisi: true, alasan_revisi: true, salinan_data: true, status_persetujuan: true, diubah_pada: true,
+        diajukan_oleh: { select: { nama: true } },
+        risiko: { select: { id: true, kode: true, nama: true, deskripsi: true, unit_kerja_id: true, unit_kerja: { select: { nama: true, alur_persetujuan: true } } } },
+      },
+      orderBy: { diubah_pada: 'asc' },
+    }),
   ]);
   // Jumlah bukti pelaksanaan mitigasi per laporan, agar penyetuju tahu ada lampiran.
   const bukti = await prisma.lampiran.groupBy({ by: ['entitas_id'], where: { entitas: 'bukti_mitigasi', entitas_id: { in: pemantauan.map((p) => p.id) } }, _count: true });
   const jumlah = new Map(bukti.map((b) => [b.entitas_id, b._count]));
-  res.json({ risiko, pemantauan: pemantauan.map((p) => ({ ...p, jumlah_bukti: jumlah.get(p.id) || 0 })) });
+  res.json({ risiko, pemantauan: pemantauan.map((p) => ({ ...p, jumlah_bukti: jumlah.get(p.id) || 0 })), revisi });
 });
 
 // ---- Notifikasi ----

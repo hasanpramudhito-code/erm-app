@@ -337,6 +337,90 @@ router.delete('/:id', async (req, res) => {
   res.status(204).end();
 });
 
+// ---- Revisi di tengah periode (handoff 5.6) ----
+// Risiko FINAL tidak diubah langsung: usulan disimpan di revisi_risiko (salinan versi berlaku + usulan) dan
+// melewati alur persetujuan yang sama. Data berlaku (termasuk agregasi) tetap versi lama sampai revisi FINAL.
+// Yang boleh direvisi: penilaian inheren, penyebab, dampak, mitigasi, kontrol, catatan (bukan identitas/unit/periode).
+const KOLOM_REVISI = ['deskripsi', 'penyebab', 'dampak', 'inheren', 'kontrol_eksisting', 'efektivitas_kontrol', 'kuantifikasi_inheren', 'mitigasi', 'prioritas_penanganan', 'catatan_penilaian'];
+const REVISI_TERBUKA = ['DRAF', 'DIAJUKAN', 'DISETUJUI_PIMPINAN', 'DIKEMBALIKAN'];
+
+// Kondisi berlaku dalam bentuk body form (untuk salinan & pembanding).
+const salinanBerlaku = (r) => {
+  const inh = r.penilaian.find((p) => p.jenis === 'INHEREN');
+  return {
+    deskripsi: r.deskripsi, kontrol_eksisting: r.kontrol_eksisting, efektivitas_kontrol: r.efektivitas_kontrol,
+    kuantifikasi_inheren: r.kuantifikasi_inheren == null ? null : Number(r.kuantifikasi_inheren),
+    prioritas_penanganan: r.prioritas_penanganan, catatan_penilaian: r.catatan_penilaian,
+    penyebab: r.penyebab.map(({ uraian, pustaka_penyebab_id }) => ({ uraian, pustaka_penyebab_id })),
+    dampak: r.dampak.map(({ uraian, pustaka_dampak_id }) => ({ uraian, pustaka_dampak_id })),
+    inheren: inh ? { kemungkinan: inh.kemungkinan, dampak: inh.dampak, skor: inh.skor } : null,
+    mitigasi: r.mitigasi.map(({ id, uraian, jenis, penanggung_jawab_id, target_waktu, anggaran, prioritas }) =>
+      ({ id, uraian, jenis, penanggung_jawab_id, target_waktu, anggaran: anggaran == null ? null : Number(anggaran), prioritas })),
+  };
+};
+
+router.get('/:id/revisi', async (req, res) => {
+  const r = await prisma.risiko.findFirst({ where: { id: Number(req.params.id) || -1, ...cakupanUnitKerja(req.pengguna) }, select: { id: true } });
+  if (!r) return res.status(404).json({ error: 'Risiko tidak ditemukan' });
+  res.json(await prisma.revisi_risiko.findMany({
+    where: { risiko_id: r.id }, orderBy: { nomor_revisi: 'desc' },
+    include: { diajukan_oleh: { select: { nama: true } } },
+  }));
+});
+
+// Buat atau ubah usulan revisi yang masih DRAF/DIKEMBALIKAN. Body = field form risiko + alasan.
+router.put('/:id/revisi', async (req, res) => {
+  const id = Number(req.params.id);
+  const lama = await prisma.risiko.findFirst({ where: { id, ...cakupanUnitKerja(req.pengguna) }, include: sertakan });
+  if (!lama) return res.status(404).json({ error: 'Risiko tidak ditemukan' });
+  if (lama.status_persetujuan !== 'FINAL') return res.status(400).json({ error: 'Revisi hanya untuk risiko berstatus FINAL; risiko lain diubah langsung' });
+  if (lama.periode.status !== 'TERBUKA') return res.status(400).json({ error: 'Periode sudah ditutup' });
+  const larang = cekTulis(req.pengguna, lama.unit_kerja_id, 'DRAF');
+  if (larang) return res.status(403).json({ error: larang });
+  const alasan = String(req.body?.alasan ?? '').trim();
+  if (!alasan) return res.status(400).json({ error: 'Alasan revisi wajib diisi' });
+
+  // Validasi usulan dengan aturan yang sama seperti mengubah risiko.
+  const usulan = Object.fromEntries(KOLOM_REVISI.filter((k) => req.body[k] !== undefined).map((k) => [k, req.body[k]]));
+  if (!Object.keys(usulan).length) return res.status(400).json({ error: 'Tidak ada perubahan yang diusulkan' });
+  const h = await bersihkan(usulan, false, req.pengguna, lama.risiko_utama_id, lama.periode_id);
+  if (h.error) return res.status(400).json({ error: h.error });
+
+  const terbuka = await prisma.revisi_risiko.findFirst({ where: { risiko_id: id, status_persetujuan: { in: REVISI_TERBUKA } } });
+  if (terbuka && !['DRAF', 'DIKEMBALIKAN'].includes(terbuka.status_persetujuan)) return res.status(400).json({ error: 'Revisi sebelumnya sedang dalam persetujuan' });
+  const salinan_data = { sebelum: salinanBerlaku(lama), usulan };
+  const nomor = ((await prisma.revisi_risiko.aggregate({ where: { risiko_id: id }, _max: { nomor_revisi: true } }))._max.nomor_revisi || 0) + 1;
+  const rev = terbuka
+    ? await prisma.revisi_risiko.update({ where: { id: terbuka.id }, data: { alasan_revisi: alasan, salinan_data } })
+    : await prisma.revisi_risiko.create({ data: { risiko_id: id, alasan_revisi: alasan, salinan_data, diajukan_oleh_id: req.pengguna.id, nomor_revisi: nomor } });
+  await catat({ req, nama_tabel: 'revisi_risiko', id_data: rev.id, aksi: terbuka ? 'UBAH' : 'BUAT', nilai_baru: rev });
+  res.status(terbuka ? 200 : 201).json(rev);
+});
+
+// Batalkan usulan revisi yang masih DRAF/DIKEMBALIKAN (satu risiko hanya punya satu revisi terbuka).
+router.delete('/:id/revisi', async (req, res) => {
+  const rev = await prisma.revisi_risiko.findFirst({
+    where: { risiko_id: Number(req.params.id) || -1, status_persetujuan: { in: REVISI_TERBUKA }, risiko: cakupanUnitKerja(req.pengguna) },
+    include: { risiko: { select: { unit_kerja_id: true } } },
+  });
+  if (!rev) return res.status(404).json({ error: 'Revisi tidak ditemukan' });
+  if (!['DRAF', 'DIKEMBALIKAN'].includes(rev.status_persetujuan)) return res.status(400).json({ error: 'Revisi yang sedang/selesai disetujui tidak bisa dibatalkan' });
+  const larang = cekTulis(req.pengguna, rev.risiko.unit_kerja_id, 'DRAF');
+  if (larang) return res.status(403).json({ error: larang });
+  await prisma.revisi_risiko.delete({ where: { id: rev.id } });
+  await catat({ req, nama_tabel: 'revisi_risiko', id_data: rev.id, aksi: 'HAPUS', nilai_lama: rev });
+  res.status(204).end();
+});
+
+// Terapkan revisi yang baru FINAL ke risiko (dipanggil dalam transaksi persetujuan).
+async function terapkanRevisi(tx, revisi_id) {
+  const rev = await tx.revisi_risiko.findUnique({ where: { id: revisi_id }, include: { risiko: true } });
+  const h = await bersihkan(rev.salinan_data.usulan, false, { peran: ['ADMIN'] }, rev.risiko.risiko_utama_id, rev.risiko.periode_id);
+  if (h.error) throw Object.assign(new Error('Revisi tidak bisa diterapkan: ' + h.error), { status: 400, expose: true });
+  await tx.risiko.update({ where: { id: rev.risiko_id }, data: { ...h.data, versi_aktif: rev.nomor_revisi + 1 } });
+  await simpanAnak(tx, rev.risiko_id, h);
+}
+
 // Riwayat perubahan satu risiko dari jejak audit.
 router.get('/:id/riwayat', async (req, res) => {
   const r = await prisma.risiko.findFirst({ where: { id: Number(req.params.id) || -1, ...cakupanUnitKerja(req.pengguna) }, select: { id: true } });
@@ -348,4 +432,4 @@ router.get('/:id/riwayat', async (req, res) => {
   }));
 });
 
-module.exports = { router, bersihkanKri };
+module.exports = { router, bersihkanKri, terapkanRevisi };

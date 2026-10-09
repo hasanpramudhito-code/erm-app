@@ -8,12 +8,13 @@ import { api } from '../services/api';
 import { LABEL_PERSETUJUAN, useFrekuensi } from '../services/risiko';
 import AksiPersetujuan from '../components/persetujuan/AksiPersetujuan';
 import { FormLaporan } from './Pemantauan';
+import { Banding } from '../components/risk/PanelRevisi';
 
 const NAMA_BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
 // Antrean data yang menunggu persetujuan pengguna ini: pimpinan (DIAJUKAN di unitnya), pengelola risiko (DISETUJUI_PIMPINAN).
 const AntreanVerifikasi = () => {
-  const [data, setData] = useState({ risiko: [], pemantauan: [] });
+  const [data, setData] = useState({ risiko: [], pemantauan: [], revisi: [] });
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -27,10 +28,10 @@ const AntreanVerifikasi = () => {
   };
   useEffect(muat, []);
 
-  const entitas = tab === 0 ? 'risiko' : 'pemantauan';
+  const entitas = ['risiko', 'pemantauan', 'revisi'][tab];
   const n = useFrekuensi();
   const [lihat, setLihat] = useState(null);
-  const daftar = data[entitas];
+  const daftar = data[entitas] || [];
   // Aksi massal hanya untuk satu status sekaligus agar aksinya jelas.
   const statusPilihan = [...new Set(daftar.filter((d) => pilih.includes(d.id)).map((d) => d.status_persetujuan))];
   const aksiMassal = statusPilihan.length === 1 ? (statusPilihan[0] === 'DIAJUKAN' ? 'setujui' : 'finalkan') : null;
@@ -57,7 +58,7 @@ const AntreanVerifikasi = () => {
             <Box>
               <Typography variant="h4">Antrean Verifikasi</Typography>
               <Typography variant="body2" color="text.secondary">
-                Risk register dan laporan pemantauan bulanan yang menunggu persetujuan Anda
+                Risk register, laporan pemantauan, dan revisi risiko yang menunggu persetujuan Anda
               </Typography>
             </Box>
           </Box>
@@ -68,9 +69,31 @@ const AntreanVerifikasi = () => {
 
       <Tabs value={tab} onChange={(e, v) => { setTab(v); setPilih([]); }} sx={{ mb: 2 }}>
         <Tab label={`Risk Register (${data.risiko.length})`} />
-        <Tab label={`Laporan Bulanan (${data.pemantauan.length})`} />
+        <Tab label={`Laporan Pemantauan (${data.pemantauan.length})`} />
+        <Tab label={`Revisi Risiko (${(data.revisi || []).length})`} />
       </Tabs>
 
+      {tab === 2 && (
+        daftar.length === 0
+          ? <Paper sx={{ p: 3, textAlign: 'center' }}>Tidak ada revisi yang menunggu persetujuan Anda.</Paper>
+          : daftar.map((rv) => (
+            <Paper key={rv.id} sx={{ p: 2, mb: 2 }}>
+              <Box display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1} mb={1}>
+                <Box>
+                  <Typography variant="subtitle1"><strong>{rv.risiko.kode}</strong> {rv.risiko.deskripsi || rv.risiko.nama}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Revisi #{rv.nomor_revisi} · {rv.risiko.unit_kerja?.nama} · {rv.diajukan_oleh?.nama} · {LABEL_PERSETUJUAN[rv.status_persetujuan]}
+                  </Typography>
+                  <Typography variant="body2" mt={0.5}>Alasan: {rv.alasan_revisi}</Typography>
+                </Box>
+                <AksiPersetujuan entitas="revisi" id={rv.id} status={rv.status_persetujuan} unitId={rv.risiko.unit_kerja_id} alur={rv.risiko.unit_kerja?.alur_persetujuan} onSelesai={muat} />
+              </Box>
+              <Banding data={rv.salinan_data} />
+            </Paper>
+          ))
+      )}
+
+      {tab !== 2 && (<>
       {pilih.length > 0 && (
         <Alert severity="info" sx={{ mb: 2 }} action={aksiMassal && (
           <Button color="inherit" size="small" onClick={prosesMassal}>
@@ -134,6 +157,7 @@ const AntreanVerifikasi = () => {
           </Table>
         </TableContainer>
       </Paper>
+      </>)}
       {lihat && n && (
         <FormLaporan risikoId={lihat.risiko.id} tahun={lihat.tahun} bulan={lihat.bulan} n={n}
           onTutup={() => setLihat(null)} onTersimpan={() => { setLihat(null); muat(); }} />
