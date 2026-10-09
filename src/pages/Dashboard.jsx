@@ -156,7 +156,7 @@ const Dashboard = () => {
   const quickActions = [
     {
       title: 'Kelola Struktur Organisasi',
-      description: 'Buat unit, sub-unit, dan proses bisnis',
+      description: 'Bagian, sub-bagian, Cabang, dan Unit',
       icon: <AccountTree size={24} />,
       path: '/organization',
       color: 'primary.main'
@@ -169,10 +169,10 @@ const Dashboard = () => {
       color: 'success.main'
     },
     ...(canManageUsers ? [{
-      title: 'Kelola Users',
-      description: 'Management user dan hak akses',
+      title: 'Kelola Pengguna',
+      description: 'Tambah pengguna dan atur peran',
       icon: <Users size={24} />,
-      path: '/user-management',
+      path: '/organization?tab=users',
       color: 'secondary.main'
     }] : []),
     {

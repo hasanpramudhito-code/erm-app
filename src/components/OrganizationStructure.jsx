@@ -28,10 +28,11 @@ import {
   TableRow,
   TableCell
 } from '@mui/material';
-import { Plus, Edit2, Trash2, Network } from 'lucide-react';
+import { Plus, Edit2, Trash2, Users } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { LABEL_JENIS_UK } from '../services/risiko';
+import UserManagement from '../pages/UserManagement';
 
 const EMPTY_UNIT = {
   nama: '',
@@ -58,7 +59,9 @@ const OrganizationStructure = () => {
   const [editingDir, setEditingDir] = useState(null);
   const [dirForm, setDirForm] = useState(EMPTY_DIREKTORAT);
   const [error, setError] = useState('');
+  const [penggunaUnit, setPenggunaUnit] = useState(null);
   const { userData } = useAuth();
+  const bolehLihatPengguna = userData?.peran?.some((p) => ['ADMIN', 'DIREKSI'].includes(p));
 
   const isAdmin = userData?.peran?.includes('ADMIN');
 
@@ -182,16 +185,23 @@ const OrganizationStructure = () => {
                   </Typography>
                 )}
               </Box>
+              <Box display="flex" alignItems="center">
+                {bolehLihatPengguna && (
+                  <Button size="small" startIcon={<Users size={16} />} onClick={() => setPenggunaUnit(unit)} sx={{ mr: 1 }}>
+                    Pengguna ({unit._count?.pengguna ?? 0})
+                  </Button>
+                )}
               {isAdmin && (
                 <Box>
-                  <IconButton onClick={() => handleEdit(unit)} color="primary">
+                  <IconButton onClick={() => handleEdit(unit)} color="primary" aria-label="Ubah unit kerja">
                     <Edit2 size={18} />
                   </IconButton>
-                  <IconButton onClick={() => handleDelete(unit)} color="error">
+                  <IconButton onClick={() => handleDelete(unit)} color="error" aria-label="Hapus unit kerja">
                     <Trash2 size={18} />
                   </IconButton>
                 </Box>
               )}
+              </Box>
             </Box>
           </CardContent>
         </Card>
@@ -203,17 +213,8 @@ const OrganizationStructure = () => {
   };
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Box display="flex" alignItems="center" gap={2}>
-          <Network size={40} color="#1976d2" />
-          <Box>
-            <Typography variant="h4">Struktur Organisasi</Typography>
-            <Typography variant="subtitle1" color="textSecondary">
-              Kelola direktorat, bagian & sub-bagian Pusat, Cabang, dan Unit
-            </Typography>
-          </Box>
-        </Box>
+    <Box>
+      <Box display="flex" justifyContent="flex-end" alignItems="center" mb={2}>
         {isAdmin && (
           <Button
             variant="contained"
@@ -395,6 +396,17 @@ const OrganizationStructure = () => {
               </Button>
             </Box>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pengguna satu unit kerja */}
+      <Dialog open={!!penggunaUnit} onClose={() => setPenggunaUnit(null)} maxWidth="lg" fullWidth>
+        <DialogTitle>Pengguna · {penggunaUnit?.nama}</DialogTitle>
+        <DialogContent>
+          {penggunaUnit && !penggunaUnit.pemilik_risiko && (
+            <Alert severity="info" sx={{ mb: 2 }}>Pengguna sub-bagian mengisi register bagian induknya.</Alert>
+          )}
+          {penggunaUnit && <Box pt={1}><UserManagement tersemat unitKerjaId={penggunaUnit.id} onBerubah={loadOrganization} /></Box>}
         </DialogContent>
       </Dialog>
 

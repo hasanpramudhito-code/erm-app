@@ -31,6 +31,16 @@ import { api } from '../services/api';
 import { LABEL_JENIS_UK } from '../services/risiko';
 import { useAuth } from '../contexts/AuthContext';
 
+// Penjelasan singkat agar admin tidak salah memilih peran (adendum v2 F).
+const KET_PERAN = {
+  ADMIN: 'Kelola pengguna, unit kerja, periode, parameter',
+  DIREKSI: 'Lihat & ubah seluruh data',
+  PENGELOLA_RISIKO: 'Susun risiko utama, verifikasi final, buka kunci',
+  AUDITOR: 'Lihat seluruh data, hanya baca',
+  PIMPINAN: 'Setujui register & laporan unit kerjanya',
+  PETUGAS: 'Isi register & pemantauan unit kerjanya',
+};
+
 const EMPTY_FORM = {
   name: '',
   email: '',
@@ -42,7 +52,9 @@ const EMPTY_FORM = {
   status: 'active'
 };
 
-const UserManagement = () => {
+// Kelola pengguna. Dipakai sebagai tab di Organisasi; `unitKerjaId` membatasi daftar & mengisi
+// unit kerja di form tambah (dibuka dari kartu unit kerja di Struktur Organisasi).
+const UserManagement = ({ unitKerjaId, tersemat = false, onBerubah }) => {
   const { userData, refreshUserData } = useAuth();
   const isAdmin = userData?.peran?.includes('ADMIN');
   const canView = isAdmin || userData?.peran?.includes('DIREKSI');
@@ -56,6 +68,8 @@ const UserManagement = () => {
   const [error, setError] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [cari, setCari] = useState('');
+  const [filterUnit, setFilterUnit] = useState('');
 
   // Load users
   const loadUsers = async () => {
@@ -108,10 +122,10 @@ const UserManagement = () => {
           aktif: formData.status === 'active',
           ...(formData.password ? { kata_sandi: formData.password } : {})
         });
-        showSnackbar('User berhasil diupdate', 'success');
+        showSnackbar('Pengguna diperbarui', 'success');
       } else {
         await api.post('/pengguna', { ...payload, email: formData.email, kata_sandi: formData.password });
-        showSnackbar('User berhasil dibuat', 'success');
+        showSnackbar('Pengguna ditambahkan', 'success');
       }
 
       if (editingUser?.id === userData?.id) {
@@ -120,23 +134,25 @@ const UserManagement = () => {
 
       handleCloseDialog();
       loadUsers();
+      onBerubah?.();
     } catch (err) {
-      setError(err.message || 'Gagal menyimpan user');
-      showSnackbar(err.message || 'Gagal menyimpan user', 'error');
+      setError(err.message || 'Gagal menyimpan pengguna');
+      showSnackbar(err.message || 'Gagal menyimpan pengguna', 'error');
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (user) => {
-    if (!window.confirm(`Nonaktifkan user ${user.nama}?`)) return;
+    if (!window.confirm(`Nonaktifkan pengguna ${user.nama}?`)) return;
 
     try {
       await api.patch(`/pengguna/${user.id}`, { aktif: false });
-      showSnackbar('User dinonaktifkan', 'success');
+      showSnackbar('Pengguna dinonaktifkan', 'success');
       loadUsers();
+      onBerubah?.();
     } catch (err) {
-      showSnackbar(err.message || 'Gagal menonaktifkan user', 'error');
+      showSnackbar(err.message || 'Gagal menonaktifkan pengguna', 'error');
     }
   };
 
@@ -182,28 +198,40 @@ const UserManagement = () => {
   };
 
   const namaPeran = (kode) => daftarPeran.find((p) => p.kode === kode)?.nama || kode;
+  const bukaTambah = () => { setFormData({ ...EMPTY_FORM, unit_kerja_id: unitKerjaId || '' }); setOpenDialog(true); };
+  const unitAktif = unitKerjaId || filterUnit;
+  const kata = cari.trim().toLowerCase();
+  const tampil = users.filter((u) => (!unitAktif || u.unit_kerja_id === Number(unitAktif)) &&
+    (!kata || [u.nama, u.email, u.jabatan].some((x) => x?.toLowerCase().includes(kata))));
+  // Urut sesuai hierarki: bagian lalu sub-bagiannya, lalu Cabang/Unit.
+  const unitBerurut = daftarUnit.filter((u) => !u.induk_id).flatMap((u) => [u, ...daftarUnit.filter((s) => s.induk_id === u.id)]);
 
   if (!canView) {
     return (
       <Box p={3}>
         <Alert severity="error">
-          Anda tidak memiliki akses untuk mengelola user. Halaman ini hanya dapat diakses oleh Administrator dan Direksi.
+          Anda tidak memiliki akses untuk mengelola pengguna. Halaman ini hanya dapat diakses oleh Administrator dan Direksi.
         </Alert>
       </Box>
     );
   }
 
   return (
-    <Box p={3}>
-      <Box display="flex" justifyContent="space-between" mb={3}>
-        <Typography variant="h4">User Management</Typography>
+    <Box p={tersemat ? 0 : 3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" gap={2} mb={2} flexWrap="wrap">
+        {!tersemat && <Typography variant="h4">Pengguna</Typography>}
+        <Box display="flex" gap={2} flexWrap="wrap" flex={1}>
+          <TextField size="small" label="Cari nama, email, jabatan" value={cari} onChange={(e) => setCari(e.target.value)} sx={{ minWidth: 240 }} />
+          {!unitKerjaId && (
+            <TextField select size="small" label="Unit Kerja" value={filterUnit} onChange={(e) => setFilterUnit(e.target.value)} sx={{ minWidth: 220 }}>
+              <MenuItem value="">Semua</MenuItem>
+              {unitBerurut.map((u) => <MenuItem key={u.id} value={u.id} sx={{ pl: u.induk_id ? 4 : 2 }}>{u.nama}</MenuItem>)}
+            </TextField>
+          )}
+        </Box>
         {isAdmin && (
-          <Button
-            variant="contained"
-            startIcon={<Plus size={18} />}
-            onClick={() => setOpenDialog(true)}
-          >
-            Tambah User
+          <Button variant="contained" startIcon={<Plus size={18} />} onClick={bukaTambah}>
+            Tambah Pengguna
           </Button>
         )}
       </Box>
@@ -233,9 +261,10 @@ const UserManagement = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {users.map((user) => (
+                {tampil.length === 0 && <TableRow><TableCell colSpan={6} align="center">Belum ada pengguna.</TableCell></TableRow>}
+                {tampil.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell>{user.nama}</TableCell>
+                    <TableCell>{user.nama}{user.jabatan && <Typography variant="caption" display="block" color="text.secondary">{user.jabatan}</Typography>}</TableCell>
                     <TableCell>{user.email}</TableCell>
                     <TableCell>
                       {user.peran.map((p) => (
@@ -245,19 +274,20 @@ const UserManagement = () => {
                     <TableCell>{user.unit_kerja?.nama || '-'}</TableCell>
                     <TableCell>
                       <Chip
-                        label={user.aktif ? 'active' : 'inactive'}
+                        label={user.aktif ? 'Aktif' : 'Nonaktif'}
                         color={user.aktif ? 'success' : 'error'}
                         size="small"
                       />
                     </TableCell>
                     {isAdmin && (
                       <TableCell>
-                        <IconButton onClick={() => handleEdit(user)} size="small">
+                        <IconButton onClick={() => handleEdit(user)} size="small" aria-label="Ubah pengguna">
                           <Edit2 size={18} />
                         </IconButton>
                         <IconButton
                           onClick={() => handleDelete(user)}
                           size="small"
+                          aria-label="Nonaktifkan pengguna"
                           disabled={user.id === userData?.id || !user.aktif}
                         >
                           <Trash2 size={18} />
@@ -276,7 +306,7 @@ const UserManagement = () => {
       {isAdmin && (
         <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
           <DialogTitle>
-            {editingUser ? 'Edit User' : 'Tambah User Baru'}
+            {editingUser ? 'Ubah Pengguna' : 'Tambah Pengguna'}
           </DialogTitle>
           <DialogContent>
             <form onSubmit={handleSubmit}>
@@ -327,7 +357,12 @@ const UserManagement = () => {
                       renderValue={(v) => v.map(namaPeran).join(', ')}
                     >
                       {daftarPeran.map((p) => (
-                        <MenuItem key={p.kode} value={p.kode}>{p.nama}</MenuItem>
+                        <MenuItem key={p.kode} value={p.kode}>
+                          <Box>
+                            {p.nama}
+                            <Typography variant="caption" display="block" color="text.secondary">{KET_PERAN[p.kode]}</Typography>
+                          </Box>
+                        </MenuItem>
                       ))}
                     </Select>
                   </FormControl>
@@ -342,8 +377,8 @@ const UserManagement = () => {
                       onChange={(e) => setFormData({ ...formData, unit_kerja_id: e.target.value })}
                     >
                       <MenuItem value="">- Tanpa unit kerja -</MenuItem>
-                      {daftarUnit.map((u) => (
-                        <MenuItem key={u.id} value={u.id}>{u.induk_id ? "00a000a000a0" : ""}{u.kode} - {u.nama} ({LABEL_JENIS_UK[u.jenis]})</MenuItem>
+                      {unitBerurut.map((u) => (
+                        <MenuItem key={u.id} value={u.id} sx={{ pl: u.induk_id ? 4 : 2 }}>{u.nama} ({LABEL_JENIS_UK[u.jenis]})</MenuItem>
                       ))}
                     </Select>
                   </FormControl>
@@ -352,7 +387,7 @@ const UserManagement = () => {
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="Posisi/Jabatan"
+                    label="Jabatan"
                     value={formData.position}
                     onChange={(e) => setFormData({ ...formData, position: e.target.value })}
                   />
@@ -376,8 +411,8 @@ const UserManagement = () => {
                         label="Status"
                         onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                       >
-                        <MenuItem value="active">Active</MenuItem>
-                        <MenuItem value="inactive">Inactive</MenuItem>
+                        <MenuItem value="active">Aktif</MenuItem>
+                        <MenuItem value="inactive">Nonaktif</MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>

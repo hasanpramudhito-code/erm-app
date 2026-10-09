@@ -39,7 +39,7 @@ router.use('/unit-kerja', crud({
   // Cabang/Unit baru atau aktif kembali: bentuk entri risiko utama CABANG di periode terbuka.
   setelah: (r, lama) => (WILAYAH.includes(r.jenis) && r.aktif && (!lama || !lama.aktif || !WILAYAH.includes(lama.jenis)) ? bentukEntri() : null),
   orderBy: [{ jenis: 'asc' }, { kode: 'asc' }],
-  include: { direktorat: { select: { id: true, kode: true, nama: true } } },
+  include: { direktorat: { select: { id: true, kode: true, nama: true } }, _count: { select: { pengguna: { where: { aktif: true } } } } },
   bersihkan: async (b, baru, lama) => {
     const data = rapikan({
       kode: teks(b.kode),

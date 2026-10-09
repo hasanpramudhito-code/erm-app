@@ -136,31 +136,32 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
         section: 'ADMINISTRATION', // DIPINDAHKAN KE ATAS
         items: [
           {
-            text: 'User Management',
-            icon: <Users size={20} />,
-            path: '/user-management',
-            badge: 'admin'
-          },
-          {
-            text: 'Organization',
+            text: 'Organisasi',
             icon: <Building2 size={20} />,
             hasChildren: true,
             children: [
               {
-                text: 'Organization Structure',
+                text: 'Struktur Organisasi',
                 icon: <GitMerge size={20} />,
                 path: '/organization',
                 tab: 'structure'
               },
               {
-                text: 'Risk Parameters',
+                text: 'Pengguna & Peran',
+                icon: <Users size={20} />,
+                path: '/organization',
+                tab: 'users',
+                badge: 'admin'
+              },
+              {
+                text: 'Parameter Risiko',
                 icon: <Sliders size={20} />,
                 path: '/organization',
                 tab: 'risk-params',
                 badge: 'comprehensive'
               },
               {
-                text: 'System Settings',
+                text: 'Pengaturan Sistem',
                 icon: <Settings size={20} />,
                 path: '/organization',
                 tab: 'system-settings',
@@ -291,18 +292,24 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
         section: 'ORGANIZATION', // DIPINDAHKAN KE ATAS
         items: [
           {
-            text: 'Organization',
+            text: 'Organisasi',
             icon: <Building2 size={20} />,
             hasChildren: true,
             children: [
               {
-                text: 'Organization Structure',
+                text: 'Struktur Organisasi',
                 icon: <GitMerge size={20} />,
                 path: '/organization',
                 tab: 'structure'
               },
               {
-                text: 'Risk Parameters',
+                text: 'Pengguna & Peran',
+                icon: <Users size={20} />,
+                path: '/organization',
+                tab: 'users'
+              },
+              {
+                text: 'Parameter Risiko',
                 icon: <Sliders size={20} />,
                 path: '/organization',
                 tab: 'risk-params'
@@ -424,12 +431,12 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
         section: 'SETTINGS', // DIPINDAHKAN KE ATAS
         items: [
           {
-            text: 'Organization',
+            text: 'Organisasi',
             icon: <Building2 size={20} />,
             hasChildren: true,
             children: [
               {
-                text: 'Risk Parameters',
+                text: 'Parameter Risiko',
                 icon: <Sliders size={20} />,
                 path: '/organization',
                 tab: 'risk-params'
