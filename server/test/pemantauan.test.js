@@ -98,3 +98,25 @@ test('ringkasan bulan & penanda terlambat; terkunci setelah diajukan', async () 
   // Admin bukan Direksi -> terkunci.
   assert.equal((await req('PUT', `/pemantauan/risiko/${risiko.id}/${T}/${B}`, {})).status, 403);
 });
+
+test('frekuensi triwulanan: laporan per triwulan, peristiwa boleh di bulan mana pun dalam triwulan', async () => {
+  const lama = (await prisma.pengaturan.findUnique({ where: { kunci: 'frekuensi_pemantauan' } }))?.nilai ?? 1;
+  assert.equal((await req('PUT', '/pengaturan/frekuensi_pemantauan', { nilai: 4 })).status, 400);
+  assert.equal((await req('PUT', '/pengaturan/frekuensi_pemantauan', { nilai: 3 })).status, 200);
+  try {
+    // Triwulan I: disimpan sebagai bulan 3. Bulan 2 bukan akhir triwulan -> ditolak.
+    assert.equal((await req('GET', `/pemantauan/risiko/${risiko.id}/${T}/2`)).status, 400);
+    const g = await req('GET', `/pemantauan/risiko/${risiko.id}/${T}/3`);
+    assert.equal(g.status, 200);
+    assert.deepEqual([g.body.frekuensi, g.body.bulan_awal], [3, 1]);
+    const isi = (tgl) => req('PUT', `/pemantauan/risiko/${risiko.id}/${T}/3`, {
+      peristiwa_terjadi: true, peristiwa: [{ tanggal_kejadian: tgl, deskripsi: 'Pipa pecah' }],
+    });
+    assert.equal((await isi(`${T}-04-01`)).status, 400); // di luar triwulan
+    assert.equal((await isi(`${T}-01-15`)).status, 200); // bulan pertama triwulan
+    assert.equal((await req('GET', `/pemantauan/ringkasan?periode_id=${periode.id}&tahun=${T}&bulan=3`)).body.frekuensi, 3);
+  } finally {
+    await prisma.pemantauan_bulanan.deleteMany({ where: { risiko_id: risiko.id, tahun: T, bulan: 3 } });
+    await req('PUT', '/pengaturan/frekuensi_pemantauan', { nilai: lama });
+  }
+});

@@ -5,9 +5,8 @@ import {
 } from '@mui/material';
 import { Building2 } from 'lucide-react';
 import { api } from '../services/api';
-import { usePeriode } from '../services/risiko';
+import { usePeriode, useFrekuensi, daftarMasa, masaDefault, namaMasa } from '../services/risiko';
 
-const NAMA_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 const rupiah = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 
 // Penanda level: kotak warna + teks label (identitas tidak hanya dari warna).
@@ -69,18 +68,9 @@ const DashboardKorporat = () => {
   const [error, setError] = useState('');
   const [tab, setTab] = useState('CABANG');
 
-  const opsiBulan = useMemo(() => {
-    if (!periode) return [];
-    const hasil = [];
-    const akhir = new Date(Math.min(new Date(periode.tanggal_selesai), new Date()));
-    for (let d = new Date(periode.tanggal_mulai); d <= akhir; d = new Date(d.getFullYear(), d.getMonth() + 1, 1))
-      hasil.push({ tahun: d.getFullYear(), bulan: d.getMonth() + 1 });
-    return hasil.reverse();
-  }, [periode]);
-  useEffect(() => {
-    const lalu = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
-    setBulan(opsiBulan.find((o) => o.tahun === lalu.getFullYear() && o.bulan === lalu.getMonth() + 1) || opsiBulan[0] || null);
-  }, [opsiBulan]);
+  const n = useFrekuensi();
+  const opsiBulan = useMemo(() => daftarMasa(periode, n), [periode, n]);
+  useEffect(() => { setBulan(masaDefault(opsiBulan)); }, [opsiBulan]);
 
   useEffect(() => {
     if (!periodeId) return;
@@ -114,10 +104,10 @@ const DashboardKorporat = () => {
           <MenuItem value="INHEREN">Inheren</MenuItem>
           <MenuItem value="RESIDUAL">Residual</MenuItem>
         </TextField>
-        <TextField select size="small" label="Bulan pemantauan" sx={{ minWidth: 170 }}
+        <TextField select size="small" label="Masa pemantauan" sx={{ minWidth: 200 }}
           value={bulan ? `${bulan.tahun}-${bulan.bulan}` : ''}
           onChange={(e) => { const [t, b] = e.target.value.split('-').map(Number); setBulan({ tahun: t, bulan: b }); }}>
-          {opsiBulan.map((o) => <MenuItem key={`${o.tahun}-${o.bulan}`} value={`${o.tahun}-${o.bulan}`}>{NAMA_BULAN[o.bulan - 1]} {o.tahun}</MenuItem>)}
+          {opsiBulan.map((o) => <MenuItem key={`${o.tahun}-${o.bulan}`} value={`${o.tahun}-${o.bulan}`}>{namaMasa(o.tahun, o.bulan, n)}</MenuItem>)}
         </TextField>
       </Box>
 
@@ -125,10 +115,10 @@ const DashboardKorporat = () => {
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={6} md={3}><Kpi label="Risk register final" nilai={r ? `${r.risiko_final} / ${r.risiko}` : '-'} keterangan="Entri seluruh unit pada periode" /></Grid>
-        <Grid item xs={6} md={3}><Kpi label="Laporan bulanan final" nilai={r ? `${r.laporan_final} / ${r.risiko}` : '-'} keterangan={bulan && `${NAMA_BULAN[bulan.bulan - 1]} ${bulan.tahun}`} /></Grid>
+        <Grid item xs={6} md={3}><Kpi label="Laporan pemantauan final" nilai={r ? `${r.laporan_final} / ${r.risiko}` : '-'} keterangan={bulan && `${namaMasa(bulan.tahun, bulan.bulan, n)}`} /></Grid>
         <Grid item xs={6} md={2}><Kpi label="KRI merah" nilai={r?.kri_merah ?? '-'} keterangan="Dari laporan final" /></Grid>
         <Grid item xs={6} md={2}><Kpi label="Peristiwa risiko" nilai={r?.peristiwa ?? '-'} keterangan={r && r.kerugian ? `Kerugian ${rupiah(r.kerugian)}` : 'Dari laporan final'} /></Grid>
-        <Grid item xs={12} md={2}><Kpi label="Mitigasi lewat target" nilai={r?.mitigasi_terlambat ?? '-'} keterangan="Belum selesai per akhir bulan" /></Grid>
+        <Grid item xs={12} md={2}><Kpi label="Mitigasi lewat target" nilai={r?.mitigasi_terlambat ?? '-'} keterangan="Belum selesai per akhir masa" /></Grid>
       </Grid>
 
       <Paper sx={{ mb: 3, opacity: memuat ? 0.6 : 1, transition: 'opacity .2s' }}>
@@ -201,7 +191,7 @@ const DashboardKorporat = () => {
       <Grid container spacing={3}>
         <Grid item xs={12} lg={6}>
           <Paper sx={{ p: 2, height: '100%' }}>
-            <Typography variant="h6" gutterBottom>Kelengkapan per Unit Kerja · {bulan && `${NAMA_BULAN[bulan.bulan - 1]} ${bulan.tahun}`}</Typography>
+            <Typography variant="h6" gutterBottom>Kelengkapan per Unit Kerja · {bulan && `${namaMasa(bulan.tahun, bulan.bulan, n)}`}</Typography>
             <Table size="small">
               <TableHead>
                 <TableRow><TableCell>Unit Kerja</TableCell><TableCell align="right">Risiko final</TableCell><TableCell align="right">Laporan final</TableCell><TableCell align="right">Menunggu verifikasi</TableCell></TableRow>
@@ -223,7 +213,7 @@ const DashboardKorporat = () => {
         <Grid item xs={12} lg={6}>
           <Paper sx={{ p: 2, mb: 3 }}>
             <Typography variant="h6" gutterBottom>KRI Merah</Typography>
-            {!bln?.kri_merah.length ? <Typography variant="body2" color="text.secondary">Tidak ada KRI merah pada laporan final bulan ini.</Typography> : (
+            {!bln?.kri_merah.length ? <Typography variant="body2" color="text.secondary">Tidak ada KRI merah pada laporan final masa ini.</Typography> : (
               <Table size="small">
                 <TableBody>
                   {bln.kri_merah.map((k, i) => (
@@ -238,7 +228,7 @@ const DashboardKorporat = () => {
           </Paper>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>Peristiwa Risiko</Typography>
-            {!bln?.peristiwa.length ? <Typography variant="body2" color="text.secondary">Tidak ada peristiwa pada laporan final bulan ini.</Typography> : (
+            {!bln?.peristiwa.length ? <Typography variant="body2" color="text.secondary">Tidak ada peristiwa pada laporan final masa ini.</Typography> : (
               <Table size="small">
                 <TableBody>
                   {bln.peristiwa.map((p, i) => (

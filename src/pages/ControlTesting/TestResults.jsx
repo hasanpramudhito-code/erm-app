@@ -15,8 +15,7 @@ const TestResults = () => {
   useEffect(() => { muatJadwal(); }, []);
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>Hasil Pengujian</Typography>
+    <Box>
       <Typography variant="body2" color="text.secondary" mb={3}>Peringkat efektivitas 1 (sangat lemah) sampai 5 (sangat kuat).</Typography>
       <TabelKelola
         endpoint="/hasil-pengujian"

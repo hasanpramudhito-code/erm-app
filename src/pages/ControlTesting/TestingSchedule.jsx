@@ -7,8 +7,7 @@ import { tanggal } from '../../components/pantauan/Kerangka';
 const TestingSchedule = () => {
   const { kontrol, pengguna } = usePilihan();
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>Jadwal Pengujian</Typography>
+    <Box>
       <Typography variant="body2" color="text.secondary" mb={3}>Jadwal ditandai selesai otomatis saat hasil pengujiannya dicatat.</Typography>
       <TabelKelola
         endpoint="/jadwal-pengujian"

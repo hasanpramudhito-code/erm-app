@@ -19,8 +19,7 @@ const DeficiencyTracking = () => {
   const rataHari = terbuka.length ? Math.round(terbuka.reduce((t, d) => t + (Date.now() - new Date(d.tanggal_identifikasi)) / HARI, 0) / terbuka.length) : 0;
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>Pelacakan Defisiensi</Typography>
+    <Box>
       <Typography variant="body2" color="text.secondary" mb={3}>Kelemahan kontrol dari hasil pengujian dan tindak lanjutnya.</Typography>
       <BarisKpi data={[
         { label: 'Masih terbuka', nilai: terbuka.length },

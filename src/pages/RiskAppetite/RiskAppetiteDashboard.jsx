@@ -1,16 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Box, Card, CardContent, Grid, LinearProgress, Typography } from '@mui/material';
+import { Alert, Box, Card, CardContent, Grid, LinearProgress, Paper, Tab, Tabs, Typography } from '@mui/material';
+import { useSearchParams } from 'react-router-dom';
 import { Target } from 'lucide-react';
 import { api } from '../../services/api';
 import { usePeriode } from '../../services/risiko';
 import { KepalaPantauan, PilihPeriode } from '../../components/pantauan/Kerangka';
-import { teksBatas } from './RiskToleranceSettings';
+import RiskToleranceSettings, { teksBatas } from './RiskToleranceSettings';
 
 // Posisi skor residual terhadap batas: dalam selera (≤ maks rendah), mendekati (≤ maks sedang), melampaui.
 const posisi = (skor, b) => (skor <= b.rendah.maks ? 'dalam' : skor <= b.sedang.maks ? 'mendekati' : 'melampaui');
 const POSISI = [['dalam', 'Dalam selera', 'success'], ['mendekati', 'Mendekati batas', 'warning'], ['melampaui', 'Melampaui', 'error']];
 
+// Selera risiko: tab Kepatuhan (posisi skor residual) dan tab Pengaturan (pernyataan & batas toleransi).
 const RiskAppetiteDashboard = () => {
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') === 'pengaturan' ? 'pengaturan' : 'kepatuhan';
   const { daftar, periodeId, setPeriodeId } = usePeriode();
   const [pernyataan, setPernyataan] = useState([]);
   const [risiko, setRisiko] = useState([]);
@@ -37,10 +41,17 @@ const RiskAppetiteDashboard = () => {
     <Box sx={{ p: 3 }}>
       <KepalaPantauan ikon={<Target size={36} color="#1976d2" />} judul="Selera Risiko"
         keterangan="Posisi skor residual risiko terhadap batas toleransi tiap kategori.">
-        <PilihPeriode daftar={daftar} value={periodeId} onChange={setPeriodeId} />
+        {tab === 'kepatuhan' && <PilihPeriode daftar={daftar} value={periodeId} onChange={setPeriodeId} />}
       </KepalaPantauan>
+      <Paper sx={{ mb: 3 }}>
+        <Tabs value={tab} onChange={(e, v) => setParams({ tab: v })}>
+          <Tab value="kepatuhan" label="Kepatuhan" />
+          <Tab value="pengaturan" label="Pernyataan & Toleransi" />
+        </Tabs>
+      </Paper>
+      {tab === 'pengaturan' ? <RiskToleranceSettings /> : (<>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
-      {pernyataan.length === 0 && <Alert severity="info">Belum ada pernyataan selera risiko. Tambahkan di halaman Toleransi Risiko.</Alert>}
+      {pernyataan.length === 0 && <Alert severity="info">Belum ada pernyataan selera risiko. Tambahkan di tab Pernyataan & Toleransi.</Alert>}
 
       {total > 0 && (
         <Card variant="outlined" sx={{ mb: 3 }}>
@@ -74,6 +85,7 @@ const RiskAppetiteDashboard = () => {
           </Grid>
         ))}
       </Grid>
+      </>)}
     </Box>
   );
 };

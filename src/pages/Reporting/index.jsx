@@ -16,7 +16,7 @@ const LAPORAN = [
   { kode: 'mitigasi', judul: 'Rencana & Progres Mitigasi', ket: 'Semua rencana mitigasi beserta PIC, target, anggaran, status, dan progres terkini.' },
   { kode: 'kri', judul: 'Key Risk Indicator', ket: 'Definisi KRI, ambang, nilai terakhir, tren, dan status.' },
   { kode: 'peristiwa', judul: 'Register Peristiwa Risiko', ket: 'Peristiwa risiko dari laporan bulanan beserta kerugian.' },
-  { kode: 'bulanan', judul: 'Laporan Pemantauan Bulanan', ket: 'Isi laporan per risiko per bulan: realisasi mitigasi, nilai KRI, catatan.', perBulan: true },
+  { kode: 'bulanan', judul: 'Laporan Pemantauan', ket: 'Isi laporan per risiko per masa pemantauan: realisasi mitigasi, nilai KRI, catatan.', perBulan: true },
   { kode: 'eksekutif', judul: 'Ringkasan Eksekutif', ket: 'Narasi ringkas tingkat risiko organisasi dan 5 risiko prioritas.', pdf: 'eksekutif', tanpaExcel: true },
 ];
 

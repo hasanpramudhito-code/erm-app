@@ -9,22 +9,10 @@ export const useAuth = () => {
   return ctx;
 };
 
-// ponytail: peta peran baru -> kode role lama, agar halaman yang belum dipindahkan tetap jalan.
-// Hapus setelah semua pengecekan role (roles.js, EnhancedNavigation) memakai `peran`.
-const ROLE_LAMA = [
-  ['ADMIN', 'ADMIN'],
-  ['DIREKSI', 'DIRECTOR'],
-  ['PENGELOLA_RISIKO', 'RISK_MANAGER'],
-  ['PIMPINAN', 'RISK_OWNER'],
-  ['AUDITOR', 'RISK_OWNER'],
-];
-const roleLama = (peran) => ROLE_LAMA.find(([baru]) => peran.includes(baru))?.[1] || 'STAFF';
-
 const keUserData = (p) => ({
   ...p,
   uid: p.id,
   name: p.nama,
-  role: roleLama(p.peran),
   status: 'active',
 });
 

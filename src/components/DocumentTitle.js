@@ -6,7 +6,7 @@ const JUDUL_HALAMAN = {
   '/dashboard': 'Dashboard',
   '/risk-register': 'Risk Register',
   '/risk-assessment': 'Risk Assessment',
-  '/pemantauan-bulanan': 'Pemantauan Bulanan',
+  '/pemantauan': 'Pemantauan',
   '/approval': 'Antrean Verifikasi',
   '/user-management': 'Manajemen User',
   '/organization-structure': 'Struktur Organisasi',

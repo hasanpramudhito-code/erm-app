@@ -53,6 +53,62 @@ import { useAuth } from '../contexts/AuthContext';
 import LoncengNotifikasi from './persetujuan/LoncengNotifikasi';
 import { useIdentitas } from '../services/identitas';
 
+// Satu daftar menu. `peran` = siapa yang melihat (kosong = semua). Server tetap memeriksa hak akses.
+const SEMUA_LIHAT = ['ADMIN', 'DIREKSI', 'PENGELOLA_RISIKO', 'AUDITOR'];
+const PENGELOLA = ['ADMIN', 'DIREKSI', 'PENGELOLA_RISIKO'];
+const MENU = [
+  {
+    section: 'Ringkasan',
+    items: [
+      { text: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/dashboard' },
+      { text: 'Dashboard Korporat', icon: <Building2 size={20} />, path: '/dashboard-korporat', peran: SEMUA_LIHAT },
+      { text: 'Dashboard Eksekutif', icon: <BarChart3 size={20} />, path: '/executive-dashboard', peran: SEMUA_LIHAT },
+    ]
+  },
+  {
+    section: 'Manajemen Risiko',
+    items: [
+      { text: 'Register Risiko', icon: <AlertTriangle size={20} />, path: '/risk-register' },
+      { text: 'Risiko Utama & Pustaka', icon: <Library size={20} />, path: '/risiko-utama' },
+      { text: 'Penilaian Risiko', icon: <BarChart3 size={20} />, path: '/risk-assessment' },
+      { text: 'Pemantauan', icon: <CalendarCheck size={20} />, path: '/pemantauan' },
+      { text: 'Antrean Verifikasi', icon: <CheckSquare size={20} />, path: '/approval', peran: [...PENGELOLA, 'PIMPINAN'] },
+    ]
+  },
+  {
+    section: 'Pantauan',
+    items: [
+      { text: 'Rencana Mitigasi', icon: <ClipboardCheck size={20} />, path: '/treatment-plans' },
+      { text: 'Indikator Risiko (KRI)', icon: <Activity size={20} />, path: '/kri-monitoring' },
+      { text: 'Peristiwa Risiko', icon: <AlertCircle size={20} />, path: '/incident-reporting' },
+      { text: 'Laporan', icon: <FileText size={20} />, path: '/reporting' },
+    ]
+  },
+  {
+    section: 'Tata Kelola',
+    items: [
+      { text: 'Pengujian Kontrol', icon: <ShieldCheck size={20} />, path: '/control-testing' },
+      { text: 'Selera Risiko', icon: <Target size={20} />, path: '/risk-appetite' },
+      { text: 'Budaya Risiko', icon: <Users size={20} />, path: '/risk-culture' },
+      { text: 'Matriks RACI', icon: <GitMerge size={20} />, path: '/raci-chart' },
+    ]
+  },
+  {
+    section: 'Administrasi',
+    items: [
+      {
+        text: 'Organisasi', icon: <Settings size={20} />, hasChildren: true, peran: PENGELOLA,
+        children: [
+          { text: 'Struktur Organisasi', icon: <Network size={20} />, path: '/organization', tab: 'structure' },
+          { text: 'Pengguna & Peran', icon: <Users size={20} />, path: '/organization', tab: 'users', peran: ['ADMIN', 'DIREKSI'] },
+          { text: 'Parameter Risiko', icon: <Sliders size={20} />, path: '/organization', tab: 'risk-params' },
+          { text: 'Pengaturan Sistem', icon: <Wrench size={20} />, path: '/organization', tab: 'system-settings', peran: ['ADMIN'] },
+        ]
+      },
+    ]
+  }
+];
+
 const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
   const { currentUser, logout, userData, loading } = useAuth();
   const location = useLocation();
@@ -65,6 +121,13 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
   const sidebarGradient = `linear-gradient(180deg, ${sidebarBg} 0%, ${alpha(sidebarBg, 0.9)} 100%)`;
 
   const [openMenus, setOpenMenus] = useState({});
+  const peranSaya = userData?.peran || [];
+  const boleh = (item) => !item.peran || item.peran.some((p) => peranSaya.includes(p));
+  const menuSections = MENU
+    .map((sec) => ({ ...sec, items: sec.items.filter(boleh).map((it) => (it.children ? { ...it, children: it.children.filter(boleh) } : it)) }))
+    .filter((sec) => sec.items.length);
+
+
 
   // Auto-expand menu based on current route
   useEffect(() => {
@@ -72,25 +135,18 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
     const newOpenMenus = { ...openMenus };
 
     // Auto-expand parent menus when child is active
-    Object.keys(navigationStructure).forEach(role => {
-      navigationStructure[role].forEach(section => {
-        section.items.forEach(item => {
-          if (item.hasChildren && item.children) {
-            const isChildActive = item.children.some(child =>
-              child.path === currentPath || currentPath.startsWith(child.path + '/')
-            );
-            if (isChildActive) {
-              newOpenMenus[item.text] = true;
-            }
-          }
-        });
+    menuSections.forEach(section => {
+      section.items.forEach(item => {
+        if (item.children?.some(child => child.path === currentPath)) newOpenMenus[item.text] = true;
       });
     });
 
     setOpenMenus(newOpenMenus);
   }, [location.pathname]);
 
-  const userRole = userData?.role || "STAFF";
+  // Label peran utama pengguna untuk chip di header.
+  const NAMA_PERAN = { ADMIN: 'Admin', DIREKSI: 'Direksi', PENGELOLA_RISIKO: 'Pengelola Risiko', AUDITOR: 'Auditor', PIMPINAN: 'Pimpinan', PETUGAS: 'Petugas' };
+  const labelPeran = Object.keys(NAMA_PERAN).filter((p) => peranSaya.includes(p)).map((p) => NAMA_PERAN[p])[0] || '-';
   const identitas = useIdentitas();
 
   const handleMenuClick = (menu) => {
@@ -107,678 +163,6 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
     } catch (error) {
     }
   };
-
-  // Role-based access dengan struktur terbaru - URUTAN DIPERBARUI
-  const navigationStructure = {
-    ADMIN: [
-      {
-        section: 'MAIN',
-        items: [
-          {
-            text: 'Dashboard',
-            icon: <LayoutDashboard size={20} />,
-            path: '/dashboard',
-            badge: 'home'
-          },
-          {
-            text: 'Dashboard Korporat',
-            icon: <Building2 size={20} />,
-            path: '/dashboard-korporat'
-          },
-          {
-            text: 'Executive Dashboard',
-            icon: <BarChart3 size={20} />,
-            path: '/executive-dashboard'
-          }
-        ]
-      },
-      {
-        section: 'ADMINISTRATION', // DIPINDAHKAN KE ATAS
-        items: [
-          {
-            text: 'Organisasi',
-            icon: <Building2 size={20} />,
-            hasChildren: true,
-            children: [
-              {
-                text: 'Struktur Organisasi',
-                icon: <GitMerge size={20} />,
-                path: '/organization',
-                tab: 'structure'
-              },
-              {
-                text: 'Pengguna & Peran',
-                icon: <Users size={20} />,
-                path: '/organization',
-                tab: 'users',
-                badge: 'admin'
-              },
-              {
-                text: 'Parameter Risiko',
-                icon: <Sliders size={20} />,
-                path: '/organization',
-                tab: 'risk-params',
-                badge: 'comprehensive'
-              },
-              {
-                text: 'Pengaturan Sistem',
-                icon: <Settings size={20} />,
-                path: '/organization',
-                tab: 'system-settings',
-                badge: 'admin'
-              }
-            ]
-          },
-
-        ]
-      },
-      {
-        section: 'CORE RISK MANAGEMENT',
-        items: [
-          {
-            text: 'Risk Register',
-            icon: <AlertTriangle size={20} />,
-            path: '/risk-register',
-            badge: 'core'
-          },
-          {
-            text: 'Risiko Utama & Pustaka',
-            icon: <Library size={20} />,
-            path: '/risiko-utama'
-          },
-          {
-            text: 'Risk Assessment',
-            icon: <BarChart3 size={20} />,
-            path: '/risk-assessment'
-          },
-          {
-            text: 'Pemantauan Bulanan',
-            icon: <CalendarCheck size={20} />,
-            path: '/pemantauan-bulanan'
-          },
-          {
-            text: 'Treatment Plans',
-            icon: <ClipboardCheck size={20} />,
-            path: '/treatment-plans'
-          }
-        ]
-      },
-      {
-        section: 'ADVANCED RISK MANAGEMENT',
-        items: [
-          {
-            text: 'KRI Monitoring',
-            icon: <Activity size={20} />,
-            path: '/kri-monitoring'
-          }
-        ]
-      },
-      {
-        section: 'CONTROL TESTING',
-        items: [
-          {
-            text: 'Control Testing',
-            icon: <ShieldCheck size={20} />,
-            hasChildren: true,
-            children: [
-              {
-                text: 'Control Register',
-                icon: <ShieldCheck size={20} />,
-                path: '/control-register'
-              },
-              {
-                text: 'Testing Schedule',
-                icon: <Calendar size={20} />,
-                path: '/testing-schedule'
-              },
-              {
-                text: 'Test Results',
-                icon: <CheckCircle2 size={20} />,
-                path: '/test-results'
-              },
-              {
-                text: 'Deficiency Tracking',
-                icon: <Bug size={20} />,
-                path: '/deficiency-tracking'
-              }
-            ]
-          }
-        ]
-      },
-      {
-        section: 'OPERATIONAL',
-        items: [
-          {
-            text: 'Incident Reporting', // DIUBAH: Lapor Kejadian → Incident Reporting
-            icon: <AlertCircle size={20} />,
-            path: '/incident-reporting',
-            badge: 'hot'
-          },
-          {
-            text: 'Reporting',
-            icon: <FileText size={20} />,
-            path: '/reporting'
-          },
-          {
-            text: 'Antrean Verifikasi',
-            icon: <CheckSquare size={20} />,
-            path: '/approval'
-          }
-        ]
-      }
-    ],
-    DIRECTOR: [
-      {
-        section: 'MAIN',
-        items: [
-          {
-            text: 'Dashboard',
-            icon: <LayoutDashboard size={20} />,
-            path: '/dashboard'
-          },
-          {
-            text: 'Dashboard Korporat',
-            icon: <Building2 size={20} />,
-            path: '/dashboard-korporat'
-          },
-          {
-            text: 'Executive Dashboard',
-            icon: <BarChart3 size={20} />,
-            path: '/executive-dashboard'
-          }
-        ]
-      },
-      {
-        section: 'ORGANIZATION', // DIPINDAHKAN KE ATAS
-        items: [
-          {
-            text: 'Organisasi',
-            icon: <Building2 size={20} />,
-            hasChildren: true,
-            children: [
-              {
-                text: 'Struktur Organisasi',
-                icon: <GitMerge size={20} />,
-                path: '/organization',
-                tab: 'structure'
-              },
-              {
-                text: 'Pengguna & Peran',
-                icon: <Users size={20} />,
-                path: '/organization',
-                tab: 'users'
-              },
-              {
-                text: 'Parameter Risiko',
-                icon: <Sliders size={20} />,
-                path: '/organization',
-                tab: 'risk-params'
-              }
-            ]
-          }
-        ]
-      },
-      {
-        section: 'RISK OVERSIGHT',
-        items: [
-          {
-            text: 'Risk Register',
-            icon: <AlertTriangle size={20} />,
-            path: '/risk-register'
-          },
-          {
-            text: 'Risiko Utama & Pustaka',
-            icon: <Library size={20} />,
-            path: '/risiko-utama'
-          },
-          {
-            text: 'Risk Assessment',
-            icon: <BarChart3 size={20} />,
-            path: '/risk-assessment'
-          },
-          {
-            text: 'Pemantauan Bulanan',
-            icon: <CalendarCheck size={20} />,
-            path: '/pemantauan-bulanan'
-          },
-          {
-            text: 'Treatment Plans',
-            icon: <ClipboardCheck size={20} />,
-            path: '/treatment-plans'
-          },
-          {
-            text: 'KRI Monitoring',
-            icon: <Activity size={20} />,
-            path: '/kri-monitoring'
-          }
-        ]
-      },
-      {
-        section: 'CONTROL MONITORING',
-        items: [
-          {
-            text: 'Control Testing',
-            icon: <ShieldCheck size={20} />,
-            hasChildren: true,
-            children: [
-              {
-                text: 'Control Register',
-                icon: <ShieldCheck size={20} />,
-                path: '/control-register'
-              },
-              {
-                text: 'Testing Schedule',
-                icon: <Calendar size={20} />,
-                path: '/testing-schedule'
-              },
-              {
-                text: 'Test Results',
-                icon: <CheckCircle2 size={20} />,
-                path: '/test-results'
-              },
-              {
-                text: 'Deficiency Tracking',
-                icon: <Bug size={20} />,
-                path: '/deficiency-tracking'
-              }
-            ]
-          }
-        ]
-      },
-      {
-        section: 'OPERATIONAL',
-        items: [
-          {
-            text: 'Incident Reporting', // DIUBAH
-            icon: <AlertCircle size={20} />,
-            path: '/incident-reporting'
-          },
-          {
-            text: 'Reporting',
-            icon: <FileText size={20} />,
-            path: '/reporting'
-          },
-          {
-            text: 'Antrean Verifikasi',
-            icon: <CheckSquare size={20} />,
-            path: '/approval'
-          }
-        ]
-      }
-    ],
-    RISK_MANAGER: [
-      {
-        section: 'MAIN',
-        items: [
-          {
-            text: 'Dashboard',
-            icon: <LayoutDashboard size={20} />,
-            path: '/dashboard'
-          },
-          {
-            text: 'Dashboard Korporat',
-            icon: <Building2 size={20} />,
-            path: '/dashboard-korporat'
-          },
-          {
-            text: 'Executive Dashboard',
-            icon: <BarChart3 size={20} />,
-            path: '/executive-dashboard'
-          }
-        ]
-      },
-      {
-        section: 'SETTINGS', // DIPINDAHKAN KE ATAS
-        items: [
-          {
-            text: 'Organisasi',
-            icon: <Building2 size={20} />,
-            hasChildren: true,
-            children: [
-              {
-                text: 'Parameter Risiko',
-                icon: <Sliders size={20} />,
-                path: '/organization',
-                tab: 'risk-params'
-              },
-              {
-                text: 'RACI Chart',
-                icon: <Users size={20} />,
-                path: '/raci-chart'
-              }
-            ]
-          }
-        ]
-      },
-      {
-        section: 'RISK MANAGEMENT',
-        items: [
-          {
-            text: 'Risk Register',
-            icon: <AlertTriangle size={20} />,
-            path: '/risk-register'
-          },
-          {
-            text: 'Risiko Utama & Pustaka',
-            icon: <Library size={20} />,
-            path: '/risiko-utama'
-          },
-          {
-            text: 'Risk Assessment',
-            icon: <BarChart3 size={20} />,
-            path: '/risk-assessment'
-          },
-          {
-            text: 'Pemantauan Bulanan',
-            icon: <CalendarCheck size={20} />,
-            path: '/pemantauan-bulanan'
-          },
-          {
-            text: 'Treatment Plans',
-            icon: <ClipboardCheck size={20} />,
-            path: '/treatment-plans'
-          },
-          {
-            text: 'KRI Monitoring',
-            icon: <Activity size={20} />,
-            path: '/kri-monitoring'
-          }
-        ]
-      },
-      {
-        section: 'CONTROL TESTING',
-        items: [
-          {
-            text: 'Control Testing',
-            icon: <ShieldCheck size={20} />,
-            hasChildren: true,
-            children: [
-              {
-                text: 'Control Register',
-                icon: <ShieldCheck size={20} />,
-                path: '/control-register'
-              },
-              {
-                text: 'Testing Schedule',
-                icon: <Calendar size={20} />,
-                path: '/testing-schedule'
-              },
-              {
-                text: 'Test Results',
-                icon: <CheckCircle2 size={20} />,
-                path: '/test-results'
-              },
-              {
-                text: 'Deficiency Tracking',
-                icon: <Bug size={20} />,
-                path: '/deficiency-tracking'
-              }
-            ]
-          }
-        ]
-      },
-      {
-        section: 'OPERATIONAL',
-        items: [
-          {
-            text: 'Incident Reporting', // DIUBAH
-            icon: <AlertCircle size={20} />,
-            path: '/incident-reporting'
-          },
-          {
-            text: 'Reporting',
-            icon: <FileText size={20} />,
-            path: '/reporting'
-          },
-          {
-            text: 'Antrean Verifikasi',
-            icon: <CheckSquare size={20} />,
-            path: '/approval'
-          }
-        ]
-      }
-    ],
-    RISK_OWNER: [
-      {
-        section: 'MAIN',
-        items: [
-          {
-            text: 'Dashboard',
-            icon: <LayoutDashboard size={20} />,
-            path: '/dashboard'
-          },
-          {
-            text: 'Executive Dashboard',
-            icon: <BarChart3 size={20} />,
-            path: '/executive-dashboard'
-          }
-        ]
-      },
-      {
-        section: 'RISK MANAGEMENT',
-        items: [
-          {
-            text: 'Risk Register',
-            icon: <AlertTriangle size={20} />,
-            path: '/risk-register'
-          },
-          {
-            text: 'Risk Assessment',
-            icon: <BarChart3 size={20} />,
-            path: '/risk-assessment'
-          },
-          {
-            text: 'Pemantauan Bulanan',
-            icon: <CalendarCheck size={20} />,
-            path: '/pemantauan-bulanan'
-          },
-          {
-            text: 'Treatment Plans',
-            icon: <ClipboardCheck size={20} />,
-            path: '/treatment-plans'
-          }
-        ]
-      },
-      {
-        section: 'CONTROL TESTING',
-        items: [
-          {
-            text: 'Control Testing',
-            icon: <ShieldCheck size={20} />,
-            hasChildren: true,
-            children: [
-              {
-                text: 'Control Register',
-                icon: <ShieldCheck size={20} />,
-                path: '/control-register'
-              },
-              {
-                text: 'Test Results',
-                icon: <CheckCircle2 size={20} />,
-                path: '/test-results'
-              },
-              {
-                text: 'Deficiency Tracking',
-                icon: <Bug size={20} />,
-                path: '/deficiency-tracking'
-              }
-            ]
-          }
-        ]
-      },
-      {
-        section: 'OPERATIONAL',
-        items: [
-          {
-            text: 'Incident Reporting', // DIUBAH
-            icon: <AlertCircle size={20} />,
-            path: '/incident-reporting'
-          },
-          {
-            text: 'Antrean Verifikasi',
-            icon: <CheckSquare size={20} />,
-            path: '/approval'
-          }
-        ]
-      }
-    ],
-    RISK_OFFICER: [
-      {
-        section: 'MAIN',
-        items: [
-          {
-            text: 'Dashboard',
-            icon: <LayoutDashboard size={20} />,
-            path: '/dashboard'
-          },
-          {
-            text: 'Executive Dashboard',
-            icon: <BarChart3 size={20} />,
-            path: '/executive-dashboard'
-          }
-        ]
-      },
-      {
-        section: 'RISK MANAGEMENT',
-        items: [
-          {
-            text: 'Risk Register',
-            icon: <AlertTriangle size={20} />,
-            path: '/risk-register'
-          },
-          {
-            text: 'Risk Assessment',
-            icon: <BarChart3 size={20} />,
-            path: '/risk-assessment'
-          },
-          {
-            text: 'Pemantauan Bulanan',
-            icon: <CalendarCheck size={20} />,
-            path: '/pemantauan-bulanan'
-          },
-          {
-            text: 'Treatment Plans',
-            icon: <ClipboardCheck size={20} />,
-            path: '/treatment-plans'
-          }
-        ]
-      },
-      {
-        section: 'CONTROL TESTING',
-        items: [
-          {
-            text: 'Control Testing',
-            icon: <ShieldCheck size={20} />,
-            hasChildren: true,
-            children: [
-              {
-                text: 'Control Register',
-                icon: <ShieldCheck size={20} />,
-                path: '/control-register'
-              },
-              {
-                text: 'Test Results',
-                icon: <CheckCircle2 size={20} />,
-                path: '/test-results'
-              },
-              {
-                text: 'Deficiency Tracking',
-                icon: <Bug size={20} />,
-                path: '/deficiency-tracking'
-              }
-            ]
-          }
-        ]
-      },
-      {
-        section: 'OPERATIONAL',
-        items: [
-          {
-            text: 'Incident Reporting', // DIUBAH
-            icon: <AlertCircle size={20} />,
-            path: '/incident-reporting'
-          },
-          {
-            text: 'Antrean Verifikasi',
-            icon: <CheckSquare size={20} />,
-            path: '/approval'
-          }
-        ]
-      }
-    ],
-    STAFF: [
-      {
-        section: 'MAIN',
-        items: [
-          {
-            text: 'Dashboard',
-            icon: <LayoutDashboard size={20} />,
-            path: '/dashboard'
-          },
-          {
-            text: 'Executive Dashboard',
-            icon: <BarChart3 size={20} />,
-            path: '/executive-dashboard'
-          }
-        ]
-      },
-      {
-        section: 'RISK MANAGEMENT',
-        items: [
-          {
-            text: 'Risk Register',
-            icon: <AlertTriangle size={20} />,
-            path: '/risk-register'
-          },
-          {
-            text: 'Pemantauan Bulanan',
-            icon: <CalendarCheck size={20} />,
-            path: '/pemantauan-bulanan'
-          }
-        ]
-      },
-      {
-        section: 'CONTROLS',
-        items: [
-          {
-            text: 'Control Testing',
-            icon: <ShieldCheck size={20} />,
-            hasChildren: true,
-            children: [
-              {
-                text: 'Control Register',
-                icon: <ShieldCheck size={20} />,
-                path: '/control-register'
-              },
-              {
-                text: 'Test Results',
-                icon: <CheckCircle2 size={20} />,
-                path: '/test-results'
-              }
-            ]
-          }
-        ]
-      },
-      {
-        section: 'OPERATIONAL',
-        items: [
-          {
-            text: 'Incident Reporting', // DIUBAH
-            icon: <AlertCircle size={20} />,
-            path: '/incident-reporting'
-          },
-          {
-            text: 'Antrean Verifikasi',
-            icon: <CheckSquare size={20} />,
-            path: '/approval'
-          }
-        ]
-      }
-    ]
-  };
-
-  // Fallback to STAFF if role not found
-  const menuSections = navigationStructure[userRole] || navigationStructure[userRole === 'SUPER_ADMIN' ? 'ADMIN' : 'STAFF'];
 
   const renderMenuItem = (item, level = 0) => {
     // Logic untuk menentukan apakah item aktif
@@ -1014,7 +398,7 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
                 {userData?.name || currentUser.email?.split('@')[0]}
               </Typography>
               <Chip
-                label={userRole.replace('_', ' ')}
+                label={labelPeran}
                 size="small"
                 color="secondary"
                 sx={{
@@ -1095,7 +479,7 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
                 {userData?.name || currentUser.email?.split('@')[0]}
               </Typography>
               <Chip
-                label={userRole.replace('_', ' ')}
+                label={labelPeran}
                 size="small"
                 color="secondary"
                 sx={{
@@ -1133,7 +517,7 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             >
               <AlertTriangle size={18} />
               <Typography variant="caption" sx={{ ml: 0.5, fontSize: '0.6rem' }}>
-                Risks
+                Risiko
               </Typography>
             </IconButton>
             <IconButton
@@ -1156,7 +540,7 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             >
               <AlertCircle size={18} />
               <Typography variant="caption" sx={{ ml: 0.5, fontSize: '0.6rem' }}>
-                Report
+                Peristiwa
               </Typography>
             </IconButton>
             <IconButton
@@ -1179,7 +563,7 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             >
               <Settings size={18} />
               <Typography variant="caption" sx={{ ml: 0.5, fontSize: '0.6rem' }}>
-                Config
+                Atur
               </Typography>
             </IconButton>
           </Box>
@@ -1222,7 +606,7 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
             color: alpha(theme.palette.common.white, 0.8),
             fontWeight: 500,
           }}>
-            System Status
+            Status Sistem
           </Typography>
           <Chip
             label="Online"
@@ -1260,7 +644,7 @@ const EnhancedNavigation = ({ mobileOpen, onDrawerToggle }) => {
           <ListItemText
             primary={
               <Typography variant="body2" fontWeight={500}>
-                Logout
+                Keluar
               </Typography>
             }
           />

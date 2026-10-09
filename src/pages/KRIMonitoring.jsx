@@ -46,7 +46,7 @@ const GrafikRiwayat = ({ kri }) => {
   );
 };
 
-// Pantauan KRI lintas risiko (baca saja). Definisi di Risk Register; nilai di Pemantauan Bulanan.
+// Pantauan KRI lintas risiko (baca saja). Definisi di Risk Register; nilai di Pemantauan.
 const KRIMonitoring = () => {
   const { daftar: daftarPeriode, periodeId, setPeriodeId } = usePeriode();
   const navigate = useNavigate();
@@ -67,7 +67,7 @@ const KRIMonitoring = () => {
   return (
     <Box sx={{ p: 3 }}>
       <KepalaPantauan ikon={<Activity size={36} color="#1976d2" />} judul="Pantauan KRI"
-        keterangan="Key Risk Indicator seluruh risiko. Definisi diubah di Risk Register; nilai dilaporkan di Pemantauan Bulanan.">
+        keterangan="Key Risk Indicator seluruh risiko. Definisi diubah di Risk Register; nilai dilaporkan di Pemantauan.">
         <PilihPeriode daftar={daftarPeriode} value={periodeId} onChange={setPeriodeId} />
         <PilihDari label="Status" value={filter.status} onChange={(v) => setFilter({ ...filter, status: v })} opsi={Object.entries(LABEL_STATUS_KRI)} />
         <PilihDari label="Unit Kerja" value={filter.unit} onChange={(v) => setFilter({ ...filter, unit: v })} opsi={unitOpsi} minWidth={180} />

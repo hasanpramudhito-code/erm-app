@@ -13,8 +13,7 @@ const ControlRegister = () => {
   useEffect(() => { api.get('/unit-kerja').then((d) => setUnit(d.map((u) => [u.id, u.nama]))).catch(() => {}); }, []);
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>Register Kontrol</Typography>
+    <Box>
       <Typography variant="body2" color="text.secondary" mb={3}>Daftar kontrol internal yang diuji efektivitasnya secara berkala.</Typography>
       <TabelKelola
         endpoint="/kontrol"

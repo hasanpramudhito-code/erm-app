@@ -5,7 +5,7 @@ import { Box, CircularProgress } from '@mui/material';
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleProtectedRoute from './components/RoleProtectedRoute';
 import AppLayout from './components/AppLayout';
-import { ADMIN_PAGE_ROLES, EXECUTIVE_PAGE_ROLES } from './config/securityConfig';
+import { EXECUTIVE_PAGE_ROLES } from './config/securityConfig';
 
 
 import { AssessmentConfigProvider } from './contexts/AssessmentConfigContext';
@@ -17,8 +17,7 @@ const KRIMonitoring = lazy(() => import('./pages/KRIMonitoring'));
 const Organization = lazy(() => import('./pages/Organization'));
 const DashboardKorporat = lazy(() => import('./pages/DashboardKorporat'));
 const RisikoUtama = lazy(() => import('./pages/RisikoUtama'));
-const PemantauanBulanan = lazy(() => import('./pages/PemantauanBulanan'));
-const OrganizationStructure = lazy(() => import('./components/OrganizationStructure'));
+const Pemantauan = lazy(() => import('./pages/Pemantauan'));
 const RiskRegister = lazy(() => import('./pages/RiskRegister'));
 const RiskAssessment = lazy(() => import('./pages/RiskAssessment'));
 const RiskTreatmentPlans = lazy(() => import('./pages/RiskTreatmentPlans'));
@@ -26,13 +25,8 @@ const RiskCulture = lazy(() => import('./pages/RiskCulture'));
 const IncidentReporting = lazy(() => import('./pages/IncidentReporting'));
 const Reporting = lazy(() => import('./pages/Reporting'));
 
-const RiskParameterSettings = lazy(() => import('./pages/RiskParameterSettings'));
 const RiskAppetiteDashboard = lazy(() => import('./pages/RiskAppetite/RiskAppetiteDashboard'));
-const RiskToleranceSettings = lazy(() => import('./pages/RiskAppetite/RiskToleranceSettings'));
-const ControlRegister = lazy(() => import('./pages/ControlTesting/ControlRegister'));
-const TestingSchedule = lazy(() => import('./pages/ControlTesting/TestingSchedule'));
-const TestResults = lazy(() => import('./pages/ControlTesting/TestResults'));
-const DeficiencyTracking = lazy(() => import('./pages/ControlTesting/DeficiencyTracking'));
+const ControlTesting = lazy(() => import('./pages/ControlTesting'));
 const AntreanVerifikasi = lazy(() => import('./pages/AntreanVerifikasi'));
 const RACIChart = lazy(() => import('./components/RACIChart'));
 
@@ -71,14 +65,15 @@ export default function AuthenticatedApp() {
                 <Route path="/kri-monitoring" element={<KRIMonitoring />} />
 
                 <Route path="/organization" element={<Organization />} />
-                <Route path="/organization-structure" element={<OrganizationStructure />} />
+                <Route path="/organization-structure" element={<Navigate to="/organization?tab=structure" replace />} />
 
                 <Route path="/user-management" element={<Navigate to="/organization?tab=users" replace />} />
 
                 <Route path="/risk-register" element={<RiskRegister />} />
                 <Route path="/risiko-utama" element={<RisikoUtama />} />
                 <Route path="/risk-assessment" element={<RiskAssessment />} />
-                <Route path="/pemantauan-bulanan" element={<PemantauanBulanan />} />
+                <Route path="/pemantauan" element={<Pemantauan />} />
+                <Route path="/pemantauan-bulanan" element={<Navigate to="/pemantauan" replace />} />
                 <Route path="/treatment-plans" element={<RiskTreatmentPlans />} />
 
                 <Route path="/risk-culture" element={<RiskCulture />} />
@@ -86,16 +81,18 @@ export default function AuthenticatedApp() {
                 <Route path="/reporting" element={<Reporting />} />
 
 
-                <Route path="/risk-parameters" element={<RiskParameterSettings />} />
+                <Route path="/risk-parameters" element={<Navigate to="/organization?tab=risk-params" replace />} />
 
                 <Route path="/risk-appetite" element={<RiskAppetiteDashboard />} />
                 <Route path="/kri-settings" element={<Navigate to="/kri-monitoring" replace />} />
-                <Route path="/risk-tolerance" element={<RiskToleranceSettings />} />
+                <Route path="/risk-tolerance" element={<Navigate to="/risk-appetite?tab=pengaturan" replace />} />
 
-                <Route path="/control-register" element={<ControlRegister />} />
-                <Route path="/testing-schedule" element={<TestingSchedule />} />
-                <Route path="/test-results" element={<TestResults />} />
-                <Route path="/deficiency-tracking" element={<DeficiencyTracking />} />
+                <Route path="/control-testing" element={<ControlTesting />} />
+                {/* Alamat lama tetap berfungsi. */}
+                <Route path="/control-register" element={<Navigate to="/control-testing?tab=register" replace />} />
+                <Route path="/testing-schedule" element={<Navigate to="/control-testing?tab=jadwal" replace />} />
+                <Route path="/test-results" element={<Navigate to="/control-testing?tab=hasil" replace />} />
+                <Route path="/deficiency-tracking" element={<Navigate to="/control-testing?tab=defisiensi" replace />} />
 
                 <Route path="/approval" element={<AntreanVerifikasi />} />
                 <Route path="/raci-chart" element={<RACIChart />} />

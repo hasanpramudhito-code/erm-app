@@ -7,30 +7,16 @@ import {
 import { CalendarCheck, Plus, Trash2, Edit2 } from 'lucide-react';
 import { api } from '../services/api';
 import AksiPersetujuan from '../components/persetujuan/AksiPersetujuan';
-import { usePeriode, LABEL_PERSETUJUAN, LABEL_STATUS_MITIGASI, LABEL_STATUS_KRI, LABEL_FREKUENSI } from '../services/risiko';
-
-const NAMA_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+import {
+  usePeriode, LABEL_PERSETUJUAN, LABEL_STATUS_MITIGASI, LABEL_STATUS_KRI, LABEL_FREKUENSI, LABEL_FREKUENSI_PEMANTAUAN,
+  useFrekuensi, namaMasa, daftarMasa, masaDefault
+} from '../services/risiko';
 const WARNA_KRI = { HIJAU: 'success', KUNING: 'warning', MERAH: 'error', NONAKTIF: 'default' };
 const BISA_DIUBAH = ['DRAF', 'DIKEMBALIKAN'];
 const PERISTIWA_BARU = { tanggal_kejadian: '', deskripsi: '', dampak: '', kerugian: '', tindakan_segera: '' };
 
-// Bulan yang bisa dilaporkan: dalam periode dan tidak di masa depan.
-function daftarBulan(periode) {
-  if (!periode) return [];
-  const hasil = [];
-  const akhir = new Date(Math.min(new Date(periode.tanggal_selesai), new Date()));
-  for (let d = new Date(periode.tanggal_mulai); d <= akhir; d = new Date(d.getFullYear(), d.getMonth() + 1, 1))
-    hasil.push({ tahun: d.getFullYear(), bulan: d.getMonth() + 1 });
-  return hasil.reverse();
-}
 
-// Default bulan laporan = bulan lalu (laporan diisi setelah bulan berakhir).
-function bulanDefault(opsi) {
-  const lalu = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
-  return opsi.find((o) => o.tahun === lalu.getFullYear() && o.bulan === lalu.getMonth() + 1) || opsi[0];
-}
-
-const FormLaporan = ({ risikoId, tahun, bulan, onTutup, onTersimpan }) => {
+const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan }) => {
   const [data, setData] = useState(null);
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
@@ -79,13 +65,13 @@ const FormLaporan = ({ risikoId, tahun, bulan, onTutup, onTersimpan }) => {
     }
   };
 
-  const bulanMin = `${tahun}-${String(bulan).padStart(2, '0')}-01`;
+  const bulanMin = `${tahun}-${String(bulan - n + 1).padStart(2, '0')}-01`;
   const bulanMaks = new Date(tahun, bulan, 0).toISOString().slice(0, 10);
 
   return (
     <Dialog open onClose={onTutup} maxWidth="md" fullWidth>
       <DialogTitle>
-        Laporan {NAMA_BULAN[bulan - 1]} {tahun}
+        Laporan {namaMasa(tahun, bulan, n)}
         {data && <Typography variant="body2" color="text.secondary">{data.risiko.kode} · {data.risiko.deskripsi || data.risiko.nama}</Typography>}
       </DialogTitle>
       <DialogContent dividers>
@@ -133,7 +119,7 @@ const FormLaporan = ({ risikoId, tahun, bulan, onTutup, onTersimpan }) => {
                     <Typography variant="subtitle2">{def.nama} {def.satuan && `(${def.satuan})`}</Typography>
                     <Typography variant="caption" color="text.secondary">
                       {LABEL_FREKUENSI[def.frekuensi]} · Hijau {Number(def.ambang_hijau)} · Kuning {Number(def.ambang_kuning)} · Merah {Number(def.ambang_merah)}
-                      {seb && ` · Bulan lalu: ${Number(seb.nilai)}`}
+                      {seb && ` · Masa lalu: ${Number(seb.nilai)}`}
                     </Typography>
                   </Box>
                   <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -155,7 +141,7 @@ const FormLaporan = ({ risikoId, tahun, bulan, onTutup, onTersimpan }) => {
               control={<Checkbox checked={form.peristiwa_terjadi} onChange={(e) => setForm((f) => ({
                 ...f, peristiwa_terjadi: e.target.checked, peristiwa: e.target.checked && !f.peristiwa.length ? [{ ...PERISTIWA_BARU }] : f.peristiwa
               }))} />}
-              label="Peristiwa risiko terjadi pada bulan ini"
+              label="Peristiwa risiko terjadi pada masa ini"
             />
             {form.peristiwa_terjadi && form.peristiwa.map((p, i) => (
               <Paper key={i} variant="outlined" sx={{ p: 2, mb: 1.5 }}>
@@ -218,9 +204,10 @@ const FormLaporan = ({ risikoId, tahun, bulan, onTutup, onTersimpan }) => {
   );
 };
 
-const PemantauanBulanan = () => {
+const Pemantauan = () => {
   const { daftar: daftarPeriode, periodeId, setPeriodeId, periode } = usePeriode();
-  const opsiBulan = useMemo(() => daftarBulan(periode), [periode]);
+  const n = useFrekuensi();
+  const opsiBulan = useMemo(() => daftarMasa(periode, n), [periode, n]);
   const [pilih, setPilih] = useState(null);
   const [ringkasan, setRingkasan] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -228,7 +215,7 @@ const PemantauanBulanan = () => {
   const [buka, setBuka] = useState(null);
   const [pesan, setPesan] = useState('');
 
-  useEffect(() => { setPilih(bulanDefault(opsiBulan) || null); }, [opsiBulan]);
+  useEffect(() => { setPilih(masaDefault(opsiBulan)); }, [opsiBulan]);
 
   const muat = () => {
     if (!periodeId || !pilih) return;
@@ -249,9 +236,9 @@ const PemantauanBulanan = () => {
             <Box display="flex" alignItems="center" gap={2}>
               <CalendarCheck size={40} color="#1976d2" />
               <Box>
-                <Typography variant="h4">Pemantauan Bulanan</Typography>
+                <Typography variant="h4">Pemantauan</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Progres mitigasi, nilai KRI, peristiwa risiko, dan catatan perkembangan per risiko
+                  Progres mitigasi, nilai KRI, peristiwa risiko, dan catatan perkembangan per risiko · {n && LABEL_FREKUENSI_PEMANTAUAN[n]}
                 </Typography>
               </Box>
             </Box>
@@ -259,10 +246,10 @@ const PemantauanBulanan = () => {
               <TextField select size="small" label="Periode" sx={{ minWidth: 120 }} value={periodeId || ''} onChange={(e) => setPeriodeId(e.target.value)}>
                 {daftarPeriode.map((p) => <MenuItem key={p.id} value={p.id}>{p.nama}</MenuItem>)}
               </TextField>
-              <TextField select size="small" label="Bulan laporan" sx={{ minWidth: 170 }}
+              <TextField select size="small" label="Masa laporan" sx={{ minWidth: 200 }}
                 value={pilih ? `${pilih.tahun}-${pilih.bulan}` : ''}
                 onChange={(e) => { const [t, b] = e.target.value.split('-').map(Number); setPilih({ tahun: t, bulan: b }); }}>
-                {opsiBulan.map((o) => <MenuItem key={`${o.tahun}-${o.bulan}`} value={`${o.tahun}-${o.bulan}`}>{NAMA_BULAN[o.bulan - 1]} {o.tahun}</MenuItem>)}
+                {opsiBulan.map((o) => <MenuItem key={`${o.tahun}-${o.bulan}`} value={`${o.tahun}-${o.bulan}`}>{namaMasa(o.tahun, o.bulan, n)}</MenuItem>)}
               </TextField>
             </Box>
           </Box>
@@ -272,7 +259,7 @@ const PemantauanBulanan = () => {
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {ringkasan && (
         <Alert severity={new Date() > new Date(ringkasan.tenggat) && sudah < daftar.length ? 'warning' : 'info'} sx={{ mb: 2 }}>
-          Tenggat laporan {pilih && NAMA_BULAN[pilih.bulan - 1]}: {new Date(ringkasan.tenggat).toLocaleDateString('id-ID')} ·
+          Tenggat laporan {pilih && namaMasa(pilih.tahun, pilih.bulan, n)}: {new Date(ringkasan.tenggat).toLocaleDateString('id-ID')} ·
           Sudah diisi {sudah} dari {daftar.length} risiko
         </Alert>
       )}
@@ -327,6 +314,7 @@ const PemantauanBulanan = () => {
           risikoId={buka}
           tahun={pilih.tahun}
           bulan={pilih.bulan}
+          n={n}
           onTutup={() => setBuka(null)}
           onTersimpan={() => { setBuka(null); setPesan('Laporan tersimpan'); muat(); }}
         />
@@ -336,4 +324,4 @@ const PemantauanBulanan = () => {
   );
 };
 
-export default PemantauanBulanan;
+export default Pemantauan;

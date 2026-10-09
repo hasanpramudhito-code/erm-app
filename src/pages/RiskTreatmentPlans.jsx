@@ -11,7 +11,7 @@ import { KepalaPantauan, PilihPeriode, PilihDari, BarisKpi, Penanda, NAMA_BULAN,
 
 const WARNA_STATUS = { DIRENCANAKAN: 'default', BERJALAN: 'info', SELESAI: 'success', TERLAMBAT: 'error', DIBATALKAN: 'default' };
 
-// Pantauan rencana mitigasi lintas risiko (baca saja). Input lewat Risk Register & Pemantauan Bulanan.
+// Pantauan rencana mitigasi lintas risiko (baca saja). Input lewat Risk Register & Pemantauan.
 const RiskTreatmentPlans = () => {
   const { daftar: daftarPeriode, periodeId, setPeriodeId } = usePeriode();
   const navigate = useNavigate();
@@ -48,7 +48,7 @@ const RiskTreatmentPlans = () => {
   return (
     <Box sx={{ p: 3 }}>
       <KepalaPantauan ikon={<ClipboardCheck size={36} color="#1976d2" />} judul="Pantauan Mitigasi"
-        keterangan="Seluruh rencana mitigasi lintas risiko. Ubah rencana di Risk Register; laporkan progres di Pemantauan Bulanan.">
+        keterangan="Seluruh rencana mitigasi lintas risiko. Ubah rencana di Risk Register; laporkan progres di Pemantauan.">
         <PilihPeriode daftar={daftarPeriode} value={periodeId} onChange={setPeriodeId} />
         <PilihDari label="Jenis" value={filter.jenis} onChange={(v) => setFilter({ ...filter, jenis: v })} opsi={Object.entries(LABEL_JENIS_MITIGASI)} />
         <PilihDari label="Prioritas" value={filter.prioritas} onChange={(v) => setFilter({ ...filter, prioritas: v })} opsi={Object.entries(LABEL_PRIORITAS_SINGKAT)} />

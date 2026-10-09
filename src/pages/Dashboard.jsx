@@ -151,7 +151,7 @@ const Dashboard = () => {
   ];
 
   // Quick actions
-  const canManageUsers = userData?.role === 'ADMIN';
+  const canManageUsers = userData?.peran?.includes('ADMIN');
 
   const quickActions = [
     {

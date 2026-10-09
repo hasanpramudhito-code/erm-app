@@ -194,3 +194,37 @@ export function usePeriode() {
 
   return { daftar, periodeId, setPeriodeId, periode: daftar.find((p) => p.id === periodeId) };
 }
+
+// ---- Pemantauan: masa laporan mengikuti frekuensi yang diatur admin ----
+export const NAMA_BULAN_PENUH = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+export const LABEL_FREKUENSI_PEMANTAUAN = { 1: 'Bulanan', 2: 'Dua bulanan', 3: 'Triwulanan' };
+
+// Frekuensi pemantauan (1/2/3 bulan) dari pengaturan.
+export function useFrekuensi() {
+  const [n, setN] = useState(null);
+  useEffect(() => { api.get('/pengaturan').then((p) => setN([1, 2, 3].includes(p.frekuensi_pemantauan) ? p.frekuensi_pemantauan : 1)).catch(() => setN(1)); }, []);
+  return n;
+}
+
+// Nama masa laporan. `bulan` = bulan terakhir masa (cara server menyimpannya).
+export const namaMasa = (tahun, bulan, n) => {
+  if (n === 3) return `Triwulan ${['I', 'II', 'III', 'IV'][bulan / 3 - 1]} ${tahun}`;
+  if (n === 2) return `${NAMA_BULAN_PENUH[bulan - 2]}–${NAMA_BULAN_PENUH[bulan - 1]} ${tahun}`;
+  return `${NAMA_BULAN_PENUH[bulan - 1]} ${tahun}`;
+};
+
+// Masa yang bisa dilaporkan dalam periode (sudah dimulai), terbaru dulu. Tiap masa: { tahun, bulan (akhir), awal }.
+export function daftarMasa(periode, n) {
+  if (!periode || !n) return [];
+  const hasil = [];
+  const mulai = new Date(periode.tanggal_mulai), selesai = new Date(periode.tanggal_selesai), kini = new Date();
+  for (let t = mulai.getFullYear(); t <= selesai.getFullYear(); t++)
+    for (let b = n; b <= 12; b += n) {
+      const awal = new Date(t, b - n, 1), akhir = new Date(t, b, 0);
+      if (akhir >= mulai && awal <= selesai && awal <= kini) hasil.push({ tahun: t, bulan: b, awal: b - n + 1 });
+    }
+  return hasil.reverse();
+}
+
+// Default: masa terakhir yang sudah selesai (laporan diisi setelah masa berakhir), atau masa berjalan.
+export const masaDefault = (opsi) => opsi.find((o) => new Date(o.tahun, o.bulan, 0) < new Date()) || opsi[0] || null;

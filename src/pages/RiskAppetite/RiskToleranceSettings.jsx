@@ -12,8 +12,7 @@ const RiskToleranceSettings = () => {
   useEffect(() => { api.get('/kategori-risiko').then((d) => setKategori(d.map((k) => [k.id, k.nama]))).catch(() => {}); }, []);
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>Toleransi Risiko</Typography>
+    <Box>
       <Typography variant="body2" color="text.secondary" mb={3}>
         Batas skor residual per kategori. Risiko di atas batas "Sedang" dianggap melampaui selera risiko.
       </Typography>

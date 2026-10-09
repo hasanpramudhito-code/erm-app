@@ -1,304 +1,100 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Grid,
-  Switch,
-  FormControlLabel,
-  Button,
-  Divider,
-  Alert,
-  Snackbar,
-  CircularProgress,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  TextField
-} from '@mui/material';
-import {
-  Save,
-  RotateCcw as Restore,
-  Settings as SettingsIcon,
-  Bell as Notifications,
-  Palette,
-  Shield as Security
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Alert, Box, Button, CircularProgress, Divider, Grid, MenuItem, Paper, Snackbar, TextField, Typography } from '@mui/material';
+import { Save } from 'lucide-react';
 import { api } from '../services/api';
+import { LABEL_FREKUENSI_PEMANTAUAN } from '../services/risiko';
 import { muatIdentitas } from '../services/identitas';
-import { useAuth } from '../contexts/AuthContext';
 
+// Pengaturan sistem (khusus admin): identitas, pemantauan, tampilan. Hanya opsi yang benar-benar dipakai aplikasi.
 const SystemSettings = () => {
-  const { userData } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [form, setForm] = useState(null);
+  const [simpan, setSimpan] = useState(false);
+  const [pesan, setPesan] = useState(null);
 
-  // Default Settings
-  const defaultSettings = {
-    general: {
-      autoSave: true,
-      autoSaveInterval: 5, // minutes
-      idleTimeout: 15, // minutes
-    },
-    ui: {
-      themeMode: 'light',
-      compactView: false,
-      sidebarCollapsed: false
-    },
-    notifications: {
-      emailAlerts: true,
-      systemAnnouncements: true
-    }
-  };
-
-  const [settings, setSettings] = useState(defaultSettings);
-  const [namaPerusahaan, setNamaPerusahaan] = useState('');
-
-  // Load Settings
   useEffect(() => {
     api.get('/pengaturan')
-      .then((p) => (setNamaPerusahaan(p.nama_perusahaan || ''), p))
-      .then((p) => setSettings({
-        general: { ...defaultSettings.general, ...p.umum },
-        ui: { ...defaultSettings.ui, ...p.ui },
-        notifications: { ...defaultSettings.notifications, ...p.notifikasi }
+      .then((p) => setForm({
+        nama_perusahaan: p.nama_perusahaan || '',
+        frekuensi: p.frekuensi_pemantauan || 1,
+        tenggat: p.tenggat_pemantauan || 10,
+        ui: p.ui || {},
       }))
-      .catch((error) => showSnackbar('Error Loading Settings: ' + error.message, 'error'))
-      .finally(() => setLoading(false));
+      .catch((e) => setPesan({ jenis: 'error', teks: e.message }));
   }, []);
 
-  // Simpan tiap bagian ke kunci pengaturan masing-masing di server.
-  const simpan = (data) => Promise.all([
-    namaPerusahaan.trim() && api.put('/pengaturan/nama_perusahaan', { nilai: namaPerusahaan.trim() }).then(() => muatIdentitas(true)),
-    api.put('/pengaturan/umum', { nilai: data.general }),
-    api.put('/pengaturan/ui', { nilai: data.ui }),
-    api.put('/pengaturan/notifikasi', { nilai: data.notifications })
-  ]);
+  const ubah = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
-  const handleChange = (section, key, value) => {
-    setSettings(prev => ({
-      ...prev,
-      [section]: {
-        ...prev[section],
-        [key]: value
-      }
-    }));
-  };
-
-  const handleSave = async () => {
+  const handleSimpan = async () => {
+    setSimpan(true);
     try {
-      setSaving(true);
-      await simpan(settings);
-      showSnackbar('Settings saved successfully!', 'success');
-    } catch (error) {
-      showSnackbar('Failed to save settings: ' + error.message, 'error');
+      await Promise.all([
+        api.put('/pengaturan/nama_perusahaan', { nilai: form.nama_perusahaan.trim() }).then(() => muatIdentitas(true)),
+        api.put('/pengaturan/frekuensi_pemantauan', { nilai: Number(form.frekuensi) }),
+        api.put('/pengaturan/tenggat_pemantauan', { nilai: Number(form.tenggat) }),
+        api.put('/pengaturan/ui', { nilai: form.ui }),
+      ]);
+      setPesan({ jenis: 'success', teks: 'Pengaturan disimpan. Tema berlaku setelah halaman dimuat ulang.' });
+    } catch (e) {
+      setPesan({ jenis: 'error', teks: e.message });
     } finally {
-      setSaving(false);
+      setSimpan(false);
     }
   };
 
-  const handleRestoreDefaults = async () => {
-    if (window.confirm('Are you sure you want to restore all settings to default values?')) {
-      try {
-        setSaving(true);
-        await simpan(defaultSettings);
-        setSettings(defaultSettings);
-        showSnackbar('Settings restored to defaults.', 'info');
-      } catch (error) {
-        showSnackbar('Error restoring defaults: ' + error.message, 'error');
-      } finally {
-        setSaving(false);
-      }
-    }
-  };
-
-  const showSnackbar = (message, severity) => {
-    setSnackbar({ open: true, message, severity });
-  };
-
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" p={5}>
-        <CircularProgress />
-      </Box>
-    );
-  }
+  if (!form) return <Box textAlign="center" p={5}>{pesan ? <Alert severity="error">{pesan.teks}</Alert> : <CircularProgress />}</Box>;
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h5" fontWeight="bold">
-          System Settings
-        </Typography>
-        <Alert severity="info" sx={{ py: 0, px: 2 }}>
-          Changes applied immediately or after save.
-        </Alert>
-      </Box>
-
       <Grid container spacing={3}>
-        {/* GENERAL SETTINGS */}
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 3, height: '100%' }}>
-            <Box display="flex" alignItems="center" gap={1} mb={2}>
-              <SettingsIcon size={24} color="#1976d2" />
-              <Typography variant="h6">General & Security</Typography>
-            </Box>
+            <Typography variant="h6" gutterBottom>Identitas</Typography>
             <Divider sx={{ mb: 2 }} />
-
-            <Box display="flex" flexDirection="column" gap={2}>
-              <TextField
-                fullWidth size="small" label="Nama Perusahaan"
-                helperText="Tampil di sidebar, judul tab, dan laporan ekspor"
-                value={namaPerusahaan} onChange={(e) => setNamaPerusahaan(e.target.value)}
-              />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={settings.general.autoSave}
-                    onChange={(e) => handleChange('general', 'autoSave', e.target.checked)}
-                  />
-                }
-                label="Enable Auto-Save"
-              />
-
-              <FormControl fullWidth size="small">
-                <InputLabel>Auto-Save Interval (Minutes)</InputLabel>
-                <Select
-                  value={settings.general.autoSaveInterval}
-                  label="Auto-Save Interval (Minutes)"
-                  onChange={(e) => handleChange('general', 'autoSaveInterval', e.target.value)}
-                  disabled={!settings.general.autoSave}
-                >
-                  <MenuItem value={1}>1 Minute</MenuItem>
-                  <MenuItem value={5}>5 Minutes</MenuItem>
-                  <MenuItem value={10}>10 Minutes</MenuItem>
-                  <MenuItem value={30}>30 Minutes</MenuItem>
-                </Select>
-              </FormControl>
-
-              <FormControl fullWidth size="small">
-                <InputLabel>Idle Timeout (Lock Session)</InputLabel>
-                <Select
-                  value={settings.general.idleTimeout}
-                  label="Idle Timeout (Lock Session)"
-                  onChange={(e) => handleChange('general', 'idleTimeout', e.target.value)}
-                >
-                  <MenuItem value={5}>5 Minutes</MenuItem>
-                  <MenuItem value={15}>15 Minutes</MenuItem>
-                  <MenuItem value={30}>30 Minutes</MenuItem>
-                  <MenuItem value={60}>1 Hour</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
+            <TextField fullWidth label="Nama perusahaan" value={form.nama_perusahaan} onChange={ubah('nama_perusahaan')}
+              helperText="Tampil di halaman login, sidebar, judul tab, dan laporan" />
           </Paper>
         </Grid>
 
-        {/* UI/UX SETTINGS */}
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 3, height: '100%' }}>
-            <Box display="flex" alignItems="center" gap={1} mb={2}>
-              <Palette size={24} color="#9c27b0" />
-              <Typography variant="h6">Appearance</Typography>
-            </Box>
+            <Typography variant="h6" gutterBottom>Tampilan</Typography>
             <Divider sx={{ mb: 2 }} />
-
-            <Box display="flex" flexDirection="column" gap={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Theme Mode</InputLabel>
-                <Select
-                  value={settings.ui.themeMode}
-                  label="Theme Mode"
-                  onChange={(e) => handleChange('ui', 'themeMode', e.target.value)}
-                >
-                  <MenuItem value="light">Light Mode</MenuItem>
-                  <MenuItem value="dark">Dark Mode</MenuItem>
-                  <MenuItem value="system">System Default</MenuItem>
-                </Select>
-              </FormControl>
-
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={settings.ui.compactView}
-                    onChange={(e) => handleChange('ui', 'compactView', e.target.checked)}
-                  />
-                }
-                label="Compact View (Dense Tables)"
-              />
-            </Box>
+            <TextField select fullWidth label="Tema" value={form.ui.themeMode || 'light'}
+              onChange={(e) => setForm({ ...form, ui: { ...form.ui, themeMode: e.target.value } })}>
+              <MenuItem value="light">Terang</MenuItem>
+              <MenuItem value="dark">Gelap</MenuItem>
+            </TextField>
           </Paper>
         </Grid>
 
-        {/* NOTIFICATIONS */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, height: '100%' }}>
-            <Box display="flex" alignItems="center" gap={1} mb={2}>
-              <Notifications size={24} color="#ed6c02" />
-              <Typography variant="h6">Notifications</Typography>
-            </Box>
+        <Grid item xs={12}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>Pemantauan</Typography>
             <Divider sx={{ mb: 2 }} />
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.notifications.emailAlerts}
-                  onChange={(e) => handleChange('notifications', 'emailAlerts', e.target.checked)}
-                />
-              }
-              label="Email Alerts (Critical Risks)"
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.notifications.systemAnnouncements}
-                  onChange={(e) => handleChange('notifications', 'systemAnnouncements', e.target.checked)}
-                />
-              }
-              label="System Announcements"
-            />
-          </Paper>
-        </Grid>
-
-        {/* ACTIONS */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <Box display="flex" gap={2} flexDirection="column">
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<Save size={18} />}
-                onClick={handleSave}
-                disabled={saving}
-                fullWidth
-              >
-                {saving ? 'Saving...' : 'Save Configuration'}
-              </Button>
-
-              <Button
-                variant="outlined"
-                color="error"
-                startIcon={<Restore size={18} />}
-                onClick={handleRestoreDefaults}
-                disabled={saving}
-                fullWidth
-              >
-                Restore Defaults
-              </Button>
+            <Box display="flex" gap={2} flexWrap="wrap">
+              <TextField select label="Frekuensi pemantauan" value={form.frekuensi} onChange={ubah('frekuensi')} sx={{ minWidth: 240 }}
+                helperText="Berlaku untuk seluruh unit kerja">
+                {Object.entries(LABEL_FREKUENSI_PEMANTAUAN).map(([k, l]) => <MenuItem key={k} value={Number(k)}>{l}</MenuItem>)}
+              </TextField>
+              <TextField type="number" label="Tenggat (tanggal)" value={form.tenggat} onChange={ubah('tenggat')} sx={{ width: 220 }}
+                inputProps={{ min: 1, max: 28 }} helperText="Tanggal di bulan setelah masa berakhir" />
             </Box>
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Contoh triwulanan dengan tenggat 10: laporan Triwulan I (Januari–Maret) paling lambat 10 April.
+              Ubah frekuensi di awal periode; laporan masa lama tetap tersimpan.
+            </Alert>
           </Paper>
         </Grid>
       </Grid>
 
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-      >
-        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity}>
-          {snackbar.message}
-        </Alert>
+      <Box mt={3} display="flex" justifyContent="flex-end">
+        <Button variant="contained" startIcon={<Save size={18} />} onClick={handleSimpan} disabled={simpan}>
+          {simpan ? 'Menyimpan...' : 'Simpan pengaturan'}
+        </Button>
+      </Box>
+
+      <Snackbar open={!!pesan} autoHideDuration={5000} onClose={() => setPesan(null)}>
+        {pesan ? <Alert severity={pesan.jenis} onClose={() => setPesan(null)}>{pesan.teks}</Alert> : <span />}
       </Snackbar>
     </Box>
   );

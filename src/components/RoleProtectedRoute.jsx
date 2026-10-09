@@ -22,8 +22,7 @@ const RoleProtectedRoute = ({ children, allowedRoles = [] }) => {
     return <Navigate to="/login" replace />;
   }
 
-  const userRole = userData?.role;
-  const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(userRole);
+  const isAllowed = allowedRoles.length === 0 || allowedRoles.some((p) => userData?.peran?.includes(p));
 
   if (!isAllowed) {
     return <Navigate to="/unauthorized" replace />;

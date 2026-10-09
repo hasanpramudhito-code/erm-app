@@ -9,7 +9,7 @@ import { api } from '../services/api';
 import { usePeriode, LABEL_PERSETUJUAN } from '../services/risiko';
 import { KepalaPantauan, PilihPeriode, PilihDari, BarisKpi, NAMA_BULAN, rupiah, rupiahRingkas, tanggal } from '../components/pantauan/Kerangka';
 
-// Register peristiwa risiko (baca saja). Peristiwa dicatat lewat laporan Pemantauan Bulanan.
+// Register peristiwa risiko (baca saja). Peristiwa dicatat lewat laporan Pemantauan.
 const IncidentReporting = () => {
   const { daftar: daftarPeriode, periodeId, setPeriodeId } = usePeriode();
   const navigate = useNavigate();
@@ -32,7 +32,7 @@ const IncidentReporting = () => {
   return (
     <Box sx={{ p: 3 }}>
       <KepalaPantauan ikon={<AlertOctagon size={36} color="#1976d2" />} judul="Register Peristiwa Risiko"
-        keterangan="Peristiwa risiko yang dilaporkan unit melalui Pemantauan Bulanan.">
+        keterangan="Peristiwa risiko yang dilaporkan unit melalui Pemantauan.">
         <PilihPeriode daftar={daftarPeriode} value={periodeId} onChange={setPeriodeId} />
         <PilihDari label="Bulan" value={filter.bulan} onChange={(v) => setFilter({ ...filter, bulan: v })} opsi={bulanOpsi} />
         <PilihDari label="Unit Kerja" value={filter.unit} onChange={(v) => setFilter({ ...filter, unit: v })} opsi={unitOpsi} minWidth={180} />
@@ -92,7 +92,7 @@ const IncidentReporting = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => navigate('/pemantauan-bulanan')}>Buka Pemantauan Bulanan</Button>
+          <Button onClick={() => navigate('/pemantauan')}>Buka Pemantauan</Button>
           <Button onClick={() => setDetail(null)}>Tutup</Button>
         </DialogActions>
       </Dialog>

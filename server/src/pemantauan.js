@@ -1,4 +1,6 @@
-// API laporan pemantauan bulanan per risiko: realisasi mitigasi, nilai KRI, catatan, peristiwa risiko.
+// API laporan pemantauan per risiko: realisasi mitigasi, nilai KRI, catatan, peristiwa risiko.
+// Frekuensi diatur admin (pengaturan frekuensi_pemantauan = 1 bulanan, 2 dua bulanan, 3 triwulanan).
+// Satu laporan per jendela; disimpan dengan (tahun, bulan) = bulan terakhir jendela, mis. triwulan III -> bulan 9.
 const express = require('express');
 const prisma = require('./db');
 const { wajibLogin, cakupanUnitKerja } = require('./auth');
@@ -21,6 +23,11 @@ function statusKri(kri, nilai) {
   const [h, k, m] = [kri.ambang_hijau, kri.ambang_kuning, kri.ambang_merah].map(Number);
   if (kri.arah_target === 'LEBIH_TINGGI') return nilai >= h ? 'HIJAU' : nilai > m ? 'KUNING' : 'MERAH';
   return nilai <= h ? 'HIJAU' : nilai < m ? 'KUNING' : 'MERAH';
+}
+
+async function frekuensi() {
+  const p = await prisma.pengaturan.findUnique({ where: { kunci: 'frekuensi_pemantauan' } });
+  return [1, 2, 3].includes(Number(p?.nilai)) ? Number(p.nilai) : 1;
 }
 
 async function tanggalTenggat() {
@@ -51,19 +58,24 @@ async function ambilRisiko(req, id) {
   return r;
 }
 
-function cekBulan(tahun, bulan, periode) {
+// Validasi jendela laporan; kembalikan bulan pertama jendela.
+function cekBulan(tahun, bulan, periode, n) {
   if (!Number.isInteger(tahun) || !Number.isInteger(bulan) || bulan < 1 || bulan > 12) throw galat(400, 'Tahun/bulan tidak valid');
-  const awal = new Date(tahun, bulan - 1, 1);
+  if (bulan % n) throw galat(400, 'Bulan tidak sesuai frekuensi pemantauan');
+  const bulanAwal = bulan - n + 1;
+  const awal = new Date(tahun, bulanAwal - 1, 1);
   const akhir = new Date(tahun, bulan, 0);
   if (akhir < periode.tanggal_mulai || awal > periode.tanggal_selesai) throw galat(400, 'Bulan di luar periode risiko');
-  if (awal > new Date()) throw galat(400, 'Belum bisa melaporkan bulan yang akan datang');
+  if (awal > new Date()) throw galat(400, 'Belum bisa melaporkan masa yang akan datang');
+  return bulanAwal;
 }
 
 // Laporan satu risiko untuk satu bulan + data pembanding bulan sebelumnya.
 router.get('/risiko/:risikoId/:tahun/:bulan', async (req, res) => {
   const [risiko_id, tahun, bulan] = [req.params.risikoId, req.params.tahun, req.params.bulan].map(Number);
   const risiko = await ambilRisiko(req, risiko_id);
-  cekBulan(tahun, bulan, risiko.periode);
+  const n = await frekuensi();
+  const bulan_awal = cekBulan(tahun, bulan, risiko.periode, n);
   const [laporan, sebelumnya, tgl] = await Promise.all([
     prisma.pemantauan_bulanan.findUnique({ where: { risiko_id_tahun_bulan: { risiko_id, tahun, bulan } }, include: sertakanLaporan }),
     prisma.pemantauan_bulanan.findFirst({
@@ -73,7 +85,7 @@ router.get('/risiko/:risikoId/:tahun/:bulan', async (req, res) => {
     }),
     tanggalTenggat(),
   ]);
-  res.json({ risiko, laporan, sebelumnya, tenggat: tenggat(tahun, bulan, tgl) });
+  res.json({ risiko, laporan, sebelumnya, tenggat: tenggat(tahun, bulan, tgl), frekuensi: n, bulan_awal });
 });
 
 // Simpan (buat/ubah) laporan. Body: { catatan, peristiwa_terjadi, mitigasi:[{mitigasi_id,status,progres,keterangan}],
@@ -81,7 +93,7 @@ router.get('/risiko/:risikoId/:tahun/:bulan', async (req, res) => {
 router.put('/risiko/:risikoId/:tahun/:bulan', async (req, res) => {
   const [risiko_id, tahun, bulan] = [req.params.risikoId, req.params.tahun, req.params.bulan].map(Number);
   const risiko = await ambilRisiko(req, risiko_id);
-  cekBulan(tahun, bulan, risiko.periode);
+  const bulanAwal = cekBulan(tahun, bulan, risiko.periode, await frekuensi());
   if (risiko.periode.status !== 'TERBUKA') throw galat(400, 'Periode sudah ditutup');
   const boleh = req.pengguna.peran.includes('DIREKSI') || punya(req.pengguna, PERAN_GLOBAL_TULIS) ||
     (punya(req.pengguna, PERAN_UNIT_TULIS) && req.pengguna.unit_kerja_id === risiko.unit_kerja_id);
@@ -120,7 +132,8 @@ router.put('/risiko/:risikoId/:tahun/:bulan', async (req, res) => {
       tindakan_segera: String(p.tindakan_segera ?? '').trim() || null,
     };
     if (isNaN(x.tanggal_kejadian)) throw galat(400, `Peristiwa ${i + 1}: tanggal wajib diisi`);
-    if (x.tanggal_kejadian.getFullYear() !== tahun || x.tanggal_kejadian.getMonth() + 1 !== bulan) throw galat(400, `Peristiwa ${i + 1}: tanggal harus di bulan laporan`);
+    const bln = x.tanggal_kejadian.getMonth() + 1;
+    if (x.tanggal_kejadian.getFullYear() !== tahun || bln < bulanAwal || bln > bulan) throw galat(400, `Peristiwa ${i + 1}: tanggal harus di dalam masa laporan`);
     if (!x.deskripsi) throw galat(400, `Peristiwa ${i + 1}: uraian wajib diisi`);
     if (x.kerugian !== null && !(Number.isFinite(x.kerugian) && x.kerugian >= 0)) throw galat(400, `Peristiwa ${i + 1}: kerugian harus angka >= 0`);
     return x;
@@ -174,11 +187,11 @@ async function perbaruiTerkini(tx, risiko_id) {
   }
 }
 
-// Ringkasan status laporan satu bulan untuk semua risiko dalam cakupan pengguna.
+// Ringkasan status laporan satu masa (jendela berakhir di `bulan`) untuk semua risiko dalam cakupan pengguna.
 router.get('/ringkasan', async (req, res) => {
   const periode_id = Number(req.query.periode_id), tahun = Number(req.query.tahun), bulan = Number(req.query.bulan);
   if (!periode_id || !tahun || !bulan) throw galat(400, 'periode_id, tahun, bulan wajib');
-  const [risiko, tgl] = await Promise.all([
+  const [risiko, tgl, n] = await Promise.all([
     prisma.risiko.findMany({
       where: { periode_id, ...cakupanUnitKerja(req.pengguna) },
       select: {
@@ -193,11 +206,13 @@ router.get('/ringkasan', async (req, res) => {
       orderBy: [{ unit_kerja_id: 'asc' }, { kode: 'asc' }],
     }),
     tanggalTenggat(),
+    frekuensi(),
   ]);
   const batas = tenggat(tahun, bulan, tgl);
   const lewat = new Date() > batas;
   res.json({
     tenggat: batas,
+    frekuensi: n,
     risiko: risiko.map(({ pemantauan_bulanan: [lap], ...r }) => ({
       ...r,
       laporan: lap || null,
@@ -209,4 +224,4 @@ router.get('/ringkasan', async (req, res) => {
 
 router.use((err, req, res, next) => (err.expose ? res.status(err.status).json({ error: err.message }) : next(err)));
 
-module.exports = { router, statusKri };
+module.exports = { router, statusKri, frekuensi };
