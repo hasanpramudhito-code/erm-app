@@ -66,12 +66,12 @@ const ENTITAS = {
     ambil: async (id, p) => {
       const e = await prisma.pemantauan_bulanan.findFirst({
         where: { id, risiko: cakupanUnitKerja(p) },
-        select: { id: true, tahun: true, bulan: true, status_persetujuan: true, risiko: { select: { kode: true, unit_kerja_id: true, status_persetujuan: true, unit_kerja: { select: { alur_persetujuan: true } } } } },
+        select: { id: true, risiko_id: true, tahun: true, bulan: true, status_persetujuan: true, risiko: { select: { kode: true, unit_kerja_id: true, status_persetujuan: true, unit_kerja: { select: { alur_persetujuan: true } } } } },
       });
       return e && { ...e, unit_kerja_id: e.risiko.unit_kerja_id, alur: e.risiko.unit_kerja.alur_persetujuan, kode: e.risiko.kode, status_risiko: e.risiko.status_persetujuan };
     },
     label: (e) => `Laporan ${e.bulan}/${e.tahun} risiko ${e.kode}`,
-    tautan: () => '/pemantauan-bulanan',
+    tautan: () => '/pemantauan',
   },
 };
 
@@ -98,6 +98,16 @@ async function jalankan(req, jenisEntitas, id, aksi, catatan) {
   // Laporan bulanan hanya bisa diajukan setelah risikonya FINAL, agar yang dipantau adalah register yang sah.
   if (jenisEntitas === 'pemantauan' && aksi === 'ajukan' && e.status_risiko !== 'FINAL')
     throw galat(400, 'Risiko belum FINAL; ajukan dan finalkan risiko di Risk Register terlebih dahulu');
+  // Setiap mitigasi wajib punya minimal satu bukti pelaksanaan sebelum laporan diajukan.
+  if (jenisEntitas === 'pemantauan' && aksi === 'ajukan') {
+    const [mitigasi, bukti] = await Promise.all([
+      prisma.mitigasi.findMany({ where: { risiko_id: e.risiko_id }, select: { id: true, uraian: true } }),
+      prisma.lampiran.findMany({ where: { entitas: 'bukti_mitigasi', entitas_id: id }, select: { lokasi_file: true } }),
+    ]);
+    const ada = new Set(bukti.map((b) => Number(b.lokasi_file.split('/')[0])));
+    const kurang = mitigasi.filter((m) => !ada.has(m.id));
+    if (kurang.length) throw galat(400, `Lengkapi bukti pelaksanaan untuk: ${kurang.map((m) => m.uraian).join('; ')}`);
+  }
 
   const sekarang = new Date();
   await prisma.$transaction(async (tx) => {

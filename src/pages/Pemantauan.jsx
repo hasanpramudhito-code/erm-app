@@ -22,7 +22,8 @@ export const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan })
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
   const [menyimpan, setMenyimpan] = useState(false);
-  const [info, setInfo] = useState('');
+  // File bukti yang dipilih tapi belum diunggah: { mitigasi_id: [File] }. Diunggah saat Simpan.
+  const [tertunda, setTertunda] = useState({});
 
   useEffect(() => {
     api.get(`/pemantauan/risiko/${risikoId}/${tahun}/${bulan}`).then((d) => {
@@ -66,23 +67,33 @@ export const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan })
         mitigasi: form.mitigasi.map((m) => ({ ...m, progres: Number(m.progres) })),
         peristiwa: form.peristiwa_terjadi ? form.peristiwa : [],
       });
-      // Laporan baru yang punya mitigasi: biarkan dialog terbuka agar bukti bisa langsung diunggah.
-      if (!data.laporan && form.mitigasi.length) {
-        setData((d) => ({ ...d, laporan: lap }));
-        setInfo('Laporan tersimpan. Sekarang Anda bisa mengunggah bukti pelaksanaan mitigasi.');
-      } else onTersimpan();
+      setData((d) => ({ ...d, laporan: lap }));
+      // Unggah bukti tertunda. File yang sudah terunggah dikeluarkan dari antrean agar tidak terkirim dua kali bila ada yang gagal.
+      for (const [mid, files] of Object.entries(tertunda)) {
+        for (const file of files) {
+          const fd = new FormData();
+          fd.append('file', file);
+          await api.post(`/pemantauan/laporan/${lap.id}/mitigasi/${mid}/bukti`, fd);
+          setTertunda((t) => ({ ...t, [mid]: t[mid].filter((x) => x !== file) }));
+        }
+      }
+      onTersimpan();
     } catch (e) {
       setError(e.message);
+      muatBukti();
     } finally {
       setMenyimpan(false);
     }
   };
+  // Mitigasi yang belum punya bukti (tersimpan maupun tertunda): laporan tidak bisa diajukan.
+  const kurangBukti = form ? form.mitigasi.filter((m) => !(bukti[m.mitigasi_id]?.length || tertunda[m.mitigasi_id]?.length)).length : 0;
+  const adaTertunda = Object.values(tertunda).some((x) => x.length);
 
   const bulanMin = `${tahun}-${String(bulan - n + 1).padStart(2, '0')}-01`;
   const bulanMaks = new Date(tahun, bulan, 0).toISOString().slice(0, 10);
 
   return (
-    <Dialog open onClose={info ? onTersimpan : onTutup} maxWidth="md" fullWidth>
+    <Dialog open onClose={onTutup} maxWidth="md" fullWidth>
       <DialogTitle>
         Laporan {namaMasa(tahun, bulan, n)}
         {data && <Typography variant="body2" color="text.secondary">{data.risiko.kode} · {data.risiko.deskripsi || data.risiko.nama}</Typography>}
@@ -92,7 +103,6 @@ export const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan })
         {!form ? <Box textAlign="center" py={4}><CircularProgress /></Box> : (
           <fieldset disabled={terkunci} style={{ border: 0, padding: 0, margin: 0 }}>
             {terkunci && <Alert severity="info" sx={{ mb: 2 }}>Laporan sudah {LABEL_PERSETUJUAN[data.laporan.status_persetujuan]} dan terkunci.</Alert>}
-            {info && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setInfo('')}>{info}</Alert>}
 
             <Typography variant="h6" gutterBottom>1. Progres Mitigasi</Typography>
             {form.mitigasi.length === 0 && <Alert severity="info" sx={{ mb: 2 }}>Risiko ini belum punya rencana mitigasi. Tambahkan di Risk Register.</Alert>}
@@ -118,7 +128,8 @@ export const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan })
                       <TextField fullWidth size="small" label="Keterangan realisasi" value={m.keterangan} onChange={(e) => ubahBaris('mitigasi', i, 'keterangan', e.target.value)} />
                     </Grid>
                   </Grid>
-                  <BuktiMitigasi laporanId={data.laporan?.id} mitigasiId={m.mitigasi_id} daftar={bukti[m.mitigasi_id]} terkunci={terkunci} onBerubah={muatBukti} />
+                  <BuktiMitigasi daftar={bukti[m.mitigasi_id]} tertunda={tertunda[m.mitigasi_id]} terkunci={terkunci} onBerubah={muatBukti}
+                    onTertunda={(files) => setTertunda((t) => ({ ...t, [m.mitigasi_id]: files }))} />
                 </Paper>
               );
             })}
@@ -228,12 +239,16 @@ export const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan })
         )}
       </DialogContent>
       <DialogActions sx={{ justifyContent: 'space-between' }}>
-        {data?.laporan ? (
+        {data?.laporan && !terkunci && (kurangBukti || adaTertunda) ? (
+          <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+            {adaTertunda ? 'Simpan dulu agar bukti terunggah, lalu ajukan.' : `${kurangBukti} mitigasi belum punya bukti; lengkapi sebelum mengajukan.`}
+          </Typography>
+        ) : data?.laporan ? (
           <AksiPersetujuan entitas="pemantauan" id={data.laporan.id} status={data.laporan.status_persetujuan}
             unitId={data.risiko.unit_kerja_id} alur={data.risiko.unit_kerja?.alur_persetujuan} onSelesai={onTersimpan} />
         ) : <span />}
         <Box>
-        <Button onClick={info ? onTersimpan : onTutup}>Tutup</Button>
+        <Button onClick={onTutup}>Tutup</Button>
         {!terkunci && <Button variant="contained" onClick={simpan} disabled={!form || menyimpan}>{menyimpan ? 'Menyimpan...' : 'Simpan'}</Button>}
         </Box>
       </DialogActions>

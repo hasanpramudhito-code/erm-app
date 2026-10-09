@@ -45,6 +45,11 @@ test.before(async () => {
 
 test.after(async () => {
   const semua = Object.values(ids);
+  // Bukti yang diunggah tes: hapus file & barisnya.
+  const { DIR } = require('../src/lampiran');
+  for (const l of await prisma.lampiran.findMany({ where: { diunggah_oleh_id: { in: semua } } }))
+    require('fs').rmSync(require('path').join(DIR, require('path').basename(l.lokasi_file)), { force: true });
+  await prisma.lampiran.deleteMany({ where: { diunggah_oleh_id: { in: semua } } });
   await prisma.risiko.deleteMany({ where: { unit_kerja_id: { in: [unitA.id, unitB.id, bagianS.id] } } });
   await prisma.riwayat_persetujuan.deleteMany({ where: { pengguna_id: { in: semua } } });
   await prisma.jejak_audit.deleteMany({ where: { pengguna_id: { in: semua } } });
@@ -100,6 +105,13 @@ test('laporan bulanan hanya bisa diajukan setelah risiko FINAL', async () => {
   for (const [a, who] of [['ajukan', 'petugas'], ['setujui', 'pimpinan'], ['finalkan', 'pengelola']])
     assert.equal((await req('POST', `/persetujuan/risiko/${r.id}/${a}`, {}, ck[who])).status, 200);
 
+  // Tanpa bukti pelaksanaan mitigasi: ditolak dengan nama mitigasi yang kurang.
+  const tolak = await aksiLap('ajukan', 'petugas');
+  assert.equal(tolak.status, 400);
+  assert.match(tolak.body.error, /bukti/);
+  const fd = new FormData(); fd.append('file', new Blob(['foto']), 'bukti.jpg');
+  const up = await fetch(`${base}/api/pemantauan/laporan/${lap.id}/mitigasi/${r.mitigasi[0].id}/bukti`, { method: 'POST', headers: { cookie: ck.petugas }, body: fd });
+  assert.equal(up.status, 201);
   assert.equal((await aksiLap('ajukan', 'petugas')).status, 200);
   const ringkas = (await req('GET', `/pemantauan/ringkasan?periode_id=${periode.id}&tahun=${t}&bulan=${b}`, null, ck.petugas)).body;
   assert.ok(ringkas.risiko.find((x) => x.id === r.id).laporan.diajukan_pada);
