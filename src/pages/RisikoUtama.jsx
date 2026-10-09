@@ -7,8 +7,11 @@ import {
 import { Library, Plus, Edit2, Trash2, RefreshCw, Download, Upload, Copy, CalendarRange } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import KriEditor from '../components/risk/KriEditor';
 
-const KOSONG = { kode: '', nama: '', deskripsi: '', berlaku_untuk: 'CABANG', kategori_id: '', direktorat_pemilik_id: '', aktif: true, penyebab: [], dampak: [] };
+const KOSONG = { kode: '', nama: '', deskripsi: '', berlaku_untuk: 'CABANG', kategori_id: '', direktorat_pemilik_id: '', aktif: true, penyebab: [], dampak: [], kri: [] };
+// KRI baku dari API -> nilai form KriEditor (angka Decimal datang sebagai string).
+const keFormKri = (k) => ({ ...k, ambang_hijau: Number(k.ambang_hijau), ambang_kuning: Number(k.ambang_kuning), ambang_merah: Number(k.ambang_merah), pengali: Number(k.pengali), label_pembilang: k.label_pembilang || '', label_penyebut: k.label_penyebut || '', deskripsi: k.deskripsi || '', satuan: k.satuan || '' });
 
 // Editor daftar uraian pustaka (id dipertahankan agar rujukan risiko tidak putus).
 const DaftarPustaka = ({ label, value, onChange }) => (
@@ -125,7 +128,7 @@ const RisikoUtama = () => {
     setForm(r ? {
       kode: r.kode, nama: r.nama, deskripsi: r.deskripsi || '', berlaku_untuk: r.berlaku_untuk,
       kategori_id: r.kategori_id || '', direktorat_pemilik_id: r.direktorat_pemilik_id || '', aktif: r.aktif,
-      penyebab: r.pustaka_penyebab, dampak: r.pustaka_dampak, terpakai: r._count.risiko,
+      penyebab: r.pustaka_penyebab, dampak: r.pustaka_dampak, terpakai: r._count.risiko, kri: r.kri_baku.map(keFormKri),
     } : { ...KOSONG, berlaku_untuk: tab });
     setError('');
   };
@@ -133,6 +136,8 @@ const RisikoUtama = () => {
   const simpan = async () => {
     try {
       const { terpakai, ...body } = form;
+      body.kri = form.kri.map(({ id, nama, deskripsi, satuan, rumus, label_pembilang, label_penyebut, pengali, arah_target, frekuensi, ambang_hijau, ambang_kuning, ambang_merah }) =>
+        ({ id, nama, deskripsi, satuan, rumus, label_pembilang, label_penyebut, pengali, arah_target, frekuensi, ambang_hijau, ambang_kuning, ambang_merah }));
       const r = editId ? await api.patch(`/risiko-utama/${editId}`, body) : await api.post('/risiko-utama', { ...body, periode_id: bisaAturDaftar ? periodeId : undefined });
       setForm(null);
       setPesan(r.entri_dibuat ? `Tersimpan. ${r.entri_dibuat} entri risk register cabang dibentuk otomatis.` : 'Tersimpan');
@@ -237,13 +242,14 @@ const RisikoUtama = () => {
                 {tab === 'PUSAT' && <TableCell>Pemilik</TableCell>}
                 <TableCell align="center">Penyebab</TableCell>
                 <TableCell align="center">Dampak</TableCell>
+                <TableCell align="center">KRI baku</TableCell>
                 <TableCell align="center">Dipakai</TableCell>
                 {bolehUbah && <TableCell>Aksi</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
               {tampil.length === 0 && (
-                <TableRow><TableCell colSpan={9} align="center">Belum ada risiko utama.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} align="center">Belum ada risiko utama.</TableCell></TableRow>
               )}
               {tampil.map((r) => (
                 <TableRow key={r.id} hover sx={{ opacity: r.aktif ? 1 : 0.5 }}>
@@ -257,6 +263,7 @@ const RisikoUtama = () => {
                   {tab === 'PUSAT' && <TableCell>{r.direktorat_pemilik?.nama || '-'}</TableCell>}
                   <TableCell align="center">{r.pustaka_penyebab.length}</TableCell>
                   <TableCell align="center">{r.pustaka_dampak.length}</TableCell>
+                  <TableCell align="center">{r.kri_baku.length}</TableCell>
                   <TableCell align="center">{r._count.risiko}</TableCell>
                   {bolehUbah && (
                     <TableCell>
@@ -313,6 +320,14 @@ const RisikoUtama = () => {
               </Grid>
               <Grid item xs={12} md={6}>
                 <DaftarPustaka label="Dampak" value={form.dampak} onChange={(dampak) => setForm({ ...form, dampak })} />
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="subtitle1" gutterBottom>KRI baku</Typography>
+                <Typography variant="body2" color="text.secondary" mb={1.5}>
+                  Indikator yang wajib dipantau setiap unit kerja pada risiko ini, dengan rumus dan batas warna yang sama.
+                  Unit kerja hanya mengisi angkanya; hasilnya digabung di Dashboard Korporat.
+                </Typography>
+                <KriEditor value={form.kri} onChange={(kri) => setForm({ ...form, kri })} tanpaPemilik />
               </Grid>
               <Grid item xs={12}>
                 <FormControlLabel control={<Switch checked={form.aktif} onChange={(e) => setForm({ ...form, aktif: e.target.checked })} />} label="Aktif" />

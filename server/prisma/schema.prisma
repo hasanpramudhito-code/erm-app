@@ -394,6 +394,7 @@ model risiko_utama {
   aktif                 Boolean                @default(true)
   pustaka_penyebab      pustaka_penyebab[]
   pustaka_dampak        pustaka_dampak[]
+  kri_baku              kri_baku[]
   risiko                risiko[]
   periode               periode_risiko_utama[]
   dibuat_pada           DateTime               @default(now())
@@ -691,8 +692,37 @@ model lampiran {
 
 // ============ F. KRI ============
 
+// KRI baku: didefinisikan pengelola risiko di risiko utama, disalin terkunci ke setiap entri unit kerja,
+// agar nilai antarunit bisa diagregasi (rasio: jumlahkan pembilang & penyebut, lalu hitung ulang).
+model kri_baku {
+  id              Int          @id @default(autoincrement())
+  risiko_utama_id Int
+  risiko_utama    risiko_utama @relation(fields: [risiko_utama_id], references: [id], onDelete: Cascade)
+  nama            String       @db.VarChar(255)
+  deskripsi       String?      @db.Text
+  satuan          String?      @db.VarChar(50)
+  rumus           RumusKri     @default(LANGSUNG)
+  label_pembilang String?      @db.VarChar(100)
+  label_penyebut  String?      @db.VarChar(100)
+  pengali         Decimal      @default(100) @db.Decimal(18, 4)
+  arah_target     ArahTarget   @default(LEBIH_RENDAH)
+  frekuensi       Frekuensi    @default(BULANAN)
+  ambang_hijau    Decimal      @db.Decimal(18, 4)
+  ambang_kuning   Decimal      @db.Decimal(18, 4)
+  ambang_merah    Decimal      @db.Decimal(18, 4)
+  aktif           Boolean      @default(true)
+  kri             kri[]
+  dibuat_pada     DateTime     @default(now())
+  diubah_pada     DateTime     @updatedAt
+
+  @@index([risiko_utama_id])
+}
+
 model kri {
   id               Int              @id @default(autoincrement())
+  // Terisi = salinan KRI baku; definisinya dikunci dan mengikuti KRI baku.
+  kri_baku_id      Int?
+  kri_baku         kri_baku?        @relation(fields: [kri_baku_id], references: [id], onDelete: SetNull)
   kode             String?          @db.VarChar(30)
   nama             String           @db.VarChar(255)
   deskripsi        String?          @db.Text
@@ -726,6 +756,7 @@ model kri {
   dibuat_pada      DateTime         @default(now())
   diubah_pada      DateTime         @updatedAt
 
+  @@unique([risiko_id, kri_baku_id])
   @@index([risiko_id])
 }
 

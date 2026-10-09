@@ -124,6 +124,7 @@ export function keBentukLama(r) {
       arah_target: k.arah_target,
       frekuensi: k.frekuensi,
       pemilik_id: k.pemilik_id || '',
+      kri_baku_id: k.kri_baku_id || null,
       rumus: k.rumus || 'LANGSUNG',
       label_pembilang: k.label_pembilang || '',
       label_penyebut: k.label_penyebut || '',

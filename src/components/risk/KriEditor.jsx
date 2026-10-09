@@ -16,8 +16,9 @@ const CONTOH = [
 ];
 const WARNA = { HIJAU: 'success', KUNING: 'warning', MERAH: 'error', NONAKTIF: 'default' };
 
-// Definisi KRI dalam form risiko. Nilai aktual diisi saat pemantauan bulanan.
-const KriEditor = ({ value = [], onChange, pengguna = [] }) => {
+// Definisi KRI dalam form risiko (atau KRI baku di risiko utama: tanpaPemilik). Nilai aktual diisi saat pemantauan.
+// KRI dengan kri_baku_id adalah salinan KRI baku: tampil terkunci, hanya pemilik yang bisa diatur unit.
+const KriEditor = ({ value = [], onChange, pengguna = [], tanpaPemilik = false }) => {
   const ubah = (i, kunci, v) => onChange(value.map((k, j) => (j === i ? { ...k, [kunci]: v } : k)));
   const hapus = (i) => onChange(value.filter((_, j) => j !== i));
 
@@ -28,6 +29,25 @@ const KriEditor = ({ value = [], onChange, pengguna = [] }) => {
       )}
       {value.map((k, i) => {
         const rendah = k.arah_target === 'LEBIH_RENDAH';
+        if (k.kri_baku_id) return (
+          <Paper key={k.id} variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+            <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+              <Typography variant="subtitle2">{k.nama} {k.satuan && `(${k.satuan})`}</Typography>
+              <Chip size="small" color="primary" variant="outlined" label="KRI baku dari Pusat" />
+              {k.status && <Chip size="small" color={WARNA[k.status]} label={LABEL_STATUS_KRI[k.status]} />}
+            </Box>
+            <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
+              {k.rumus === 'RASIO' ? `${k.label_pembilang} ÷ ${k.label_penyebut} × ${k.pengali}` : 'Isi nilai langsung'} ·
+              Hijau {Number(k.ambang_hijau)} · Kuning {Number(k.ambang_kuning)} · Merah {Number(k.ambang_merah)} · diatur di Risiko Utama
+            </Typography>
+            {!tanpaPemilik && (
+              <TextField select size="small" sx={{ mt: 1.5, minWidth: 260 }} label="Pemilik KRI" value={k.pemilik_id} onChange={(e) => ubah(i, 'pemilik_id', e.target.value)}>
+                <MenuItem value="">-</MenuItem>
+                {pengguna.map((p) => <MenuItem key={p.id} value={p.id}>{p.nama}</MenuItem>)}
+              </TextField>
+            )}
+          </Paper>
+        );
         return (
           <Paper key={k.id ?? `baru-${i}`} variant="outlined" sx={{ p: 2, mb: 2 }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
@@ -100,12 +120,12 @@ const KriEditor = ({ value = [], onChange, pengguna = [] }) => {
                     : 'Makin tinggi makin baik: isi Hijau ≥ Kuning ≥ Merah. Nilai ≤ batas Merah berstatus merah.'}
                 </Typography>
               </Grid>
-              <Grid item xs={12} sm={6}>
+              {!tanpaPemilik && <Grid item xs={12} sm={6}>
                 <TextField select fullWidth label="Pemilik KRI" value={k.pemilik_id} onChange={(e) => ubah(i, 'pemilik_id', e.target.value)}>
                   <MenuItem value="">-</MenuItem>
                   {pengguna.map((p) => <MenuItem key={p.id} value={p.id}>{p.nama}</MenuItem>)}
                 </TextField>
-              </Grid>
+              </Grid>}
             </Grid>
           </Paper>
         );

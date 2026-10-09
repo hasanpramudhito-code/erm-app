@@ -15,8 +15,45 @@ const sertakan = {
   direktorat_pemilik: { select: { id: true, kode: true, nama: true } },
   pustaka_penyebab: { where: { aktif: true }, orderBy: { id: 'asc' }, select: { id: true, uraian: true } },
   pustaka_dampak: { where: { aktif: true }, orderBy: { id: 'asc' }, select: { id: true, uraian: true } },
+  kri_baku: { where: { aktif: true }, orderBy: { id: 'asc' } },
   _count: { select: { risiko: true } },
 };
+
+// Kolom definisi yang disalin dari KRI baku ke KRI unit kerja.
+const KOLOM_KRI = ['nama', 'deskripsi', 'satuan', 'rumus', 'label_pembilang', 'label_penyebut', 'pengali', 'arah_target', 'frekuensi', 'ambang_hijau', 'ambang_kuning', 'ambang_merah'];
+
+// Salin KRI baku aktif ke setiap entri risiko utama ini (buat yang belum ada, samakan definisi yang sudah ada).
+// KRI baku yang dinonaktifkan dibiarkan di entri (riwayat pemantauannya tetap), tapi tidak lagi disamakan.
+// Periode DITUTUP tidak disentuh agar batas warna riwayatnya tetap seperti saat dilaporkan.
+async function sinkronKriBaku(tx, risiko_utama_id) {
+  const baku = await tx.kri_baku.findMany({ where: { risiko_utama_id, aktif: true } });
+  if (!baku.length) return;
+  const entri = await tx.risiko.findMany({ where: { risiko_utama_id, periode: { status: { not: 'DITUTUP' } } }, select: { id: true, kri: { where: { kri_baku_id: { not: null } }, select: { id: true, kri_baku_id: true } } } });
+  for (const e of entri) for (const kb of baku) {
+    const def = Object.fromEntries(KOLOM_KRI.map((k) => [k, kb[k]]));
+    const ada = e.kri.find((k) => k.kri_baku_id === kb.id);
+    if (ada) await tx.kri.update({ where: { id: ada.id }, data: def });
+    else await tx.kri.create({ data: { ...def, risiko_id: e.id, kri_baku_id: kb.id } });
+  }
+}
+
+// Sinkron daftar KRI baku dari form risiko utama (by id). KRI baku yang sudah dipakai entri dinonaktifkan, bukan dihapus.
+async function simpanKriBaku(tx, risiko_utama_id, daftar) {
+  const lama = await tx.kri_baku.findMany({ where: { risiko_utama_id, aktif: true }, select: { id: true, _count: { select: { kri: true } } } });
+  const dikirim = new Set(daftar.filter((x) => x.id).map((x) => x.id));
+  for (const l of lama) {
+    if (dikirim.has(l.id)) continue;
+    if (l._count.kri) await tx.kri_baku.update({ where: { id: l.id }, data: { aktif: false } });
+    else await tx.kri_baku.delete({ where: { id: l.id } });
+  }
+  const idLama = new Set(lama.map((l) => l.id));
+  for (const { id, pemilik_id, ...data } of daftar) {
+    if (id && !idLama.has(id)) throw galat(400, `KRI baku #${id} bukan milik risiko utama ini`);
+    if (id) await tx.kri_baku.update({ where: { id }, data });
+    else await tx.kri_baku.create({ data: { ...data, risiko_utama_id } });
+  }
+  await sinkronKriBaku(tx, risiko_utama_id);
+}
 
 // Bentuk entri draf: setiap Cabang/Unit aktif x setiap risiko utama CABANG aktif dalam daftar periode TERBUKA.
 // Idempoten (unique periode+unit+risiko_utama). Kembalikan jumlah entri baru.
@@ -35,9 +72,12 @@ async function bentukEntriCabang(periode_id) {
       data.push({ periode_id: p.id, unit_kerja_id: u.id, risiko_utama_id: ru.id, kode: `${ru.kode}-${u.kode}`.slice(0, 50), nama: ru.nama, deskripsi: ru.deskripsi, kategori_id: ru.kategori_id });
     }
     if (data.length) dibuat += (await prisma.risiko.createMany({ data, skipDuplicates: true })).count;
+    for (const ru of utama) await sinkronKriBaku(prisma, ru.id);
   }
   return dibuat;
 }
+
+const bersihkanKri = (...a) => require('./risiko').bersihkanKri(...a);
 
 const daftarUraian = (arr, nama) => {
   if (arr === undefined) return undefined;
@@ -45,7 +85,7 @@ const daftarUraian = (arr, nama) => {
   return arr.map((x) => ({ id: x.id ? Number(x.id) : undefined, uraian: String(x.uraian ?? '').trim() })).filter((x) => x.uraian);
 };
 
-function bersihkan(b, baru) {
+async function bersihkan(b, baru) {
   const t = (v) => (v === undefined ? undefined : String(v ?? '').trim() || null);
   const data = Object.fromEntries(Object.entries({
     kode: t(b.kode)?.toUpperCase(),
@@ -59,7 +99,13 @@ function bersihkan(b, baru) {
   if (baru) for (const k of ['kode', 'nama', 'berlaku_untuk']) if (!data[k]) throw galat(400, `${k} wajib diisi`);
   if (data.kode === null || data.nama === null) throw galat(400, 'Kode dan nama tidak boleh kosong');
   if (data.berlaku_untuk && !['CABANG', 'PUSAT'].includes(data.berlaku_untuk)) throw galat(400, 'Berlaku untuk harus CABANG atau PUSAT');
-  return { data, penyebab: daftarUraian(b.penyebab, 'penyebab'), dampak: daftarUraian(b.dampak, 'dampak') };
+  let kri;
+  if (b.kri !== undefined) {
+    const h = await bersihkanKri(b.kri);
+    if (h.error) throw galat(400, h.error);
+    kri = h.daftar;
+  }
+  return { data, penyebab: daftarUraian(b.penyebab, 'penyebab'), dampak: daftarUraian(b.dampak, 'dampak'), kri };
 }
 
 // Sinkron pustaka by id. Item yang sudah dipakai risiko dinonaktifkan (bukan dihapus) agar rujukan analisis tetap ada.
@@ -82,6 +128,7 @@ async function sinkronPustaka(tx, model, relasi, risiko_utama_id, daftar) {
 async function simpan(tx, id, h) {
   if (h.penyebab) await sinkronPustaka(tx, 'pustaka_penyebab', 'risiko_penyebab', id, h.penyebab);
   if (h.dampak) await sinkronPustaka(tx, 'pustaka_dampak', 'risiko_dampak', id, h.dampak);
+  if (h.kri) await simpanKriBaku(tx, id, h.kri);
   return tx.risiko_utama.findUnique({ where: { id }, include: sertakan });
 }
 
@@ -139,7 +186,7 @@ router.post('/bentuk-entri', wajibPeran(...PENULIS), async (req, res) => {
 });
 
 router.post('/', wajibPeran(...PENULIS), async (req, res) => {
-  const h = bersihkan(req.body || {}, true);
+  const h = await bersihkan(req.body || {}, true);
   const periode_id = Number(req.body?.periode_id) || null;
   const r = await prisma.$transaction(async (tx) => {
     const baru = await tx.risiko_utama.create({ data: h.data });
@@ -155,7 +202,7 @@ router.patch('/:id', wajibPeran(...PENULIS), async (req, res) => {
   const id = Number(req.params.id);
   const lama = await prisma.risiko_utama.findUnique({ where: { id }, include: sertakan });
   if (!lama) throw galat(404, 'Risiko utama tidak ditemukan');
-  const h = bersihkan(req.body || {}, false);
+  const h = await bersihkan(req.body || {}, false);
   if (h.data.berlaku_untuk && h.data.berlaku_untuk !== lama.berlaku_untuk && lama._count.risiko)
     throw galat(400, 'Tidak dapat mengubah "berlaku untuk" karena sudah dipakai di risk register');
   const r = await prisma.$transaction(async (tx) => {
@@ -176,6 +223,7 @@ router.delete('/:id', wajibPeran(...PENULIS), async (req, res) => {
   await prisma.$transaction([
     prisma.pustaka_penyebab.deleteMany({ where: { risiko_utama_id: id } }),
     prisma.pustaka_dampak.deleteMany({ where: { risiko_utama_id: id } }),
+    prisma.kri_baku.deleteMany({ where: { risiko_utama_id: id } }),
     prisma.risiko_utama.delete({ where: { id } }),
   ]);
   await catat({ req, nama_tabel: 'risiko_utama', id_data: id, aksi: 'HAPUS', nilai_lama: lama });
@@ -184,4 +232,4 @@ router.delete('/:id', wajibPeran(...PENULIS), async (req, res) => {
 
 router.use((err, req, res, next) => (err.expose ? res.status(err.status).json({ error: err.message }) : next(err)));
 
-module.exports = { router, bentukEntriCabang };
+module.exports = { router, bentukEntriCabang, sinkronKriBaku };

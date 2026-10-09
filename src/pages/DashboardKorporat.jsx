@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Box, Card, CardContent, Chip, Grid, LinearProgress, MenuItem, Paper, Tab, Table, TableBody, TableCell,
+  Alert, Box, Button, Card, CardContent, Chip, Collapse, Grid, LinearProgress, MenuItem, Paper, Tab, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Tabs, TextField, Tooltip, Typography
 } from '@mui/material';
 import { Building2 } from 'lucide-react';
 import { api } from '../services/api';
-import { usePeriode, useFrekuensi, daftarMasa, masaDefault, namaMasa } from '../services/risiko';
+import { usePeriode, useFrekuensi, daftarMasa, masaDefault, namaMasa, LABEL_STATUS_KRI, LABEL_PERSETUJUAN } from '../services/risiko';
 
 const rupiah = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 
@@ -58,12 +58,75 @@ const Kelengkapan = ({ final, seharusnya }) => {
   );
 };
 
+const WARNA_KRI = { HIJAU: 'success', KUNING: 'warning', MERAH: 'error' };
+const angka = (v) => (v == null ? '-' : Number(v).toLocaleString('id-ID'));
+
+// Satu KRI baku: nilai gabungan (dari angka nyata semua unit yang final), sebaran warna, dan rincian per unit.
+const KartuKriBaku = ({ k }) => {
+  const [buka, setBuka] = useState(false);
+  const g = k.gabungan;
+  return (
+    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+      <Box display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
+        <Box>
+          <Typography variant="subtitle1" fontWeight={600}>{k.nama}</Typography>
+          <Typography variant="caption" color="text.secondary">
+            {k.risiko_utama.kode} · {k.risiko_utama.nama} · Hijau {k.ambang_hijau} · Kuning {k.ambang_kuning} · Merah {k.ambang_merah}
+          </Typography>
+        </Box>
+        <Box textAlign="right">
+          <Typography variant="h4" fontWeight={600} sx={{ fontVariantNumeric: 'tabular-nums' }}>
+            {g.nilai == null ? '-' : `${angka(g.nilai)} ${k.satuan || ''}`}
+          </Typography>
+          {g.status && <Chip size="small" color={WARNA_KRI[g.status]} label={`Gabungan: ${LABEL_STATUS_KRI[g.status]}`} />}
+        </Box>
+      </Box>
+      {k.rumus === 'RASIO' && g.penyebut > 0 && (
+        <Typography variant="body2" color="text.secondary" mt={1}>
+          {k.label_pembilang} {angka(g.pembilang)} ÷ {k.label_penyebut} {angka(g.penyebut)}
+        </Typography>
+      )}
+      <Box display="flex" gap={1} alignItems="center" flexWrap="wrap" mt={1.5}>
+        {['HIJAU', 'KUNING', 'MERAH'].map((st) => <Chip key={st} size="small" variant="outlined" color={WARNA_KRI[st]} label={`${k.sebaran[st]} ${LABEL_STATUS_KRI[st].toLowerCase()}`} />)}
+        <Typography variant="body2" color="text.secondary">dari {k.jumlah_final} unit dengan laporan final · {k.jumlah_unit - k.jumlah_final} belum final</Typography>
+        <Button size="small" onClick={() => setBuka(!buka)} sx={{ ml: 'auto' }}>{buka ? 'Sembunyikan' : 'Rincian per unit'}</Button>
+      </Box>
+      <Collapse in={buka}>
+        <TableContainer sx={{ mt: 1 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Unit kerja</TableCell>
+                {k.rumus === 'RASIO' && <><TableCell align="right">{k.label_pembilang}</TableCell><TableCell align="right">{k.label_penyebut}</TableCell></>}
+                <TableCell align="right">Nilai</TableCell><TableCell>Status</TableCell><TableCell>Laporan</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {k.unit.map((u) => (
+                <TableRow key={u.kode_risiko} sx={{ opacity: u.status_laporan === 'FINAL' ? 1 : 0.6 }}>
+                  <TableCell>{u.unit_kerja}</TableCell>
+                  {k.rumus === 'RASIO' && <><TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>{angka(u.pembilang)}</TableCell><TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>{angka(u.penyebut)}</TableCell></>}
+                  <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>{angka(u.nilai)}</TableCell>
+                  <TableCell>{u.status ? <Chip size="small" color={WARNA_KRI[u.status]} label={LABEL_STATUS_KRI[u.status]} /> : '-'}</TableCell>
+                  <TableCell>{u.status_laporan ? LABEL_PERSETUJUAN[u.status_laporan] : 'Belum diisi'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <Typography variant="caption" color="text.secondary">Hanya laporan berstatus Final yang dihitung dalam nilai gabungan.</Typography>
+      </Collapse>
+    </Paper>
+  );
+};
+
 const DashboardKorporat = () => {
   const { daftar: daftarPeriode, periodeId, setPeriodeId, periode } = usePeriode();
   const [jenis, setJenis] = useState('INHEREN');
   const [bulan, setBulan] = useState(null);
   const [agg, setAgg] = useState(null);
   const [bln, setBln] = useState(null);
+  const [kriBaku, setKriBaku] = useState([]);
   const [memuat, setMemuat] = useState(false);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('CABANG');
@@ -80,6 +143,7 @@ const DashboardKorporat = () => {
   useEffect(() => {
     if (!periodeId || !bulan) return;
     api.get(`/agregasi/bulanan?periode_id=${periodeId}&tahun=${bulan.tahun}&bulan=${bulan.bulan}`).then(setBln).catch((e) => setError(e.message));
+    api.get(`/agregasi/kri?periode_id=${periodeId}&tahun=${bulan.tahun}&bulan=${bulan.bulan}`).then(setKriBaku).catch((e) => setError(e.message));
   }, [periodeId, bulan?.tahun, bulan?.bulan]);
 
   const daftarRu = (agg?.risiko_utama || []).filter((r) => r.berlaku_untuk === tab);
@@ -186,6 +250,16 @@ const DashboardKorporat = () => {
             </TableBody>
           </Table>
         </TableContainer>
+      </Paper>
+
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Typography variant="h6">KRI Korporat · {bulan && namaMasa(bulan.tahun, bulan.bulan, n)}</Typography>
+        <Typography variant="body2" color="text.secondary" mb={2}>
+          Gabungan KRI baku seluruh unit kerja. Untuk KRI rasio, angka nyata semua unit dijumlahkan lalu dihitung ulang, sehingga unit bervolume besar berbobot sesuai volumenya.
+        </Typography>
+        {kriBaku.length === 0
+          ? <Alert severity="info">Belum ada KRI baku. Tambahkan di Risiko Utama &amp; Pustaka pada risiko utama terkait.</Alert>
+          : kriBaku.map((k) => <KartuKriBaku key={k.id} k={k} />)}
       </Paper>
 
       <Grid container spacing={3}>

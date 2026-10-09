@@ -4,6 +4,7 @@ const prisma = require('./db');
 const { wajibLogin, cakupanUnitKerja } = require('./auth');
 const { catat } = require('./audit');
 const { konteksPenilaian, nilaiPenilaian } = require('./skor');
+const sinkronKriBaku = (...a) => require('./risiko-utama').sinkronKriBaku(...a);
 
 const router = express.Router();
 router.use(wajibLogin);
@@ -135,8 +136,9 @@ async function bersihkanKri(arr) {
 
 // Sinkronkan daftar anak dengan id: ubah yang ada, buat yang baru, hapus yang tidak dikirim.
 // Baris yang sudah punya riwayat (realisasi/pengukuran) tidak boleh dihapus agar data pemantauan tidak hilang.
-async function sinkron(tx, model, risiko_id, daftar, riwayat, nama) {
-  const lama = await tx[model].findMany({ where: { risiko_id }, select: { id: true, [riwayat]: { select: { id: true }, take: 1 } } });
+// `saring`: batasi baris lama yang disinkron (mis. hanya KRI buatan unit, bukan KRI baku).
+async function sinkron(tx, model, risiko_id, daftar, riwayat, nama, saring = {}) {
+  const lama = await tx[model].findMany({ where: { risiko_id, ...saring }, select: { id: true, [riwayat]: { select: { id: true }, take: 1 } } });
   const dikirim = new Set(daftar.filter((x) => x.id).map((x) => x.id));
   for (const l of lama) {
     if (dikirim.has(l.id)) continue;
@@ -250,7 +252,12 @@ async function simpanAnak(tx, risiko_id, h) {
     await tx.risiko_dampak.createMany({ data: h.dampak.map((x) => ({ ...x, risiko_id })) });
   }
   if (h.mitigasi) await sinkron(tx, 'mitigasi', risiko_id, h.mitigasi, 'realisasi', 'Mitigasi');
-  if (h.kri) await sinkron(tx, 'kri', risiko_id, h.kri, 'pengukuran', 'KRI');
+  if (h.kri) {
+    // KRI baku dikelola dari risiko utama: unit hanya boleh mengatur pemiliknya; KRI baku tidak ikut terhapus.
+    const baku = new Set((await tx.kri.findMany({ where: { risiko_id, kri_baku_id: { not: null } }, select: { id: true } })).map((k) => k.id));
+    for (const k of h.kri.filter((k) => baku.has(k.id))) await tx.kri.update({ where: { id: k.id }, data: { pemilik_id: k.pemilik_id } });
+    await sinkron(tx, 'kri', risiko_id, h.kri.filter((k) => !baku.has(k.id)), 'pengukuran', 'KRI', { kri_baku_id: null });
+  }
   for (const p of h.penilaian || []) {
     const { jenis, ...nilai } = p;
     await tx.penilaian.upsert({ where: { risiko_id_jenis: { risiko_id, jenis } }, update: nilai, create: { risiko_id, jenis, ...nilai } });
@@ -283,6 +290,7 @@ router.post('/', async (req, res) => {
   const r = await prisma.$transaction(async (tx) => {
     const baru = await tx.risiko.create({ data: h.data });
     await simpanAnak(tx, baru.id, h);
+    if (baru.risiko_utama_id) await sinkronKriBaku(tx, baru.risiko_utama_id);
     return tx.risiko.findUnique({ where: { id: baru.id }, include: sertakan });
   });
   await catat({ req, nama_tabel: 'risiko', id_data: r.id, aksi: 'BUAT', nilai_baru: r });
@@ -306,8 +314,9 @@ router.patch('/:id', async (req, res) => {
   if (req.pengguna.peran.includes('DIREKSI') && !STATUS_BISA_DIUBAH.includes(lama.status_persetujuan)) h.data.diubah_direksi = true;
 
   const r = await prisma.$transaction(async (tx) => {
-    await tx.risiko.update({ where: { id }, data: h.data });
+    const baru = await tx.risiko.update({ where: { id }, data: h.data });
     await simpanAnak(tx, id, h);
+    if (baru.risiko_utama_id) await sinkronKriBaku(tx, baru.risiko_utama_id);
     return tx.risiko.findUnique({ where: { id }, include: sertakan });
   });
   await catat({ req, nama_tabel: 'risiko', id_data: id, aksi: 'UBAH', nilai_lama: lama, nilai_baru: r });
@@ -337,4 +346,4 @@ router.get('/:id/riwayat', async (req, res) => {
   }));
 });
 
-module.exports = { router };
+module.exports = { router, bersihkanKri };
