@@ -120,3 +120,19 @@ test('frekuensi triwulanan: laporan per triwulan, peristiwa boleh di bulan mana 
     await req('PUT', '/pengaturan/frekuensi_pemantauan', { nilai: lama });
   }
 });
+
+test('KRI rasio (NRW): nilai dihitung dari angka nyata yang diinput', async () => {
+  const dasar = { periode_id: periode.id, unit_kerja_id: unit.id, nama: 'Kehilangan air tinggi', inheren: { kemungkinan: 3, dampak: 3 } };
+  const nrw = { nama: 'NRW', satuan: '%', rumus: 'RASIO', ambang_hijau: 20, ambang_kuning: 25, ambang_merah: 30 };
+  assert.equal((await req('POST', '/risiko', { ...dasar, kode: `NRW0-${sufiks}`, kri: [nrw] })).status, 400); // nama angka wajib
+  const r = await req('POST', '/risiko', { ...dasar, kode: `NRW-${sufiks}`, kri: [{ ...nrw, label_pembilang: 'Air hilang (m³)', label_penyebut: 'Air didistribusikan (m³)' }] });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const k = r.body.kri[0];
+  assert.deepEqual([k.rumus, k.label_penyebut], ['RASIO', 'Air didistribusikan (m³)']);
+  const isi = (pembilang, penyebut) => req('PUT', `/pemantauan/risiko/${r.body.id}/${T}/${B}`, { kri: [{ kri_id: k.id, pembilang, penyebut }] });
+  assert.equal((await isi(1000, 0)).status, 400); // penyebut nol
+  const l = await isi(27500, 100000);
+  assert.equal(l.status, 200, JSON.stringify(l.body));
+  const p = l.body.pengukuran_kri[0];
+  assert.deepEqual([Number(p.nilai), Number(p.pembilang), Number(p.penyebut), p.status], [27.5, 27500, 100000, 'KUNING']);
+});

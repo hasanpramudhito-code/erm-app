@@ -36,7 +36,10 @@ const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan }) => {
           const r = realisasi(m.id, lap) || realisasi(m.id, seb);
           return { mitigasi_id: m.id, status: r?.status || 'BERJALAN', progres: r?.progres ?? 0, keterangan: lap ? r?.keterangan || '' : '' };
         }),
-        kri: d.risiko.kri.map((k) => ({ kri_id: k.id, nilai: ukur(k.id)?.nilai ?? '', catatan: ukur(k.id)?.catatan || '' })),
+        kri: d.risiko.kri.map((k) => ({
+          kri_id: k.id, nilai: ukur(k.id)?.nilai ?? '', catatan: ukur(k.id)?.catatan || '',
+          pembilang: ukur(k.id)?.pembilang ?? '', penyebut: ukur(k.id)?.penyebut ?? '',
+        })),
         peristiwa: (lap?.insiden || []).map((i) => ({
           tanggal_kejadian: i.tanggal_kejadian.slice(0, 10), deskripsi: i.deskripsi, dampak: i.dampak || '', kerugian: i.kerugian ?? '', tindakan_segera: i.tindakan_segera || ''
         })),
@@ -123,12 +126,34 @@ const FormLaporan = ({ risikoId, tahun, bulan, n, onTutup, onTersimpan }) => {
                     </Typography>
                   </Box>
                   <Grid container spacing={2} sx={{ mt: 0.5 }}>
-                    <Grid item xs={12} sm={3}>
-                      <TextField fullWidth size="small" type="number" label="Nilai"
-                        helperText={def.frekuensi !== 'BULANAN' ? 'Boleh kosong' : ''}
-                        value={k.nilai} onChange={(e) => ubahBaris('kri', i, 'nilai', e.target.value)} />
-                    </Grid>
-                    <Grid item xs={12} sm={9}>
+                    {def.rumus === 'RASIO' ? (() => {
+                      const [a, b] = [Number(k.pembilang), Number(k.penyebut)];
+                      const hasil = k.pembilang !== '' && k.penyebut !== '' && b > 0 ? Math.round((a / b) * Number(def.pengali) * 100) / 100 : null;
+                      return (
+                        <>
+                          <Grid item xs={12} sm={4}>
+                            <TextField fullWidth size="small" type="number" label={def.label_pembilang} inputProps={{ min: 0 }}
+                              value={k.pembilang} onChange={(e) => ubahBaris('kri', i, 'pembilang', e.target.value)} />
+                          </Grid>
+                          <Grid item xs={12} sm={4}>
+                            <TextField fullWidth size="small" type="number" label={def.label_penyebut} inputProps={{ min: 0 }}
+                              value={k.penyebut} onChange={(e) => ubahBaris('kri', i, 'penyebut', e.target.value)} />
+                          </Grid>
+                          <Grid item xs={12} sm={4} display="flex" alignItems="center">
+                            <Typography variant="body2" aria-live="polite">
+                              Hasil: <strong>{hasil == null ? '-' : `${hasil.toLocaleString('id-ID')} ${def.satuan || ''}`}</strong>
+                            </Typography>
+                          </Grid>
+                        </>
+                      );
+                    })() : (
+                      <Grid item xs={12} sm={3}>
+                        <TextField fullWidth size="small" type="number" label="Nilai"
+                          helperText={def.frekuensi !== 'BULANAN' ? 'Boleh kosong' : ''}
+                          value={k.nilai} onChange={(e) => ubahBaris('kri', i, 'nilai', e.target.value)} />
+                      </Grid>
+                    )}
+                    <Grid item xs={12} sm={def.rumus === 'RASIO' ? 12 : 9}>
                       <TextField fullWidth size="small" label="Catatan" value={k.catatan} onChange={(e) => ubahBaris('kri', i, 'catatan', e.target.value)} />
                     </Grid>
                   </Grid>

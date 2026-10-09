@@ -124,6 +124,10 @@ export function keBentukLama(r) {
       arah_target: k.arah_target,
       frekuensi: k.frekuensi,
       pemilik_id: k.pemilik_id || '',
+      rumus: k.rumus || 'LANGSUNG',
+      label_pembilang: k.label_pembilang || '',
+      label_penyebut: k.label_penyebut || '',
+      pengali: Number(k.pengali ?? 100),
       pemilik: k.pemilik?.nama || '',
       status: k.status,
       nilai_sekarang: k.nilai_sekarang,
@@ -160,8 +164,8 @@ export function keBodyApi(f) {
     kuantifikasi_residual: f.residualRiskQuantification === '' ? null : f.residualRiskQuantification,
     mitigasi: (f.mitigations || []).map(({ id, uraian, jenis, penanggung_jawab_id, target_waktu, anggaran, prioritas }) =>
       ({ id, uraian, jenis, penanggung_jawab_id: penanggung_jawab_id || null, target_waktu: target_waktu || null, anggaran: anggaran === '' ? null : anggaran, prioritas })),
-    kri: (f.kris || []).map(({ id, nama, deskripsi, satuan, ambang_hijau, ambang_kuning, ambang_merah, arah_target, frekuensi, pemilik_id }) =>
-      ({ id, nama, deskripsi, satuan, ambang_hijau, ambang_kuning, ambang_merah, arah_target, frekuensi, pemilik_id: pemilik_id || null })),
+    kri: (f.kris || []).map(({ id, nama, deskripsi, satuan, ambang_hijau, ambang_kuning, ambang_merah, arah_target, frekuensi, pemilik_id, rumus, label_pembilang, label_penyebut, pengali }) =>
+      ({ id, nama, deskripsi, satuan, ambang_hijau, ambang_kuning, ambang_merah, arah_target, frekuensi, pemilik_id: pemilik_id || null, rumus, label_pembilang, label_penyebut, pengali })),
     prioritas_penanganan: KODE_PRIORITAS[f.treatmentPriority] || null,
     catatan_penilaian: f.assessmentNotes,
     inheren: pasangan(f.initialProbability, f.initialImpact),

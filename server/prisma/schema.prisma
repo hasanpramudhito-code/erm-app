@@ -96,6 +96,11 @@ enum StatusMitigasi {
   DIBATALKAN
 }
 
+enum RumusKri {
+  LANGSUNG
+  RASIO
+}
+
 enum PeranRaci {
   R
   A
@@ -704,6 +709,11 @@ model kri {
   nilai_target     Decimal?         @db.Decimal(18, 4)
   arah_target      ArahTarget       @default(LEBIH_RENDAH)
   frekuensi        Frekuensi        @default(BULANAN)
+  // LANGSUNG: nilai diisi langsung. RASIO: nilai = pembilang / penyebut x pengali (mis. NRW = air hilang / air didistribusikan x 100).
+  rumus            RumusKri         @default(LANGSUNG)
+  label_pembilang  String?          @db.VarChar(100)
+  label_penyebut   String?          @db.VarChar(100)
+  pengali          Decimal          @default(100) @db.Decimal(18, 4)
   nilai_sekarang   Decimal?         @db.Decimal(18, 4)
   nilai_sebelumnya Decimal?         @db.Decimal(18, 4)
   status           StatusKri        @default(NONAKTIF)
@@ -726,6 +736,9 @@ model pengukuran_kri {
   pemantauan_bulanan_id Int
   pemantauan_bulanan    pemantauan_bulanan @relation(fields: [pemantauan_bulanan_id], references: [id], onDelete: Cascade)
   nilai                 Decimal            @db.Decimal(18, 4)
+  // Angka nyata yang diinput untuk KRI rumus RASIO; nilai dihitung server dari keduanya.
+  pembilang             Decimal?           @db.Decimal(20, 4)
+  penyebut              Decimal?           @db.Decimal(20, 4)
   status                StatusKri
   catatan               String?            @db.Text
   dibuat_pada           DateTime           @default(now())

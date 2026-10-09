@@ -139,7 +139,10 @@ const KRIMonitoring = () => {
                     {[...detail.riwayat].reverse().map((r) => (
                       <TableRow key={`${r.tahun}-${r.bulan}`}>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>{NAMA_BULAN[r.bulan - 1]} {r.tahun}<Typography variant="caption" display="block" color="text.secondary">{LABEL_PERSETUJUAN[r.status_laporan]}</Typography></TableCell>
-                        <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>{angka(r.nilai)}</TableCell>
+                        <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                          {angka(r.nilai)}
+                          {r.penyebut != null && <Typography variant="caption" display="block" color="text.secondary">{angka(r.pembilang)} / {angka(r.penyebut)}</Typography>}
+                        </TableCell>
                         <TableCell><Chip size="small" color={WARNA[r.status]} label={LABEL_STATUS_KRI[r.status]} /></TableCell>
                         <TableCell>{r.catatan || '-'}</TableCell>
                       </TableRow>

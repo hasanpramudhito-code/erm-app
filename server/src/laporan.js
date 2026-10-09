@@ -94,7 +94,8 @@ const LAPORAN = {
       });
       return data.map((l) => [`${l.tahun}-${String(l.bulan).padStart(2, '0')}`, l.risiko.kode, l.risiko.unit_kerja.nama, l.status_persetujuan, l.peristiwa_terjadi ? 'Ya' : 'Tidak', l.catatan || '',
         l.realisasi_mitigasi.map((r) => `${r.mitigasi.uraian}: ${r.status} ${r.progres}%${r.keterangan ? ` (${r.keterangan})` : ''}`).join('\n'),
-        l.pengukuran_kri.map((k) => `${k.kri.nama}: ${Number(k.nilai)}${k.kri.satuan ? ` ${k.kri.satuan}` : ''} ${k.status}`).join('\n')]);
+        l.pengukuran_kri.map((k) => `${k.kri.nama}: ${Number(k.nilai)}${k.kri.satuan ? ` ${k.kri.satuan}` : ''} ${k.status}` +
+          (k.pembilang != null ? ` (${k.kri.label_pembilang} ${Number(k.pembilang)} / ${k.kri.label_penyebut} ${Number(k.penyebut)})` : '')).join('\n')]);
     },
   },
 };

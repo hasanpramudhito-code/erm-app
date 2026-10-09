@@ -5,7 +5,15 @@ import {
 import { Plus, Trash2 } from 'lucide-react';
 import { LABEL_ARAH, LABEL_FREKUENSI, LABEL_STATUS_KRI } from '../../services/risiko';
 
-const BARU = { nama: '', deskripsi: '', satuan: '', ambang_hijau: '', ambang_kuning: '', ambang_merah: '', arah_target: 'LEBIH_RENDAH', frekuensi: 'BULANAN', pemilik_id: '' };
+const BARU = {
+  nama: '', deskripsi: '', satuan: '', ambang_hijau: '', ambang_kuning: '', ambang_merah: '', arah_target: 'LEBIH_RENDAH', frekuensi: 'BULANAN', pemilik_id: '',
+  rumus: 'LANGSUNG', label_pembilang: '', label_penyebut: '', pengali: 100,
+};
+// Contoh siap pakai untuk KRI rasio yang umum di PDAM.
+const CONTOH = [
+  { nama: 'Tingkat kehilangan air (NRW)', satuan: '%', rumus: 'RASIO', label_pembilang: 'Air hilang (m³)', label_penyebut: 'Air didistribusikan (m³)', arah_target: 'LEBIH_RENDAH', ambang_hijau: 20, ambang_kuning: 25, ambang_merah: 30 },
+  { nama: 'Efektivitas penagihan', satuan: '%', rumus: 'RASIO', label_pembilang: 'Rekening tertagih (Rp)', label_penyebut: 'Total tagihan (Rp)', arah_target: 'LEBIH_TINGGI', ambang_hijau: 95, ambang_kuning: 90, ambang_merah: 85 },
+];
 const WARNA = { HIJAU: 'success', KUNING: 'warning', MERAH: 'error', NONAKTIF: 'default' };
 
 // Definisi KRI dalam form risiko. Nilai aktual diisi saat pemantauan bulanan.
@@ -43,6 +51,30 @@ const KriEditor = ({ value = [], onChange, pengguna = [] }) => {
               <Grid item xs={12} sm={4}>
                 <TextField fullWidth label="Satuan" placeholder="%, kali, m³, jam" value={k.satuan} onChange={(e) => ubah(i, 'satuan', e.target.value)} />
               </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField select fullWidth label="Cara menghitung" value={k.rumus || 'LANGSUNG'} onChange={(e) => ubah(i, 'rumus', e.target.value)}>
+                  <MenuItem value="LANGSUNG">Isi nilai langsung</MenuItem>
+                  <MenuItem value="RASIO">Hitung dari dua angka</MenuItem>
+                </TextField>
+              </Grid>
+              {k.rumus === 'RASIO' && (
+                <>
+                  <Grid item xs={12} sm={3}>
+                    <TextField fullWidth required label="Angka pembilang" placeholder="Air hilang (m³)" value={k.label_pembilang || ''} onChange={(e) => ubah(i, 'label_pembilang', e.target.value)} />
+                  </Grid>
+                  <Grid item xs={12} sm={3}>
+                    <TextField fullWidth required label="Angka penyebut" placeholder="Air didistribusikan (m³)" value={k.label_penyebut || ''} onChange={(e) => ubah(i, 'label_penyebut', e.target.value)} />
+                  </Grid>
+                  <Grid item xs={12} sm={2}>
+                    <TextField fullWidth type="number" label="Pengali" value={k.pengali ?? 100} onChange={(e) => ubah(i, 'pengali', e.target.value)} />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="caption" color="text.secondary">
+                      Nilai KRI = {k.label_pembilang || 'pembilang'} ÷ {k.label_penyebut || 'penyebut'} × {k.pengali ?? 100}. Saat pemantauan, petugas mengisi kedua angka; nilai dihitung otomatis.
+                    </Typography>
+                  </Grid>
+                </>
+              )}
               <Grid item xs={12}>
                 <TextField fullWidth multiline label="Cara ukur / keterangan" value={k.deskripsi} onChange={(e) => ubah(i, 'deskripsi', e.target.value)} />
               </Grid>
@@ -78,7 +110,12 @@ const KriEditor = ({ value = [], onChange, pengguna = [] }) => {
           </Paper>
         );
       })}
-      <Button startIcon={<Plus size={18} />} onClick={() => onChange([...value, { ...BARU }])}>Tambah KRI</Button>
+      <Box display="flex" gap={1} flexWrap="wrap">
+        <Button startIcon={<Plus size={18} />} onClick={() => onChange([...value, { ...BARU }])}>Tambah KRI</Button>
+        {CONTOH.map((c) => (
+          <Button key={c.nama} size="small" variant="outlined" onClick={() => onChange([...value, { ...BARU, ...c }])}>+ {c.nama}</Button>
+        ))}
+      </Box>
     </Box>
   );
 };

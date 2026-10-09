@@ -49,7 +49,7 @@ router.get('/kri', async (req, res) => {
       risiko: risikoRingkas,
       pemilik: { select: { id: true, nama: true } },
       pengukuran: {
-        select: { nilai: true, status: true, catatan: true, pemantauan_bulanan: { select: { tahun: true, bulan: true, status_persetujuan: true } } },
+        select: { nilai: true, pembilang: true, penyebut: true, status: true, catatan: true, pemantauan_bulanan: { select: { tahun: true, bulan: true, status_persetujuan: true } } },
       },
     },
     orderBy: { id: 'asc' },
@@ -57,7 +57,7 @@ router.get('/kri', async (req, res) => {
   res.json(daftar.map(({ pengukuran, ...k }) => ({
     ...k,
     riwayat: pengukuran
-      .map((p) => ({ tahun: p.pemantauan_bulanan.tahun, bulan: p.pemantauan_bulanan.bulan, status_laporan: p.pemantauan_bulanan.status_persetujuan, nilai: Number(p.nilai), status: p.status, catatan: p.catatan }))
+      .map((p) => ({ tahun: p.pemantauan_bulanan.tahun, bulan: p.pemantauan_bulanan.bulan, status_laporan: p.pemantauan_bulanan.status_persetujuan, nilai: Number(p.nilai), pembilang: p.pembilang == null ? null : Number(p.pembilang), penyebut: p.penyebut == null ? null : Number(p.penyebut), status: p.status, catatan: p.catatan }))
       .sort((a, b) => a.tahun - b.tahun || a.bulan - b.bulan),
   })));
 });

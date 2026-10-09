@@ -114,14 +114,26 @@ router.put('/risiko/:risikoId/:tahun/:bulan', async (req, res) => {
     if (!(Number.isInteger(x.progres) && x.progres >= 0 && x.progres <= 100)) throw galat(400, `Mitigasi baris ${i + 1}: progres harus 0-100`);
     return x;
   });
-  // KRI boleh kosong (frekuensi non-bulanan); baris tanpa nilai diabaikan.
-  const kri = (Array.isArray(b.kri) ? b.kri : []).filter((k) => k.nilai !== '' && k.nilai != null).map((k, i) => {
+  // KRI boleh kosong (frekuensi non-bulanan); baris tanpa isian diabaikan.
+  // KRI RASIO: user mengisi angka nyata (pembilang & penyebut), nilai dihitung di sini.
+  const kosong = (v) => v === '' || v == null;
+  const kri = (Array.isArray(b.kri) ? b.kri : []).map((k, i) => {
     const def = kriById.get(Number(k.kri_id));
     if (!def) throw galat(400, `KRI baris ${i + 1} bukan milik risiko ini`);
+    const catatan = String(k.catatan ?? '').trim() || null;
+    if (def.rumus === 'RASIO') {
+      if (kosong(k.pembilang) && kosong(k.penyebut)) return null;
+      const [pembilang, penyebut] = [Number(k.pembilang), Number(k.penyebut)];
+      if (![pembilang, penyebut].every(Number.isFinite) || pembilang < 0) throw galat(400, `KRI "${def.nama}": ${def.label_pembilang} dan ${def.label_penyebut} wajib angka >= 0`);
+      if (penyebut <= 0) throw galat(400, `KRI "${def.nama}": ${def.label_penyebut} harus lebih dari 0`);
+      const nilai = Math.round((pembilang / penyebut) * Number(def.pengali) * 10000) / 10000;
+      return { kri_id: def.id, nilai, pembilang, penyebut, status: statusKri(def, nilai), catatan };
+    }
+    if (kosong(k.nilai)) return null;
     const nilai = Number(k.nilai);
     if (!Number.isFinite(nilai)) throw galat(400, `KRI "${def.nama}": nilai harus angka`);
-    return { kri_id: def.id, nilai, status: statusKri(def, nilai), catatan: String(k.catatan ?? '').trim() || null };
-  });
+    return { kri_id: def.id, nilai, status: statusKri(def, nilai), catatan };
+  }).filter(Boolean);
   const peristiwa_terjadi = Boolean(b.peristiwa_terjadi);
   const peristiwa = peristiwa_terjadi ? (Array.isArray(b.peristiwa) ? b.peristiwa : []).map((p, i) => {
     const x = {

@@ -109,11 +109,19 @@ async function bersihkanKri(arr) {
       arah_target: k.arah_target || 'LEBIH_RENDAH',
       frekuensi: k.frekuensi || 'BULANAN',
       pemilik_id: k.pemilik_id ? Number(k.pemilik_id) : null,
+      rumus: k.rumus === 'RASIO' ? 'RASIO' : 'LANGSUNG',
+      label_pembilang: String(k.label_pembilang ?? '').trim() || null,
+      label_penyebut: String(k.label_penyebut ?? '').trim() || null,
+      pengali: k.pengali === '' || k.pengali == null ? 100 : Number(k.pengali),
     };
     if (!x.nama) return { error: `${n}: nama wajib diisi` };
     if (![x.ambang_hijau, x.ambang_kuning, x.ambang_merah].every(Number.isFinite)) return { error: `${n}: ketiga ambang wajib angka` };
     if (!ENUM.arah.includes(x.arah_target)) return { error: `${n}: arah tidak valid` };
     if (!ENUM.frekuensi.includes(x.frekuensi)) return { error: `${n}: frekuensi tidak valid` };
+    if (x.rumus === 'RASIO') {
+      if (!x.label_pembilang || !x.label_penyebut) return { error: `${n}: nama angka pembilang dan penyebut wajib diisi` };
+      if (!(Number.isFinite(x.pengali) && x.pengali > 0)) return { error: `${n}: pengali harus angka > 0` };
+    } else Object.assign(x, { label_pembilang: null, label_penyebut: null, pengali: 100 });
     const naik = x.ambang_hijau <= x.ambang_kuning && x.ambang_kuning <= x.ambang_merah;
     const turun = x.ambang_hijau >= x.ambang_kuning && x.ambang_kuning >= x.ambang_merah;
     if (x.arah_target === 'LEBIH_RENDAH' && !naik) return { error: `${n}: makin rendah makin baik, jadi ambang hijau <= kuning <= merah` };
