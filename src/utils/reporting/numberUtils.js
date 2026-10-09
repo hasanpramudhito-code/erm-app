@@ -4,6 +4,7 @@ export const fmtNumber = (v) => {
 };
 
 export const fmtRp = (v) => {
+  if (v === '' || v == null) return '-';
   const n = Number(v);
   return Number.isFinite(n)
     ? `Rp ${n.toLocaleString('id-ID')}`

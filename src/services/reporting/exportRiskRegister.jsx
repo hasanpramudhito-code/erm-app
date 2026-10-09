@@ -2,6 +2,7 @@
 import { saveAs } from 'file-saver';
 import { fmtRp } from '../../utils/reporting/numberUtils';
 import { api } from '../api';
+import { muatIdentitas } from '../identitas';
 
 // Cache untuk data referensi (kategori risiko & unit)
 let referenceDataCache = null;
@@ -182,6 +183,7 @@ export const exportRiskRegisterPDF = async ({
   const autoTable = (await import('jspdf-autotable')).default;
 
   const { departmentsMap, riskTypesMap } = await fetchReferenceData();
+  const perusahaan = reportConfig?.company || (await muatIdentitas()).nama_perusahaan;
 
   const doc = new jsPDF({
     orientation: 'landscape',
@@ -213,7 +215,7 @@ export const exportRiskRegisterPDF = async ({
 
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text('PT Odira Energy Karang Agung', pageW / 2, 46, { align: 'center' });
+  doc.text(perusahaan, pageW / 2, 46, { align: 'center' });
 
   doc.setTextColor(0);
   doc.setFontSize(7);
@@ -266,8 +268,8 @@ export const exportRiskRegisterPDF = async ({
 
   
   const body = risks.map((r, i) => {
-    const departmentLabel = getLabelFromMap(r.department, departmentsMap, 'Department');
-    const riskTypeLabel = getLabelFromMap(r.riskType, riskTypesMap, 'Risk Type');
+    const departmentLabel = r.departmentName || getLabelFromMap(r.department, departmentsMap, 'Department');
+    const riskTypeLabel = r.riskTypeName || getLabelFromMap(r.riskType, riskTypesMap, 'Risk Type');
 
     // HITUNG SKOR DENGAN METHOD DARI CONFIG
     const inherentScoreDisplay = getScoreDisplay(
@@ -362,6 +364,7 @@ export const exportRiskRegisterXLSX = async ({
   const ExcelJS = (await import('exceljs')).default;
 
   const { departmentsMap, riskTypesMap } = await fetchReferenceData();
+  const perusahaan = (await muatIdentitas()).nama_perusahaan;
 
   const wb = new ExcelJS.Workbook();
   wb.creator = userData?.name || 'ERM System';
@@ -387,7 +390,7 @@ export const exportRiskRegisterXLSX = async ({
 
   ws.mergeCells('D2', 'U2');
   const methodInfo = isCoordinate ? 'Coordinate Matrix' : 'Multiplication';
-  ws.getCell('D2').value = `PT Odira Energy Karang Agung • Generated: ${new Date().toLocaleString('id-ID')} • Method: ${methodInfo}`;
+  ws.getCell('D2').value = `${perusahaan} • Generated: ${new Date().toLocaleString('id-ID')} • Method: ${methodInfo}`;
   ws.getCell('D2').alignment = { horizontal: 'center' };
   ws.getRow(2).height = 18;
 
@@ -450,8 +453,8 @@ export const exportRiskRegisterXLSX = async ({
   let iRow = 5;
   
   risks.forEach((r, i) => {
-    const departmentLabel = getLabelFromMap(r.department, departmentsMap, 'Department');
-    const riskTypeLabel = getLabelFromMap(r.riskType, riskTypesMap, 'Risk Type');
+    const departmentLabel = r.departmentName || getLabelFromMap(r.department, departmentsMap, 'Department');
+    const riskTypeLabel = r.riskTypeName || getLabelFromMap(r.riskType, riskTypesMap, 'Risk Type');
 
     // HITUNG SKOR DENGAN METHOD DARI CONFIG
     const inherentScoreDisplay = getScoreDisplay(

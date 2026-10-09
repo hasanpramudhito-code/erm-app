@@ -75,7 +75,6 @@ import { useAssessmentConfig } from '../contexts/AssessmentConfigContext';
 import HeatMapFilters from '../components/HeatMapFilters';
 import RiskCellDetailModal from '../components/RiskCellDetailModal';
 import { exportHeatmapAsPNG, exportHeatmapAsPDF, exportHeatmapAsCSV, exportCellDetailsAsText } from '../utils/heatmapExport';
-// import { fetchRisks } from '../services/riskService'; // Dihapus pemanggilan top-level await untuk menghindari gangguan build
 
 // Koordinat (kemungkinan, dampak) risiko di matriks. Belum dinilai = di luar matriks.
 const koordinat = (risk, viewMode) => viewMode === 'inherent'

@@ -1,9 +1,5 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { fetchRisks } from '../riskService';
-
-// Hapus fetchRisks top-level untuk mencegah call saat import
-// const risks = await fetchRisks(); 
 
 
 /**
@@ -38,20 +34,12 @@ const resolveAssessment = (assessment) => {
 /**
  * Bangun laporan eksekutif berbasis assessment config
  */
-const buildExecutiveReport = (risks = [], treatmentPlans = [], assessment) => {
+const buildExecutiveReport = (risks = [], assessment) => {
   const validAssessment = resolveAssessment(assessment);
 
   const scoredRisks = risks.map((risk) => {
-    const likelihood =
-      risk.residualLikelihood ??
-      risk.residualProbability ??
-      risk.likelihood ??
-      0;
-
-    const impact =
-      risk.residualImpact ??
-      risk.impact ??
-      0;
+    const likelihood = Number(risk.residualProbability || risk.initialProbability || 0);
+    const impact = Number(risk.residualImpact || risk.initialImpact || 0);
 
     const score = validAssessment.calculateScore(likelihood, impact);
     const { level } = validAssessment.calculateRiskLevel(score);
@@ -63,7 +51,7 @@ const buildExecutiveReport = (risks = [], treatmentPlans = [], assessment) => {
       impact,
       score,
       level,
-      mitigationStatus: getMitigationStatus(risk, treatmentPlans)
+      mitigationStatus: getMitigationStatus(risk)
     };
   });
 
@@ -91,34 +79,12 @@ const buildExecutiveReport = (risks = [], treatmentPlans = [], assessment) => {
  * Ambil status mitigasi berdasarkan treatment_plans
  * Cocokkan riskId secara fleksibel
  */
-const getMitigationStatus = (risk, treatmentPlans = []) => {
-  const riskId =
-    risk?.id ||
-    risk?.docId ||
-    risk?.uid ||
-    risk?.riskId;
-
-  if (!riskId) return 'Risiko tidak valid';
-
-  const plans = treatmentPlans.filter(
-    p => p.riskId === riskId
-  );
-
-  if (!plans.length) return 'Belum ada rencana mitigasi';
-
-  const latest = plans
-    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0];
-
-  const progress = latest.progress ?? 0;
-
-  const statusMap = {
-    planned: 'Direncanakan',
-    in_progress: 'Dalam Proses',
-    completed: 'Selesai',
-    delayed: 'Tertunda'
-  };
-
-  return `${statusMap[latest.status] || latest.status} (${progress}%)`;
+const getMitigationStatus = (risk) => {
+  const m = risk.mitigations || [];
+  if (!m.length) return 'Belum ada rencana mitigasi';
+  const selesai = m.filter((x) => x.status === 'SELESAI').length;
+  const rata = Math.round(m.reduce((t, x) => t + (x.progres || 0), 0) / m.length);
+  return `${selesai}/${m.length} selesai, rata-rata ${rata}%`;
 };
 
 
@@ -169,18 +135,13 @@ const addFooter = (doc) => {
 export const exportExecutiveSummaryPDF = async (payload = {}) => {
   const {
     risks = [],
-    treatmentPlans = [],
     assessment,
     userData,
   } = payload;
 
 
 
-  const report = buildExecutiveReport(
-    risks,
-    treatmentPlans,
-    assessment
-  );
+  const report = buildExecutiveReport(risks, assessment);
   const narrative = buildExecutiveNarrative(report);
 
   const doc = new jsPDF();

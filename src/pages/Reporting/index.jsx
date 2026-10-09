@@ -1,322 +1,112 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Box, Card, CardContent, Typography, CircularProgress, Button } from '@mui/material';
-import { RotateCcw } from 'lucide-react';
-
+import React, { useState } from 'react';
+import {
+  Alert, Box, Button, Card, CardActions, CardContent, CircularProgress, Grid, MenuItem, TextField, Typography
+} from '@mui/material';
+import { FileSpreadsheet, FileText } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAssessmentConfig } from '../../contexts/AssessmentConfigContext';
-import { db } from '../../config/firebase';
+import { usePeriode, muatRisiko } from '../../services/risiko';
+import { muatIdentitas } from '../../services/identitas';
 
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+const NAMA_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
-import ReportingHeader from './ReportingHeader';
-import ReportingFilters from './ReportingFilters';
-import ReportingActions from './ReportingActions';
+// Laporan Excel dibuat server dari data yang sama dengan aplikasi; PDF dibuat di peramban.
+const LAPORAN = [
+  { kode: 'register', judul: 'Risk Register', ket: 'Seluruh entri risiko: identifikasi, penilaian inheren & residual, status persetujuan.', pdf: 'register' },
+  { kode: 'mitigasi', judul: 'Rencana & Progres Mitigasi', ket: 'Semua rencana mitigasi beserta PIC, target, anggaran, status, dan progres terkini.' },
+  { kode: 'kri', judul: 'Key Risk Indicator', ket: 'Definisi KRI, ambang, nilai terakhir, tren, dan status.' },
+  { kode: 'peristiwa', judul: 'Register Peristiwa Risiko', ket: 'Peristiwa risiko dari laporan bulanan beserta kerugian.' },
+  { kode: 'bulanan', judul: 'Laporan Pemantauan Bulanan', ket: 'Isi laporan per risiko per bulan: realisasi mitigasi, nilai KRI, catatan.', perBulan: true },
+  { kode: 'eksekutif', judul: 'Ringkasan Eksekutif', ket: 'Narasi ringkas tingkat risiko organisasi dan 5 risiko prioritas.', pdf: 'eksekutif', tanpaExcel: true },
+];
 
-import { DEFAULT_REPORT_CONFIG } from '../../constants/reporting';
-import { fetchRisks } from '../../services/riskService';
-
-// Hapus fetchRisks top-level
-// const risks = await fetchRisks();
+const unduhExcel = async (kode, query) => {
+  const r = await fetch(`/api/laporan/${kode}.xlsx?${new URLSearchParams(query)}`, { credentials: 'same-origin' });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Gagal (${r.status})`);
+  const nama = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '')?.[1] || `${kode}.xlsx`;
+  const url = URL.createObjectURL(await r.blob());
+  Object.assign(document.createElement('a'), { href: url, download: nama }).click();
+  URL.revokeObjectURL(url);
+};
 
 const Reporting = () => {
   const { userData } = useAuth();
-  const {
-    assessmentConfig: contextConfig,
-    loading: configLoading,
-    refreshConfig,
-    calculateScore,
-    calculateRiskLevel // ← AMBIL FUNGSI calculateScore DARI CONTEXT
-  } = useAssessmentConfig();
+  const { assessmentConfig, calculateScore, calculateRiskLevel } = useAssessmentConfig();
+  const { daftar: daftarPeriode, periodeId, setPeriodeId, periode } = usePeriode();
+  const [bulan, setBulan] = useState('');
+  const [proses, setProses] = useState('');
+  const [error, setError] = useState('');
 
-  console.log('🔍 Assessment Config Context:', {
-    config: contextConfig,
-    loading: configLoading,
-    assessmentMethod: contextConfig?.assessmentMethod,
-    riskLevels: contextConfig?.riskLevels,
-    hasRiskLevels: contextConfig?.riskLevels?.length > 0,
-    calculateScoreExists: !!calculateScore
-  });
-
-  // State untuk config langsung dari Firestore (verifikasi)
-  const [directConfig, setDirectConfig] = useState(null);
-  const [loadingDirectConfig, setLoadingDirectConfig] = useState(false);
-
-  // Load config langsung dari Firestore untuk verifikasi
-  const loadDirectConfig = useCallback(async () => {
-    try {
-      setLoadingDirectConfig(true);
-      console.log('🔍 Verifying config in Firestore...');
-
-      const configDoc = await getDoc(doc(db, 'risk_assessment_config', 'default'));
-
-      if (configDoc.exists()) {
-        const data = configDoc.data();
-        console.log('✅ Direct Firestore config (risk_assessment_config):', {
-          assessmentMethod: data.assessmentMethod,
-          riskLevels: data.riskLevels,
-          likelihoodOptions: data.likelihoodOptions?.length,
-          impactOptions: data.impactOptions?.length,
-          fullData: data // ← TAMPILKAN SEMUA DATA
-        });
-        setDirectConfig(data);
-      } else {
-        console.warn('⚠️ No config found in risk_assessment_config collection');
-        setDirectConfig(null);
-      }
-    } catch (error) {
-      console.error('❌ Error loading direct Firestore config:', error);
-      setDirectConfig(null);
-    } finally {
-      setLoadingDirectConfig(false);
-    }
-  }, []);
-
-  // Load saat component mount untuk verifikasi
-  useEffect(() => {
-    loadDirectConfig();
-  }, [loadDirectConfig]);
-
-  // Tentukan config yang efektif
-  const effectiveConfig = React.useMemo(() => {
-    // 1. Coba dari context (utama)
-    if (contextConfig) {
-      console.log('🎯 Using config from context (risk_assessment_config)');
-      return contextConfig;
-    }
-
-    // 2. Fallback
-    console.log('🎯 Using fallback config');
-    return {
-      assessmentMethod: 'coordinate', // ← Default ke coordinate
-      matrixSize: 5,
-      riskLevels: [
-        { min: 1, max: 4, label: 'Sangat Rendah', color: '#4caf50' },
-        { min: 5, max: 9, label: 'Rendah', color: '#81c784' },
-        { min: 10, max: 14, label: 'Sedang', color: '#ffeb3b' },
-        { min: 15, max: 19, label: 'Tinggi', color: '#f57c00' },
-        { min: 20, max: 25, label: 'Sangat Tinggi', color: '#d32f2f' }
-      ],
-      ratingOptions: {
-        likelihood: [
-          { value: 1, label: '1 - Sangat Rendah' },
-          { value: 2, label: '2 - Rendah' },
-          { value: 3, label: '3 - Sedang' },
-          { value: 4, label: '4 - Tinggi' },
-          { value: 5, label: '5 - Sangat Tinggi' }
-        ],
-        impact: [
-          { value: 1, label: '1 - Tidak Signifikan' },
-          { value: 2, label: '2 - Minor' },
-          { value: 3, label: '3 - Moderat' },
-          { value: 4, label: '4 - Signifikan' },
-          { value: 5, label: '5 - Kritis' }
-        ]
-      }
-    };
-  }, [contextConfig]);
-
-  console.log('🎯 Final Effective Config:', {
-    assessmentMethod: effectiveConfig.assessmentMethod,
-    source: contextConfig ? 'context' : 'fallback',
-    isCoordinate: effectiveConfig.assessmentMethod === 'coordinate',
-    isMultiplication: effectiveConfig.assessmentMethod === 'multiplication',
-    riskLevels: effectiveConfig.riskLevels
-  });
-
-  // DEBUG: Hitung contoh skor untuk verifikasi
-  useEffect(() => {
-    if (calculateScore && effectiveConfig) {
-      console.log('🧪 Testing calculateScore function:');
-
-      // Test coordinate method
-      const testCoordinate = calculateScore(4, 4); // L4×I4
-      console.log('  Coordinate test (L4×I4):', testCoordinate);
-
-      // Test multiplication method (jika context config ada)
-      if (contextConfig && contextConfig.assessmentMethod === 'multiplication') {
-        const testMultiplication = 4 * 4; // Manual calculation
-        console.log('  Multiplication test (4×4):', testMultiplication);
-      }
-    }
-  }, [calculateScore, effectiveConfig, contextConfig]);
-
-  const [risks, setRisks] = useState([]);
-  const [incidents, setIncidents] = useState([]);
-  const [config, setConfig] = useState(DEFAULT_REPORT_CONFIG);
-  const [loadingData, setLoadingData] = useState(true);
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        console.log('📥 Loading risks and incidents...');
-        setLoadingData(true);
-
-        const riskSnap = await getDocs(collection(db, 'risks'));
-        const riskData = riskSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        console.log('📥 Risks loaded:', riskData.length);
-
-        // DEBUG: Lihat beberapa data risiko
-        if (riskData.length > 0) {
-          const sampleRisk = riskData[0];
-          console.log('📊 Sample risk data:', {
-            riskCode: sampleRisk.riskCode,
-            initialImpact: sampleRisk.initialImpact,
-            initialProbability: sampleRisk.initialProbability,
-            residualImpact: sampleRisk.residualImpact,
-            residualProbability: sampleRisk.residualProbability
-          });
-        }
-
-        const incidentSnap = await getDocs(collection(db, 'incidents'));
-        const incidentData = incidentSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        console.log('📥 Incidents loaded:', incidentData.length);
-
-        setRisks(riskData);
-        setIncidents(incidentData);
-      } catch (error) {
-        console.error('❌ Error loading data:', error);
-      } finally {
-        setLoadingData(false);
-      }
-    };
-    loadData();
-  }, []);
-
-  // Fungsi refresh semua config
-  const handleRefreshAll = async () => {
-    console.log('🔄 Refreshing all configurations...');
-    await refreshConfig();
-    await loadDirectConfig();
-  };
-
-  // Loading state
-  if (configLoading || loadingData) {
-    return (
-      <Box sx={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '60vh',
-        flexDirection: 'column',
-        gap: 2
-      }}>
-        <CircularProgress />
-        <Typography variant="body1" color="textSecondary">
-          {configLoading ? 'Loading configuration...' : 'Loading data...'}
-        </Typography>
-      </Box>
-    );
+  const opsiBulan = [];
+  if (periode) {
+    const akhir = new Date(Math.min(new Date(periode.tanggal_selesai), new Date()));
+    for (let d = new Date(periode.tanggal_mulai); d <= akhir; d = new Date(d.getFullYear(), d.getMonth() + 1, 1))
+      opsiBulan.push(`${d.getFullYear()}-${d.getMonth() + 1}`);
   }
 
-  const payload = {
-    risks,
-    incidents,
-    userData,
-    reportConfig: config,
-
-    // ⬇️ INI YANG DIPAKAI EXPORT
-    assessment: {
-      calculateScore,
-      calculateRiskLevel
-    },
-
-    // ⬇️ INI BOLEH TETAP ADA (UNTUK FILE LAIN)
-    assessmentConfig: effectiveConfig
+  const jalankan = async (kunci, fn) => {
+    setProses(kunci);
+    setError('');
+    try { await fn(); } catch (e) { setError(e.message); } finally { setProses(''); }
   };
 
-  console.log('📦 Final Payload for export:', {
-    assessmentMethod: payload.assessmentConfig?.assessmentMethod,
-    source: contextConfig ? 'risk_assessment_config' : 'fallback',
-    isCoordinate: payload.assessmentConfig?.assessmentMethod === 'coordinate',
-    isMultiplication: payload.assessmentConfig?.assessmentMethod === 'multiplication',
-    risksCount: payload.risks.length
+  const excel = (l) => jalankan(`${l.kode}-xlsx`, () => {
+    const q = { periode_id: periodeId };
+    if (l.perBulan && bulan) { const [t, b] = bulan.split('-'); Object.assign(q, { tahun: t, bulan: b }); }
+    return unduhExcel(l.kode, q);
+  });
+
+  const pdf = (l) => jalankan(`${l.kode}-pdf`, async () => {
+    const [risks, { nama_perusahaan }] = await Promise.all([muatRisiko(periodeId), muatIdentitas()]);
+    if (!risks.length) throw new Error('Tidak ada risiko pada periode ini');
+    if (l.pdf === 'register') {
+      const mod = await import('../../services/reporting/exportRiskRegister');
+      await mod.exportRiskRegisterPDF({ risks, userData, assessmentConfig, reportConfig: { dateRange: periode?.nama, company: nama_perusahaan } });
+    } else {
+      const mod = await import('../../services/reporting/exportExecutiveSummary');
+      await mod.exportExecutiveSummaryPDF({ risks, userData, assessment: { calculateScore, calculateRiskLevel }, reportConfig: { company: nama_perusahaan, dateRange: periode?.nama } });
+    }
   });
 
   return (
     <Box sx={{ p: 3 }}>
-      <Card>
-        <CardContent>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <ReportingHeader />
-            <Box display="flex" gap={1}>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<RotateCcw size={18} />}
-                onClick={handleRefreshAll}
-                title="Refresh configuration"
-              >
-                Refresh Config
-              </Button>
+      <Typography variant="h4" fontWeight="bold">Laporan</Typography>
+      <Typography variant="body2" color="text.secondary" mb={2}>
+        Unduh laporan sesuai periode. Data dibatasi sesuai hak akses unit Anda.
+      </Typography>
+      <Box display="flex" gap={2} mb={3} flexWrap="wrap">
+        <TextField select size="small" label="Periode" sx={{ minWidth: 130 }} value={periodeId || ''} onChange={(e) => setPeriodeId(e.target.value)}>
+          {daftarPeriode.map((p) => <MenuItem key={p.id} value={p.id}>{p.nama}</MenuItem>)}
+        </TextField>
+        <TextField select size="small" label="Bulan (laporan bulanan)" sx={{ minWidth: 200 }} value={bulan} onChange={(e) => setBulan(e.target.value)}>
+          <MenuItem value="">Semua bulan</MenuItem>
+          {opsiBulan.reverse().map((o) => { const [t, b] = o.split('-'); return <MenuItem key={o} value={o}>{NAMA_BULAN[b - 1]} {t}</MenuItem>; })}
+        </TextField>
+      </Box>
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-              {/* Debug button */}
-              <Button
-                variant="outlined"
-                size="small"
-                color="secondary"
-                onClick={loadDirectConfig}
-                title="Check Firestore data"
-              >
-                Check Firestore
-              </Button>
-            </Box>
-          </Box>
-
-          {/* INFO BOX dengan warna berbeda berdasarkan method */}
-          <Box sx={{
-            mb: 3,
-            p: 2,
-            bgcolor: effectiveConfig.assessmentMethod === 'coordinate' ? 'primary.light' : 'warning.light',
-            borderRadius: 1,
-            border: '1px solid',
-            borderColor: effectiveConfig.assessmentMethod === 'coordinate' ? 'primary.main' : 'warning.main'
-          }}>
-            <Typography variant="subtitle2" fontWeight="bold">
-              ⚙️ Current Assessment Configuration
-            </Typography>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mt={1}>
-              <Box>
-                <Typography variant="body2">
-                  <strong>Method:</strong>{' '}
-                  <Box component="span" sx={{
-                    color: effectiveConfig.assessmentMethod === 'coordinate' ? 'primary.main' : 'warning.main',
-                    fontWeight: 'bold'
-                  }}>
-                    {effectiveConfig.assessmentMethod === 'coordinate' ? 'Coordinate Matrix' : 'Multiplication'}
-                  </Box>
-                </Typography>
-                <Typography variant="caption" display="block">
-                  Source: {contextConfig ? 'risk_assessment_config' : 'fallback'} •
-                  Risk Levels: {effectiveConfig.riskLevels?.length || 0}
-                </Typography>
-              </Box>
-
-              {/* Tampilkan perbedaan antara context dan direct */}
-              {directConfig && directConfig.assessmentMethod !== effectiveConfig.assessmentMethod && (
-                <Box sx={{
-                  p: 1,
-                  bgcolor: 'error.light',
-                  borderRadius: 1,
-                  fontSize: '0.75rem'
-                }}>
-                  ⚠️ Mismatch: Firestore has "{directConfig.assessmentMethod}"
-                </Box>
-              )}
-            </Box>
-          </Box>
-
-          <ReportingFilters
-            config={config}
-            onChange={setConfig}
-          />
-
-          <ReportingActions
-            config={config}
-            payload={payload}
-            key={`${effectiveConfig.assessmentMethod}-${Date.now()}`} // Force re-render
-          />
-        </CardContent>
-      </Card>
+      <Grid container spacing={2}>
+        {LAPORAN.map((l) => (
+          <Grid item xs={12} sm={6} lg={4} key={l.kode}>
+            <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <CardContent sx={{ flexGrow: 1 }}>
+                <Typography variant="h6">{l.judul}</Typography>
+                <Typography variant="body2" color="text.secondary">{l.ket}</Typography>
+              </CardContent>
+              <CardActions>
+                {!l.tanpaExcel && (
+                  <Button size="small" startIcon={proses === `${l.kode}-xlsx` ? <CircularProgress size={16} /> : <FileSpreadsheet size={16} />}
+                    disabled={!periodeId || !!proses} onClick={() => excel(l)}>Excel</Button>
+                )}
+                {l.pdf && (
+                  <Button size="small" startIcon={proses === `${l.kode}-pdf` ? <CircularProgress size={16} /> : <FileText size={16} />}
+                    disabled={!periodeId || !!proses} onClick={() => pdf(l)}>PDF</Button>
+                )}
+              </CardActions>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
     </Box>
   );
 };
