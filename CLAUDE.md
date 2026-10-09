@@ -22,6 +22,11 @@ Cara menjalankan & memasang: `README.md`.
 - Penilaian hanya Inheren + Residual (tidak ada Target). Skor & level dihitung server.
 - Pemantauan: frekuensi dari pengaturan `frekuensi_pemantauan` (1/2/3 bulan). Laporan disimpan di (tahun, bulan terakhir masa).
 - Mitigasi & KRI didefinisikan di form Register Risiko; halaman Rencana Mitigasi/KRI/Peristiwa hanya baca.
+- KRI baku didefinisikan di Risiko Utama dan disalin terkunci ke entri unit; KRI rasio digabung pusat dengan
+  menjumlahkan angka nyata (pembilang/penyebut) laporan FINAL lalu dihitung ulang.
+- Setiap mitigasi wajib punya bukti (lampiran entitas `bukti_mitigasi`) sebelum laporan pemantauan diajukan.
+- Risiko FINAL diubah lewat revisi (`revisi_risiko`, entitas persetujuan `revisi`); data berlaku tetap versi lama
+  sampai revisi FINAL.
 
 ## Cara kerja
 
@@ -36,4 +41,6 @@ Cara menjalankan & memasang: `README.md`.
 ## Status terbuka
 
 - Menunggu klien: daftar Cabang/Unit; pemegang peran Admin; konfirmasi asumsi Asisten Manajer menginput & Manajer menyetujui tingkat 1.
-- Belum diuji: instalasi native & Docker serta prosedur backup/restore di server klien.
+- Belum diuji: instalasi native & Docker serta prosedur backup/restore di server klien; alur lengkap di browser dengan akun tiap peran.
+- Belum dibuat: pengingat otomatis tenggat pemantauan (notifikasi saat ini hanya dari alur persetujuan).
+- Klien belum memutuskan: login AD/LDAP; akses jaringan internal/eksternal.
