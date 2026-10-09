@@ -23,10 +23,10 @@ const IncidentReporting = () => {
     api.get(`/pantauan/insiden?periode_id=${periodeId}`).then(setData).catch((e) => setError(e.message));
   }, [periodeId]);
 
-  const unitOpsi = useMemo(() => [...new Map(data.map((i) => [i.risiko.unit.id, i.risiko.unit.nama])).entries()], [data]);
+  const unitOpsi = useMemo(() => [...new Map(data.map((i) => [i.risiko.unit_kerja.id, i.risiko.unit_kerja.nama])).entries()], [data]);
   const bulanOpsi = useMemo(() => [...new Set(data.map((i) => i.tanggal_kejadian.slice(0, 7)))].sort().reverse()
     .map((b) => [b, `${NAMA_BULAN[Number(b.slice(5)) - 1]} ${b.slice(0, 4)}`]), [data]);
-  const tersaring = data.filter((i) => (!filter.unit || i.risiko.unit.id === Number(filter.unit)) && (!filter.bulan || i.tanggal_kejadian.startsWith(filter.bulan)));
+  const tersaring = data.filter((i) => (!filter.unit || i.risiko.unit_kerja.id === Number(filter.unit)) && (!filter.bulan || i.tanggal_kejadian.startsWith(filter.bulan)));
   const total = tersaring.reduce((t, i) => t + Number(i.kerugian || 0), 0);
 
   return (
@@ -35,7 +35,7 @@ const IncidentReporting = () => {
         keterangan="Peristiwa risiko yang dilaporkan unit melalui Pemantauan Bulanan.">
         <PilihPeriode daftar={daftarPeriode} value={periodeId} onChange={setPeriodeId} />
         <PilihDari label="Bulan" value={filter.bulan} onChange={(v) => setFilter({ ...filter, bulan: v })} opsi={bulanOpsi} />
-        <PilihDari label="Unit" value={filter.unit} onChange={(v) => setFilter({ ...filter, unit: v })} opsi={unitOpsi} minWidth={180} />
+        <PilihDari label="Unit Kerja" value={filter.unit} onChange={(v) => setFilter({ ...filter, unit: v })} opsi={unitOpsi} minWidth={180} />
       </KepalaPantauan>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -63,7 +63,7 @@ const IncidentReporting = () => {
               {tersaring.map((i) => (
                 <TableRow key={i.id} hover sx={{ cursor: 'pointer' }} onClick={() => setDetail(i)}>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{tanggal(i.tanggal_kejadian)}</TableCell>
-                  <TableCell><strong>{i.risiko.kode}</strong><Typography variant="caption" display="block" color="text.secondary">{i.risiko.unit.nama}</Typography></TableCell>
+                  <TableCell><strong>{i.risiko.kode}</strong><Typography variant="caption" display="block" color="text.secondary">{i.risiko.unit_kerja.nama}</Typography></TableCell>
                   <TableCell sx={{ maxWidth: 420 }}>{i.deskripsi}</TableCell>
                   <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{i.kerugian ? rupiah(i.kerugian) : '-'}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
@@ -82,7 +82,7 @@ const IncidentReporting = () => {
         <DialogContent dividers>
           {detail && (
             <Grid container spacing={2}>
-              <Grid item xs={12}><Typography variant="subtitle2">Risiko</Typography><Typography variant="body2">{detail.risiko.kode} · {detail.risiko.deskripsi || detail.risiko.nama} · {detail.risiko.unit.nama}</Typography></Grid>
+              <Grid item xs={12}><Typography variant="subtitle2">Risiko</Typography><Typography variant="body2">{detail.risiko.kode} · {detail.risiko.deskripsi || detail.risiko.nama} · {detail.risiko.unit_kerja.nama}</Typography></Grid>
               <Grid item xs={12}><Typography variant="subtitle2">Uraian</Typography><Typography variant="body2">{detail.deskripsi}</Typography></Grid>
               <Grid item xs={12} sm={6}><Typography variant="subtitle2">Dampak</Typography><Typography variant="body2">{detail.dampak || '-'}</Typography></Grid>
               <Grid item xs={12} sm={6}><Typography variant="subtitle2">Kerugian</Typography><Typography variant="body2">{detail.kerugian ? rupiah(detail.kerugian) : '-'}</Typography></Grid>

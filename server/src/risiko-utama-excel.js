@@ -7,7 +7,7 @@ const { wajibPeran } = require('./auth');
 const { catat } = require('./audit');
 
 const router = express.Router();
-const PENULIS = ['ADMIN_SISTEM', 'PENGELOLA_RISIKO'];
+const PENULIS = ['ADMIN', 'PENGELOLA_RISIKO'];
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const galat = (status, message) => Object.assign(new Error(message), { status, expose: true });
 

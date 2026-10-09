@@ -6,7 +6,15 @@ const { catat } = require('./audit');
 
 const NAMA_COOKIE = 'erm_sesi';
 const DURASI_SESI_MS = 8 * 60 * 60 * 1000; // 8 jam
-const PERAN_LIHAT_SEMUA = ['ADMIN_SISTEM', 'DIREKSI', 'PENGELOLA_RISIKO', 'KEPATUHAN'];
+const PERAN_LIHAT_SEMUA = ['ADMIN', 'DIREKSI', 'PENGELOLA_RISIKO', 'AUDITOR'];
+const ringkasUK = { id: true, kode: true, nama: true, jenis: true, pemilik_risiko: true, alur_persetujuan: true, induk_id: true };
+
+// Unit kerja pemilik risiko terdekat ke atas (adendum v2 F: sub-bagian memakai cakupan bagian induknya).
+async function pemilikRisiko(uk) {
+  for (let i = 0; uk && !uk.pemilik_risiko && uk.induk_id && i < 10; i++)
+    uk = await prisma.unit_kerja.findUnique({ where: { id: uk.induk_id }, select: ringkasUK });
+  return uk?.pemilik_risiko ? uk : null;
+}
 
 const hash = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
@@ -36,16 +44,22 @@ function catatGagal(kunci) {
   else p.jumlah++;
 }
 
-const profil = (p) => ({
-  id: p.id,
-  nama: p.nama,
-  email: p.email,
-  unit: p.unit && { id: p.unit.id, kode: p.unit.kode, nama: p.unit.nama, jenis: p.unit.jenis },
-  peran: p.peran.map((x) => x.peran.kode),
-  unit_id: p.unit_id,
-});
+// unit_kerja_id = unit kerja pemilik risiko yang menjadi cakupan data; unit_kerja_asal = tempat pengguna terdaftar.
+async function profil(p) {
+  const pemilik = await pemilikRisiko(p.unit_kerja);
+  return {
+    id: p.id,
+    nama: p.nama,
+    email: p.email,
+    jabatan: p.jabatan,
+    unit_kerja_asal: p.unit_kerja && { id: p.unit_kerja.id, kode: p.unit_kerja.kode, nama: p.unit_kerja.nama, jenis: p.unit_kerja.jenis },
+    unit_kerja: pemilik && { id: pemilik.id, kode: pemilik.kode, nama: pemilik.nama, jenis: pemilik.jenis, alur_persetujuan: pemilik.alur_persetujuan },
+    unit_kerja_id: pemilik?.id ?? null,
+    peran: p.peran.map((x) => x.peran.kode),
+  };
+}
 
-const sertakan = { unit: true, peran: { include: { peran: true } } };
+const sertakan = { unit_kerja: { select: ringkasUK }, peran: { include: { peran: true } } };
 
 // Pasang req.pengguna bila cookie sesi valid.
 async function sesi(req, res, next) {
@@ -56,7 +70,7 @@ async function sesi(req, res, next) {
     include: { pengguna: { include: sertakan } },
   });
   if (s && s.kedaluwarsa > new Date() && s.pengguna.aktif) {
-    req.pengguna = profil(s.pengguna);
+    req.pengguna = await profil(s.pengguna);
   }
   next();
 }
@@ -73,10 +87,10 @@ const wajibPeran = (...peran) => (req, res, next) => {
   next();
 };
 
-// Filter Prisma untuk membatasi data ke unit pengguna. {} = tanpa batas.
-function cakupanUnit(pengguna, kolom = 'unit_id') {
+// Filter Prisma untuk membatasi data ke unit kerja pengguna. {} = tanpa batas.
+function cakupanUnitKerja(pengguna, kolom = 'unit_kerja_id') {
   if (pengguna.peran.some((p) => PERAN_LIHAT_SEMUA.includes(p))) return {};
-  return { [kolom]: pengguna.unit_id ?? -1 };
+  return { [kolom]: pengguna.unit_kerja_id ?? -1 };
 }
 
 const router = express.Router();
@@ -110,7 +124,7 @@ router.post('/login', async (req, res) => {
     maxAge: DURASI_SESI_MS,
     path: '/',
   });
-  res.json(profil(p));
+  res.json(await profil(p));
 });
 
 router.post('/logout', async (req, res) => {
@@ -122,4 +136,4 @@ router.post('/logout', async (req, res) => {
 
 router.get('/saya', wajibLogin, (req, res) => res.json(req.pengguna));
 
-module.exports = { router, sesi, wajibLogin, wajibPeran, cakupanUnit, hashKataSandi: (s) => bcrypt.hash(s, 12) };
+module.exports = { router, sesi, wajibLogin, wajibPeran, cakupanUnitKerja, hashKataSandi: (s) => bcrypt.hash(s, 12) };

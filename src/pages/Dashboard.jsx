@@ -134,7 +134,7 @@ const Dashboard = () => {
       description: 'Residual pada dua level teratas'
     },
     {
-      title: 'Pimpinan Unit',
+      title: 'Pimpinan Unit Kerja',
       value: dashboardData.riskOwners.toString(),
       icon: <Users size={24} />,
       color: 'success.main',

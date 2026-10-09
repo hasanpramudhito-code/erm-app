@@ -79,7 +79,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { api } from '../services/api';
-import { muatRisiko, keBodyApi, usePeriode, LABEL_PERSETUJUAN } from '../services/risiko';
+import { muatRisiko, keBodyApi, usePeriode, LABEL_PERSETUJUAN, WILAYAH } from '../services/risiko';
 import MitigasiEditor from '../components/risk/MitigasiEditor';
 import KriEditor from '../components/risk/KriEditor';
 import AksiPersetujuan from '../components/persetujuan/AksiPersetujuan';
@@ -444,13 +444,13 @@ const RiskRegister = () => {
     }
   };
 
-  // Load master data: kategori risiko, unit, pengguna (untuk PIC)
+  // Load master data: kategori risiko, unit kerja pemilik risiko, pengguna (untuk PIC)
   useEffect(() => {
-    Promise.all([api.get('/kategori-risiko'), api.get('/unit'), api.get('/pengguna/ringkas'), api.get('/risiko-utama')])
+    Promise.all([api.get('/kategori-risiko'), api.get('/unit-kerja'), api.get('/pengguna/ringkas'), api.get('/risiko-utama')])
       .then(([kategori, unit, pengguna, risikoUtama]) => {
         setDaftarRisikoUtama(risikoUtama);
         setRiskTypes(kategori.map((k) => ({ id: k.id, name: k.nama, code: k.kode, description: k.deskripsi })));
-        setDepartments(unit.filter((u) => u.aktif).map((u) => ({ id: u.id, name: u.nama, code: u.kode, parent: u.jenis })));
+        setDepartments(unit.filter((u) => u.aktif && u.pemilik_risiko).map((u) => ({ id: u.id, name: u.nama, code: u.kode, parent: u.jenis })));
         setDaftarPengguna(pengguna);
       })
       .catch((err) => showSnackbar('Error memuat data master: ' + err.message, 'error'));
@@ -667,7 +667,7 @@ const RiskRegister = () => {
       mitigations: [],
       kris: [],
       status: 'Open - Baru Teridentifikasi',
-      department: userData?.unit_id || ''
+      department: userData?.unit_kerja_id || ''
     });
     setCodeError('');
     setTabForm(0);
@@ -790,7 +790,8 @@ const RiskRegister = () => {
 
   // Handle view detail
   const [riwayat, setRiwayat] = useState([]);
-  const jenisUnitForm = departments.find((d) => d.id === formData.department)?.parent || 'CABANG';
+  // Risiko utama CABANG berlaku untuk Cabang dan Unit; PUSAT untuk Bagian.
+  const jenisUnitForm = WILAYAH.includes(departments.find((d) => d.id === formData.department)?.parent ?? 'CABANG') ? 'CABANG' : 'PUSAT';
   const risikoUtamaTerpilih = daftarRisikoUtama.find((r) => r.id === formData.mainRiskId);
   const handleViewDetail = (risk) => {
     setSelectedRisk(risk);
@@ -1000,10 +1001,10 @@ const RiskRegister = () => {
 
     return (
       <FormControl fullWidth>
-        <InputLabel>Departemen</InputLabel>
+        <InputLabel>Unit Kerja</InputLabel>
         <Select
           value={formData.department}
-          label="Departemen"
+          label="Unit Kerja"
           onChange={(e) => setFormData({ ...formData, department: e.target.value })}
           MenuProps={MenuProps}
           renderValue={(selected) => {
@@ -1346,12 +1347,12 @@ const RiskRegister = () => {
               {/* Filter Department */}
               <Grid item xs={12} sm={6} md={4}>
                 <FormControl fullWidth size="small">
-                  <InputLabel>Departemen</InputLabel>
+                  <InputLabel>Unit Kerja</InputLabel>
                   <Select
                     multiple
                     value={filters.departments}
                     onChange={(e) => setFilters({ ...filters, departments: e.target.value })}
-                    label="Departemen"
+                    label="Unit Kerja"
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {selected.map((value) => (
@@ -1662,7 +1663,7 @@ const RiskRegister = () => {
                       <TableCell width="200px"><strong>Deskripsi</strong></TableCell>
                       <TableCell width="120px"><strong>Jenis</strong></TableCell>
                       <TableCell width="150px"><strong>Sumber</strong></TableCell>
-                      <TableCell width="120px"><strong>Departemen</strong></TableCell>
+                      <TableCell width="120px"><strong>Unit Kerja</strong></TableCell>
                       <TableCell width="120px"><strong>Pemilik</strong></TableCell>
                       <TableCell width="100px"><strong>Status</strong></TableCell>
                       <TableCell width="100px"><strong>Inherent</strong></TableCell>
@@ -2011,7 +2012,7 @@ const RiskRegister = () => {
                 <FileText size={18} /> Identifikasi Risiko
               </Typography>
               <Grid container spacing={2}>
-                {/* Risiko Utama (kosong = risiko spesifik unit) */}
+                {/* Risiko Utama (kosong = risiko spesifik unit kerja) */}
                 <Grid item xs={12}>
                   <TextField
                     select fullWidth label="Risiko Utama"
@@ -2030,10 +2031,10 @@ const RiskRegister = () => {
                       }));
                     }}
                     helperText={jenisUnitForm === 'CABANG'
-                      ? 'Risiko utama cabang dibentuk otomatis; pilih kosong untuk risiko spesifik cabang'
-                      : 'Pilih risiko utama Pusat yang relevan, atau kosongkan untuk risiko spesifik unit'}
+                      ? 'Risiko utama Cabang/Unit dibentuk otomatis; pilih kosong untuk risiko spesifik'
+                      : 'Pilih risiko utama Pusat yang relevan, atau kosongkan untuk risiko spesifik bagian'}
                   >
-                    <MenuItem value="">— Risiko spesifik unit —</MenuItem>
+                    <MenuItem value="">— Risiko spesifik unit kerja —</MenuItem>
                     {daftarRisikoUtama
                       .filter((r) => r.berlaku_untuk === jenisUnitForm)
                       .map((r) => <MenuItem key={r.id} value={r.id}>{r.kode} · {r.nama}</MenuItem>)}
@@ -2186,7 +2187,7 @@ const RiskRegister = () => {
                     >
                       <MenuItem value="">-</MenuItem>
                       {daftarPengguna
-                        .filter((p) => !formData.department || !p.unit_id || p.unit_id === formData.department)
+                        .filter((p) => !formData.department || !p.unit_kerja_id || p.unit_kerja_id === formData.department)
                         .map((p) => (
                           <MenuItem key={p.id} value={p.id}>{p.nama}</MenuItem>
                         ))}
@@ -2709,7 +2710,7 @@ const RiskRegister = () => {
                           <Typography variant="body1">{selectedRisk.classification || '-'}</Typography>
                         </Grid>
                         <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2" fontWeight="bold">Departemen</Typography>
+                          <Typography variant="subtitle2" fontWeight="bold">Unit Kerja</Typography>
                           <Typography variant="body1">{getDepartmentName(selectedRisk.department) || '-'}</Typography>
                         </Grid>
                         <Grid item xs={12} sm={6}>
@@ -2965,6 +2966,7 @@ const RiskRegister = () => {
               id={selectedRisk.id}
               status={selectedRisk.approvalStatus}
               unitId={selectedRisk.department}
+              alur={selectedRisk.raw?.unit_kerja?.alur_persetujuan}
               onSelesai={() => { setDetailDialog(false); loadData(); }}
             />
           ) : <span />}

@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const app = require('../src/app');
 const prisma = require('../src/db');
 
-let base, server, admin, periode, unitA, unitB;
+let base, server, admin, periode, unitA, unitB, bagianS, subS;
 const ck = {};
 const ids = {};
 const sufiks = Date.now() % 100000;
@@ -22,34 +22,41 @@ test.before(async () => {
   await new Promise((r) => { server = app.listen(0, () => { base = `http://127.0.0.1:${server.address().port}`; r(); }); });
   admin = await login(process.env.SEED_ADMIN_EMAIL, process.env.SEED_ADMIN_PASSWORD);
   periode = await prisma.periode.findFirst({ where: { status: 'TERBUKA' } });
-  unitA = await prisma.unit.create({ data: { kode: `SA${sufiks}`, nama: 'Cabang SA', jenis: 'CABANG' } });
-  unitB = await prisma.unit.create({ data: { kode: `SB${sufiks}`, nama: 'Cabang SB', jenis: 'CABANG' } });
+  unitA = await prisma.unit_kerja.create({ data: { kode: `SA${sufiks}`, nama: 'Cabang SA', jenis: 'CABANG' } });
+  unitB = await prisma.unit_kerja.create({ data: { kode: `SB${sufiks}`, nama: 'Unit SB', jenis: 'UNIT' } });
+  // Bagian satu tingkat (seperti SPI) dengan sub-bagian tempat petugas terdaftar.
+  bagianS = await prisma.unit_kerja.create({ data: { kode: `SS${sufiks}`, nama: 'Bagian Satu Tingkat', jenis: 'BAGIAN', alur_persetujuan: 'SATU_TINGKAT' } });
+  subS = await prisma.unit_kerja.create({ data: { kode: `SS${sufiks}-1`, nama: 'Sub Satu Tingkat', jenis: 'SUB_BAGIAN', induk_id: bagianS.id, pemilik_risiko: false } });
   const akun = [
-    ['petugas', 'PETUGAS_RISIKO_CABANG', unitA.id],
-    ['pimpinan', 'PIMPINAN_CABANG', unitA.id],
-    ['pimpinanB', 'PIMPINAN_CABANG', unitB.id],
+    ['petugas', 'PETUGAS', unitA.id],
+    ['pimpinan', 'PIMPINAN', unitA.id],
+    ['pimpinanB', 'PIMPINAN', unitB.id],
     ['pengelola', 'PENGELOLA_RISIKO', null],
+    ['petugasS', 'PETUGAS', subS.id],
+    ['pimpinanS', 'PIMPINAN', bagianS.id],
+    ['auditor', 'AUDITOR', null],
   ];
-  for (const [nama, peran, unit_id] of akun) {
+  for (const [nama, peran, unit_kerja_id] of akun) {
     const email = `${nama}-${sufiks}@erm.local`;
-    ids[nama] = (await req('POST', '/pengguna', { nama, email, kata_sandi: SANDI, peran: [peran], unit_id })).body.id;
+    ids[nama] = (await req('POST', '/pengguna', { nama, email, kata_sandi: SANDI, peran: [peran], unit_kerja_id })).body.id;
     ck[nama] = await login(email, SANDI);
   }
 });
 
 test.after(async () => {
   const semua = Object.values(ids);
-  await prisma.risiko.deleteMany({ where: { unit_id: { in: [unitA.id, unitB.id] } } });
+  await prisma.risiko.deleteMany({ where: { unit_kerja_id: { in: [unitA.id, unitB.id, bagianS.id] } } });
   await prisma.riwayat_persetujuan.deleteMany({ where: { pengguna_id: { in: semua } } });
   await prisma.jejak_audit.deleteMany({ where: { pengguna_id: { in: semua } } });
   await prisma.pengguna.deleteMany({ where: { id: { in: semua } } });
-  await prisma.unit.deleteMany({ where: { id: { in: [unitA.id, unitB.id] } } });
+  await prisma.unit_kerja.delete({ where: { id: subS.id } });
+  await prisma.unit_kerja.deleteMany({ where: { id: { in: [unitA.id, unitB.id, bagianS.id] } } });
   server.close();
   await prisma.$disconnect();
 });
 
 test('alur lengkap risiko: ajukan -> kembalikan -> ajukan -> setujui -> final -> buka', async () => {
-  const r = (await req('POST', '/risiko', { periode_id: periode.id, unit_id: unitA.id, kode: `PS-${sufiks}`, nama: 'Risiko persetujuan' }, ck.petugas)).body;
+  const r = (await req('POST', '/risiko', { periode_id: periode.id, unit_kerja_id: unitA.id, kode: `PS-${sufiks}`, nama: 'Risiko persetujuan' }, ck.petugas)).body;
   const aksi = (a, who, catatan) => req('POST', `/persetujuan/risiko/${r.id}/${a}`, catatan ? { catatan } : {}, ck[who]);
 
   assert.equal((await aksi('setujui', 'pimpinan')).status, 400); // belum diajukan
@@ -83,7 +90,7 @@ test('alur lengkap risiko: ajukan -> kembalikan -> ajukan -> setujui -> final ->
 });
 
 test('laporan bulanan hanya bisa diajukan setelah risiko FINAL', async () => {
-  const r = (await req('POST', '/risiko', { periode_id: periode.id, unit_id: unitA.id, kode: `PL-${sufiks}`, nama: 'Risiko laporan', mitigasi: [{ uraian: 'm' }] }, ck.petugas)).body;
+  const r = (await req('POST', '/risiko', { periode_id: periode.id, unit_kerja_id: unitA.id, kode: `PL-${sufiks}`, nama: 'Risiko laporan', mitigasi: [{ uraian: 'm' }] }, ck.petugas)).body;
   const kini = new Date();
   const [t, b] = kini.getMonth() === 0 ? [kini.getFullYear(), 1] : [kini.getFullYear(), kini.getMonth()];
   const lap = (await req('PUT', `/pemantauan/risiko/${r.id}/${t}/${b}`, { mitigasi: [{ mitigasi_id: r.mitigasi[0].id, status: 'BERJALAN', progres: 20 }] }, ck.petugas)).body;
@@ -101,4 +108,25 @@ test('laporan bulanan hanya bisa diajukan setelah risiko FINAL', async () => {
   // Proses massal oleh pimpinan.
   const massal = (await req('POST', '/persetujuan/massal', { entitas: 'pemantauan', aksi: 'setujui', ids: [lap.id, 999999] }, ck.pimpinan)).body;
   assert.deepEqual(massal.map((h) => h.ok), [true, false]);
+});
+
+test('alur satu tingkat: pimpinan langsung FINAL & membuka kunci; petugas sub-bagian memakai register bagian', async () => {
+  // Petugas sub-bagian: cakupan = bagian induk; sub-bagian sendiri tidak boleh memegang register.
+  assert.equal((await req('POST', '/risiko', { periode_id: periode.id, unit_kerja_id: subS.id, kode: `SX-${sufiks}`, nama: 'x' })).status, 400);
+  const r = (await req('POST', '/risiko', { periode_id: periode.id, unit_kerja_id: bagianS.id, kode: `ST-${sufiks}`, nama: 'Risiko SPI' }, ck.petugasS)).body;
+  assert.ok(r.id, JSON.stringify(r));
+  const aksi = (a, who, catatan) => req('POST', `/persetujuan/risiko/${r.id}/${a}`, catatan ? { catatan } : {}, ck[who]);
+  assert.equal((await aksi('ajukan', 'petugasS')).status, 200);
+  const s = await aksi('setujui', 'pimpinanS');
+  assert.equal(s.body.status_persetujuan, 'FINAL');
+  assert.equal((await aksi('buka', 'pengelola', 'x')).status, 403); // pengelola bawahan pimpinan SPI
+  assert.equal((await aksi('buka', 'pimpinanS', 'Revisi')).status, 200);
+});
+
+test('auditor: lihat semua, tidak bisa menulis atau memverifikasi', async () => {
+  const r = (await req('POST', '/risiko', { periode_id: periode.id, unit_kerja_id: unitB.id, kode: `AU-${sufiks}`, nama: 'Risiko unit' })).body;
+  assert.equal((await req('GET', `/risiko/${r.id}`, null, ck.auditor)).status, 200);
+  assert.equal((await req('PATCH', `/risiko/${r.id}`, { nama: 'x' }, ck.auditor)).status, 403);
+  assert.equal((await req('POST', `/persetujuan/risiko/${r.id}/ajukan`, {}, ck.auditor)).status, 403);
+  assert.equal((await req('GET', `/risiko/${r.id}/riwayat`, null, ck.auditor)).status, 200);
 });

@@ -1,7 +1,7 @@
 // Halaman pantauan lintas risiko (baca saja): mitigasi, KRI, insiden. Dibatasi cakupan unit pengguna.
 const express = require('express');
 const prisma = require('./db');
-const { wajibLogin, cakupanUnit } = require('./auth');
+const { wajibLogin, cakupanUnitKerja } = require('./auth');
 
 const router = express.Router();
 router.use(wajibLogin);
@@ -9,14 +9,14 @@ router.use(wajibLogin);
 const risikoRingkas = {
   select: {
     id: true, kode: true, nama: true, deskripsi: true, status_persetujuan: true,
-    unit: { select: { id: true, nama: true } },
+    unit_kerja: { select: { id: true, nama: true } },
     penilaian: { where: { jenis: 'RESIDUAL' }, select: { skor: true, level: { select: { nama: true, warna: true } } } },
   },
 };
 const lingkup = (req) => {
   const periode_id = Number(req.query.periode_id);
   if (!periode_id) throw Object.assign(new Error('periode_id wajib'), { status: 400, expose: true });
-  return { periode_id, ...cakupanUnit(req.pengguna) };
+  return { periode_id, ...cakupanUnitKerja(req.pengguna) };
 };
 
 router.get('/mitigasi', async (req, res) => {
@@ -68,7 +68,7 @@ router.get('/insiden', async (req, res) => {
     where: { risiko: l },
     include: {
       risiko: risikoRingkas,
-      unit: { select: { nama: true } },
+      unit_kerja: { select: { nama: true } },
       pelapor: { select: { nama: true } },
       pemantauan_bulanan: { select: { id: true, tahun: true, bulan: true, status_persetujuan: true } },
     },

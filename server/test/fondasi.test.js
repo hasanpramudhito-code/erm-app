@@ -28,7 +28,7 @@ test('login, akses, unggah, unduh, hapus, logout', async () => {
   const h = { cookie };
 
   const saya = await (await fetch(`${base}/api/auth/saya`, { headers: h })).json();
-  assert.ok(saya.peran.includes('ADMIN_SISTEM'));
+  assert.ok(saya.peran.includes('ADMIN'));
 
   const fd = new FormData();
   fd.append('file', new Blob(['halo']), 'bukti.txt');
@@ -56,20 +56,20 @@ test('kelola pengguna: buat, login, ubah peran memutus sesi, non-admin ditolak',
     fetch(`${base}/api${url}`, { method, headers: { 'content-type': 'application/json', cookie }, body: body && JSON.stringify(body) });
 
   const email = `uji-${Date.now()}@erm.local`;
-  assert.equal((await json('POST', '/pengguna', { nama: 'Uji', email, kata_sandi: 'pendek', peran: ['PETUGAS_RISIKO_CABANG'] }, admin)).status, 400);
+  assert.equal((await json('POST', '/pengguna', { nama: 'Uji', email, kata_sandi: 'pendek', peran: ['PETUGAS'] }, admin)).status, 400);
   assert.equal((await json('POST', '/pengguna', { nama: 'Uji', email, kata_sandi: 'sandi-uji-panjang', peran: ['TIDAK_ADA'] }, admin)).status, 400);
-  const r = await json('POST', '/pengguna', { nama: 'Uji', email, kata_sandi: 'sandi-uji-panjang', peran: ['PETUGAS_RISIKO_CABANG'] }, admin);
+  const r = await json('POST', '/pengguna', { nama: 'Uji', email, kata_sandi: 'sandi-uji-panjang', peran: ['PETUGAS'] }, admin);
   assert.equal(r.status, 201);
   const baru = await r.json();
-  assert.deepEqual(baru.peran, ['PETUGAS_RISIKO_CABANG']);
+  assert.deepEqual(baru.peran, ['PETUGAS']);
   assert.equal(baru.kata_sandi_hash, undefined);
 
   const petugas = (await login(email, 'sandi-uji-panjang')).headers.get('set-cookie').split(';')[0];
   assert.equal((await json('GET', '/pengguna', null, petugas)).status, 403);
-  assert.equal((await json('POST', '/pengguna', { nama: 'x', email: 'x@x.id', kata_sandi: 'xxxxxxxxxxxx', peran: ['ADMIN_SISTEM'] }, petugas)).status, 403);
+  assert.equal((await json('POST', '/pengguna', { nama: 'x', email: 'x@x.id', kata_sandi: 'xxxxxxxxxxxx', peran: ['ADMIN'] }, petugas)).status, 403);
   assert.equal((await json('GET', '/pengguna/ringkas', null, petugas)).status, 200);
 
-  assert.equal((await json('PATCH', `/pengguna/${baru.id}`, { peran: ['PIMPINAN_CABANG'] }, admin)).status, 200);
+  assert.equal((await json('PATCH', `/pengguna/${baru.id}`, { peran: ['PIMPINAN'] }, admin)).status, 200);
   assert.equal((await json('GET', '/auth/saya', null, petugas)).status, 401);
 
   assert.equal((await json('PATCH', `/pengguna/${baru.id}`, { aktif: false }, admin)).status, 200);

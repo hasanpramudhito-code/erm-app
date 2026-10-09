@@ -33,6 +33,9 @@ export const LABEL_ARAH = { LEBIH_RENDAH: 'Makin rendah makin baik', LEBIH_TINGG
 export const LABEL_FREKUENSI = { HARIAN: 'Harian', MINGGUAN: 'Mingguan', BULANAN: 'Bulanan', TRIWULANAN: 'Triwulanan', SEMESTERAN: 'Semesteran', TAHUNAN: 'Tahunan' };
 export const LABEL_STATUS_KRI = { NONAKTIF: 'Belum ada nilai', HIJAU: 'Hijau', KUNING: 'Kuning', MERAH: 'Merah' };
 export const LABEL_SUMBER = { INTERNAL: 'Internal', EKSTERNAL: 'External' };
+export const LABEL_JENIS_UK = { BAGIAN: 'Bagian', SUB_BAGIAN: 'Sub-bagian', CABANG: 'Cabang', UNIT: 'Unit' };
+// Cabang dan Unit (kantor wilayah) diperlakukan sama: wajib risiko utama CABANG.
+export const WILAYAH = ['CABANG', 'UNIT'];
 export const LABEL_PERSETUJUAN = {
   DRAF: 'Draf',
   DIAJUKAN: 'Diajukan',
@@ -63,9 +66,9 @@ export function keBentukLama(r) {
     riskDescription: r.deskripsi || r.nama,
     riskType: r.kategori_id || '',
     riskTypeName: r.kategori?.nama || '',
-    department: r.unit_id,
-    departmentName: r.unit?.nama || '',
-    riskOwner: r.unit?.direktorat?.nama_jabatan_direktur || '',
+    department: r.unit_kerja_id,
+    departmentName: r.unit_kerja?.nama || '',
+    riskOwner: r.unit_kerja?.direktorat?.nama_jabatan_direktur || '',
     classification: LABEL_KLASIFIKASI[r.klasifikasi] || '',
     riskSource: LABEL_SUMBER[r.sumber] || '',
     status: LABEL_STATUS[r.status] || r.status,
@@ -143,7 +146,7 @@ export function keBodyApi(f) {
     nama: f.riskName || String(f.riskDescription || '').slice(0, 255),
     deskripsi: f.riskDescription,
     kategori_id: f.riskType || null,
-    unit_id: f.department || null,
+    unit_kerja_id: f.department || null,
     sumber: KODE_SUMBER[f.riskSource] || 'INTERNAL',
     klasifikasi: KODE_KLASIFIKASI[f.classification] || null,
     status: KODE_STATUS[f.status] || 'BARU',

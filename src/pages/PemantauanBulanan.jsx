@@ -207,7 +207,7 @@ const FormLaporan = ({ risikoId, tahun, bulan, onTutup, onTersimpan }) => {
       <DialogActions sx={{ justifyContent: 'space-between' }}>
         {data?.laporan ? (
           <AksiPersetujuan entitas="pemantauan" id={data.laporan.id} status={data.laporan.status_persetujuan}
-            unitId={data.risiko.unit_id} onSelesai={onTersimpan} />
+            unitId={data.risiko.unit_kerja_id} alur={data.risiko.unit_kerja?.alur_persetujuan} onSelesai={onTersimpan} />
         ) : <span />}
         <Box>
         <Button onClick={onTutup}>Tutup</Button>
@@ -284,7 +284,7 @@ const PemantauanBulanan = () => {
               <TableRow>
                 <TableCell>Kode</TableCell>
                 <TableCell>Risiko</TableCell>
-                <TableCell>Unit</TableCell>
+                <TableCell>Unit Kerja</TableCell>
                 <TableCell align="center">Mitigasi</TableCell>
                 <TableCell align="center">KRI</TableCell>
                 <TableCell>Status Laporan</TableCell>
@@ -300,7 +300,7 @@ const PemantauanBulanan = () => {
                 <TableRow key={r.id} hover>
                   <TableCell><strong>{r.kode}</strong></TableCell>
                   <TableCell sx={{ maxWidth: 320 }}>{r.deskripsi || r.nama}</TableCell>
-                  <TableCell>{r.unit?.nama}</TableCell>
+                  <TableCell>{r.unit_kerja?.nama}</TableCell>
                   <TableCell align="center">{r._count.mitigasi}</TableCell>
                   <TableCell align="center">{r._count.kri}</TableCell>
                   <TableCell>

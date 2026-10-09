@@ -7,7 +7,7 @@ import { Add, Delete, Edit } from '@mui/icons-material';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
-export const PERAN_PENGELOLA = ['ADMIN_SISTEM', 'PENGELOLA_RISIKO'];
+export const PERAN_PENGELOLA = ['ADMIN', 'PENGELOLA_RISIKO'];
 export const bisaKelola = (userData) => PERAN_PENGELOLA.some((p) => userData?.peran?.includes(p));
 export const tanggalInput = (d) => (d ? String(d).slice(0, 10) : '');
 

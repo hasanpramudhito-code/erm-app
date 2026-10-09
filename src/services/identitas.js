@@ -1,4 +1,4 @@
-// Identitas tampilan: "Nama Perusahaan — Nama Unit" sesuai akun yang login.
+// Identitas tampilan: "Nama Perusahaan — Nama Unit Kerja" sesuai akun yang login.
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import { useAuth } from '../contexts/AuthContext';
@@ -25,8 +25,9 @@ export function useIdentitas() {
   }, []);
 
   const perusahaan = data?.nama_perusahaan || '';
-  const unit = userData?.unit;
-  // Akun tanpa unit (mis. admin) dianggap Kantor Pusat.
-  const namaUnit = unit ? (unit.jenis === 'CABANG' && !/^cabang/i.test(unit.nama) ? `Cabang ${unit.nama}` : unit.nama) : 'Kantor Pusat';
-  return { perusahaan, namaUnit, jenisUnit: unit?.jenis || 'PUSAT', judul: perusahaan ? `${perusahaan} — ${namaUnit}` : namaUnit };
+  const uk = userData?.unit_kerja_asal;
+  // Akun tanpa unit kerja (mis. admin) dianggap Kantor Pusat. Cabang/Unit diberi awalan bila namanya belum memuatnya.
+  const awalan = { CABANG: 'Cabang', UNIT: 'Unit' }[uk?.jenis];
+  const namaUnit = uk ? (awalan && !new RegExp(`^${awalan}`, 'i').test(uk.nama) ? `${awalan} ${uk.nama}` : uk.nama) : 'Kantor Pusat';
+  return { perusahaan, namaUnit, judul: perusahaan ? `${perusahaan} — ${namaUnit}` : namaUnit };
 }

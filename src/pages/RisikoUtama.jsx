@@ -29,7 +29,7 @@ const DaftarPustaka = ({ label, value, onChange }) => (
 
 const RisikoUtama = () => {
   const { userData } = useAuth();
-  const bolehUbah = userData?.peran?.some((p) => ['ADMIN_SISTEM', 'PENGELOLA_RISIKO'].includes(p));
+  const bolehUbah = userData?.peran?.some((p) => ['ADMIN', 'PENGELOLA_RISIKO'].includes(p));
   const [daftar, setDaftar] = useState([]);
   const [kategori, setKategori] = useState([]);
   const [direktorat, setDirektorat] = useState([]);
@@ -214,12 +214,12 @@ const RisikoUtama = () => {
       {error && !form && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
       <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab value="CABANG" label={`Untuk Cabang (${daftar.filter((r) => r.berlaku_untuk === 'CABANG').length})`} />
-        <Tab value="PUSAT" label={`Untuk Unit Pusat (${daftar.filter((r) => r.berlaku_untuk === 'PUSAT').length})`} />
+        <Tab value="CABANG" label={`Untuk Cabang & Unit (${daftar.filter((r) => r.berlaku_untuk === 'CABANG').length})`} />
+        <Tab value="PUSAT" label={`Untuk Bagian Pusat (${daftar.filter((r) => r.berlaku_untuk === 'PUSAT').length})`} />
       </Tabs>
       <Alert severity="info" sx={{ mb: 2 }}>
         {tab === 'CABANG'
-          ? 'Risiko utama cabang wajib bagi seluruh cabang. Saat disimpan, setiap cabang otomatis mendapat entri DRAF di risk register periode terbuka.'
+          ? 'Risiko utama cabang wajib bagi seluruh Cabang dan Unit. Saat disimpan, setiap Cabang/Unit otomatis mendapat entri DRAF di risk register periode terbuka.'
           : 'Risiko utama Pusat dipilih sendiri oleh unit Pusat saat mengisi risk register.'}
         {' '}Centang kolom "Periode" untuk menentukan risiko utama yang berlaku pada periode terpilih.
         {periode?.status === 'PERSIAPAN' && ' Periode masih PERSIAPAN: entri cabang baru dibentuk saat periode dibuka.'}
@@ -290,8 +290,8 @@ const RisikoUtama = () => {
                 <TextField select fullWidth label="Berlaku untuk" value={form.berlaku_untuk} disabled={form.terpakai > 0}
                   onChange={(e) => setForm({ ...form, berlaku_untuk: e.target.value })}
                   helperText={form.terpakai > 0 ? 'Terkunci: sudah dipakai' : ''}>
-                  <MenuItem value="CABANG">Seluruh Cabang</MenuItem>
-                  <MenuItem value="PUSAT">Unit Pusat</MenuItem>
+                  <MenuItem value="CABANG">Seluruh Cabang & Unit</MenuItem>
+                  <MenuItem value="PUSAT">Bagian Pusat</MenuItem>
                 </TextField>
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -303,7 +303,7 @@ const RisikoUtama = () => {
               <Grid item xs={12} sm={4}>
                 <TextField select fullWidth label="Direktorat pemilik (agregasi)" value={form.direktorat_pemilik_id}
                   onChange={(e) => setForm({ ...form, direktorat_pemilik_id: e.target.value })}
-                  helperText={form.berlaku_untuk === 'CABANG' ? 'Cabang: Direktorat Utama' : 'Pemilik hasil agregasi'}>
+                  helperText={form.berlaku_untuk === 'CABANG' ? 'Cabang & Unit: Direktorat Utama' : 'Pemilik hasil agregasi'}>
                   <MenuItem value="">-</MenuItem>
                   {direktorat.map((d) => <MenuItem key={d.id} value={d.id}>{d.nama}</MenuItem>)}
                 </TextField>

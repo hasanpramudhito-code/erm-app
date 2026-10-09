@@ -28,14 +28,15 @@ import {
 } from '@mui/material';
 import { Plus, Edit2, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
+import { LABEL_JENIS_UK } from '../services/risiko';
 import { useAuth } from '../contexts/AuthContext';
 
 const EMPTY_FORM = {
   name: '',
   email: '',
   password: '',
-  peran: ['PETUGAS_RISIKO_CABANG'],
-  unit_id: '',
+  peran: ['PETUGAS'],
+  unit_kerja_id: '',
   position: '',
   phone: '',
   status: 'active'
@@ -43,7 +44,7 @@ const EMPTY_FORM = {
 
 const UserManagement = () => {
   const { userData, refreshUserData } = useAuth();
-  const isAdmin = userData?.peran?.includes('ADMIN_SISTEM');
+  const isAdmin = userData?.peran?.includes('ADMIN');
   const canView = isAdmin || userData?.peran?.includes('DIREKSI');
 
   const [users, setUsers] = useState([]);
@@ -69,7 +70,7 @@ const UserManagement = () => {
       const [list, peran, unit] = await Promise.all([
         api.get('/pengguna'),
         api.get('/pengguna/peran'),
-        api.get('/unit')
+        api.get('/unit-kerja')
       ]);
       setUsers(list);
       setDaftarPeran(peran);
@@ -96,7 +97,7 @@ const UserManagement = () => {
       const payload = {
         nama: formData.name,
         peran: formData.peran,
-        unit_id: formData.unit_id || null,
+        unit_kerja_id: formData.unit_kerja_id || null,
         jabatan: formData.position,
         telepon: formData.phone
       };
@@ -146,7 +147,7 @@ const UserManagement = () => {
       email: user.email || '',
       password: '',
       peran: user.peran || [],
-      unit_id: user.unit_id || '',
+      unit_kerja_id: user.unit_kerja_id || '',
       position: user.jabatan || '',
       phone: user.telepon || '',
       status: user.aktif ? 'active' : 'inactive'
@@ -171,10 +172,10 @@ const UserManagement = () => {
 
   const getRoleColor = (role) => {
     switch (role) {
-      case 'ADMIN_SISTEM': return 'error';
+      case 'ADMIN': return 'error';
       case 'PENGELOLA_RISIKO': return 'warning';
-      case 'PIMPINAN_UNIT_PUSAT':
-      case 'PIMPINAN_CABANG': return 'info';
+      case 'AUDITOR':
+      case 'PIMPINAN': return 'info';
       case 'DIREKSI': return 'success';
       default: return 'default';
     }
@@ -226,7 +227,7 @@ const UserManagement = () => {
                   <TableCell>Nama</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Peran</TableCell>
-                  <TableCell>Unit</TableCell>
+                  <TableCell>Unit Kerja</TableCell>
                   <TableCell>Status</TableCell>
                   {isAdmin && <TableCell>Aksi</TableCell>}
                 </TableRow>
@@ -241,7 +242,7 @@ const UserManagement = () => {
                         <Chip key={p} label={namaPeran(p)} color={getRoleColor(p)} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
                       ))}
                     </TableCell>
-                    <TableCell>{user.unit?.nama || '-'}</TableCell>
+                    <TableCell>{user.unit_kerja?.nama || '-'}</TableCell>
                     <TableCell>
                       <Chip
                         label={user.aktif ? 'active' : 'inactive'}
@@ -334,15 +335,15 @@ const UserManagement = () => {
 
                 <Grid item xs={12}>
                   <FormControl fullWidth>
-                    <InputLabel>Unit</InputLabel>
+                    <InputLabel>Unit Kerja</InputLabel>
                     <Select
-                      value={formData.unit_id}
-                      label="Unit"
-                      onChange={(e) => setFormData({ ...formData, unit_id: e.target.value })}
+                      value={formData.unit_kerja_id}
+                      label="Unit Kerja"
+                      onChange={(e) => setFormData({ ...formData, unit_kerja_id: e.target.value })}
                     >
-                      <MenuItem value="">- Tanpa unit -</MenuItem>
+                      <MenuItem value="">- Tanpa unit kerja -</MenuItem>
                       {daftarUnit.map((u) => (
-                        <MenuItem key={u.id} value={u.id}>{u.kode} - {u.nama} ({u.jenis})</MenuItem>
+                        <MenuItem key={u.id} value={u.id}>{u.induk_id ? "00a000a000a0" : ""}{u.kode} - {u.nama} ({LABEL_JENIS_UK[u.jenis]})</MenuItem>
                       ))}
                     </Select>
                   </FormControl>

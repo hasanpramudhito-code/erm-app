@@ -7,7 +7,7 @@ const { catat } = require('./audit');
 const router = express.Router();
 router.use(wajibLogin);
 
-const PENULIS = ['ADMIN_SISTEM', 'PENGELOLA_RISIKO'];
+const PENULIS = ['ADMIN', 'PENGELOLA_RISIKO'];
 const galat = (status, message) => Object.assign(new Error(message), { status, expose: true });
 
 const sertakan = {
@@ -18,21 +18,21 @@ const sertakan = {
   _count: { select: { risiko: true } },
 };
 
-// Bentuk entri draf: setiap cabang aktif x setiap risiko utama CABANG aktif dalam daftar periode TERBUKA.
+// Bentuk entri draf: setiap Cabang/Unit aktif x setiap risiko utama CABANG aktif dalam daftar periode TERBUKA.
 // Idempoten (unique periode+unit+risiko_utama). Kembalikan jumlah entri baru.
 async function bentukEntriCabang(periode_id) {
   const periode = await prisma.periode.findMany({ where: { status: 'TERBUKA', ...(periode_id ? { id: periode_id } : {}) } });
-  const cabang = await prisma.unit.findMany({ where: { jenis: 'CABANG', aktif: true }, select: { id: true, kode: true } });
+  const cabang = await prisma.unit_kerja.findMany({ where: { jenis: { in: ['CABANG', 'UNIT'] }, pemilik_risiko: true, aktif: true }, select: { id: true, kode: true } });
   let dibuat = 0;
   for (const p of periode) {
     const utama = await prisma.risiko_utama.findMany({ where: { berlaku_untuk: 'CABANG', aktif: true, periode: { some: { periode_id: p.id } } } });
     const ada = new Set((await prisma.risiko.findMany({
-      where: { periode_id: p.id, risiko_utama_id: { not: null } }, select: { unit_id: true, risiko_utama_id: true },
-    })).map((r) => `${r.unit_id}-${r.risiko_utama_id}`));
+      where: { periode_id: p.id, risiko_utama_id: { not: null } }, select: { unit_kerja_id: true, risiko_utama_id: true },
+    })).map((r) => `${r.unit_kerja_id}-${r.risiko_utama_id}`));
     const data = [];
     for (const u of cabang) for (const ru of utama) {
       if (ada.has(`${u.id}-${ru.id}`)) continue;
-      data.push({ periode_id: p.id, unit_id: u.id, risiko_utama_id: ru.id, kode: `${ru.kode}-${u.kode}`.slice(0, 50), nama: ru.nama, deskripsi: ru.deskripsi, kategori_id: ru.kategori_id });
+      data.push({ periode_id: p.id, unit_kerja_id: u.id, risiko_utama_id: ru.id, kode: `${ru.kode}-${u.kode}`.slice(0, 50), nama: ru.nama, deskripsi: ru.deskripsi, kategori_id: ru.kategori_id });
     }
     if (data.length) dibuat += (await prisma.risiko.createMany({ data, skipDuplicates: true })).count;
   }

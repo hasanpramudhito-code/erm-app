@@ -19,26 +19,26 @@ test.before(async () => {
   await new Promise((r) => { server = app.listen(0, () => { base = `http://127.0.0.1:${server.address().port}`; r(); }); });
   admin = await login(process.env.SEED_ADMIN_EMAIL, process.env.SEED_ADMIN_PASSWORD);
   periode = await prisma.periode.findFirst({ where: { status: 'TERBUKA' } });
-  unitA = await prisma.unit.create({ data: { kode: `RA${sufiks}`, nama: 'Cabang A', jenis: 'CABANG' } });
-  unitB = await prisma.unit.create({ data: { kode: `RB${sufiks}`, nama: 'Cabang B', jenis: 'CABANG' } });
+  unitA = await prisma.unit_kerja.create({ data: { kode: `RA${sufiks}`, nama: 'Cabang A', jenis: 'CABANG' } });
+  unitB = await prisma.unit_kerja.create({ data: { kode: `RB${sufiks}`, nama: 'Cabang B', jenis: 'CABANG' } });
   const email = `petugas-a-${sufiks}@erm.local`;
-  const p = await req('POST', '/pengguna', { nama: 'Petugas A', email, kata_sandi: 'sandi-uji-panjang', peran: ['PETUGAS_RISIKO_CABANG'], unit_id: unitA.id });
+  const p = await req('POST', '/pengguna', { nama: 'Petugas A', email, kata_sandi: 'sandi-uji-panjang', peran: ['PETUGAS'], unit_kerja_id: unitA.id });
   petugasId = p.body.id;
   petugasA = await login(email, 'sandi-uji-panjang');
 });
 
 test.after(async () => {
-  await prisma.risiko.deleteMany({ where: { unit_id: { in: [unitA.id, unitB.id] } } });
+  await prisma.risiko.deleteMany({ where: { unit_kerja_id: { in: [unitA.id, unitB.id] } } });
   await prisma.jejak_audit.deleteMany({ where: { pengguna_id: petugasId } });
   await prisma.pengguna.delete({ where: { id: petugasId } });
-  await prisma.unit.deleteMany({ where: { id: { in: [unitA.id, unitB.id] } } });
+  await prisma.unit_kerja.deleteMany({ where: { id: { in: [unitA.id, unitB.id] } } });
   server.close();
   await prisma.$disconnect();
 });
 
 test('buat risiko lengkap: skor & level dihitung server', async () => {
   const r = await req('POST', '/risiko', {
-    periode_id: periode.id, unit_id: unitA.id, kode: `rx-${sufiks}`, nama: 'Kebocoran pipa distribusi', sumber: 'INTERNAL',
+    periode_id: periode.id, unit_kerja_id: unitA.id, kode: `rx-${sufiks}`, nama: 'Kebocoran pipa distribusi', sumber: 'INTERNAL',
     penyebab: [{ uraian: 'Pipa tua' }, { uraian: '  ' }], dampak: [{ uraian: 'Kehilangan air' }],
     inheren: { kemungkinan: 4, dampak: 5 }, residual: { kemungkinan: 3, dampak: 4 },
   });
@@ -52,21 +52,21 @@ test('buat risiko lengkap: skor & level dihitung server', async () => {
 });
 
 test('validasi: skala di luar rentang, kode duplikat, periode wajib', async () => {
-  const dasar = { periode_id: periode.id, unit_id: unitA.id, nama: 'x' };
+  const dasar = { periode_id: periode.id, unit_kerja_id: unitA.id, nama: 'x' };
   assert.equal((await req('POST', '/risiko', { ...dasar, kode: `V1-${sufiks}`, inheren: { kemungkinan: 9, dampak: 1 } })).status, 400);
   assert.equal((await req('POST', '/risiko', { ...dasar, kode: `RX-${sufiks}` })).status, 409);
-  assert.equal((await req('POST', '/risiko', { unit_id: unitA.id, kode: 'V2', nama: 'x' })).status, 400);
+  assert.equal((await req('POST', '/risiko', { unit_kerja_id: unitA.id, kode: 'V2', nama: 'x' })).status, 400);
   assert.equal((await req('GET', '/risiko')).status, 400);
 });
 
-test('cakupan unit: petugas hanya lihat & tulis unitnya', async () => {
-  await req('POST', '/risiko', { periode_id: periode.id, unit_id: unitB.id, kode: `RB-${sufiks}`, nama: 'Risiko B' });
+test('cakupan unit kerja: petugas hanya lihat & tulis unitnya', async () => {
+  await req('POST', '/risiko', { periode_id: periode.id, unit_kerja_id: unitB.id, kode: `RB-${sufiks}`, nama: 'Risiko B' });
   const daftar = (await req('GET', `/risiko?periode_id=${periode.id}`, null, petugasA)).body;
-  assert.ok(daftar.length >= 1 && daftar.every((r) => r.unit_id === unitA.id));
-  assert.equal((await req('POST', '/risiko', { periode_id: periode.id, unit_id: unitB.id, kode: `X-${sufiks}`, nama: 'x' }, petugasA)).status, 400);
+  assert.ok(daftar.length >= 1 && daftar.every((r) => r.unit_kerja_id === unitA.id));
+  assert.equal((await req('POST', '/risiko', { periode_id: periode.id, unit_kerja_id: unitB.id, kode: `X-${sufiks}`, nama: 'x' }, petugasA)).status, 400);
   const rb = await prisma.risiko.findFirst({ where: { kode: `RB-${sufiks}` } });
   assert.equal((await req('PATCH', `/risiko/${rb.id}`, { nama: 'diubah' }, petugasA)).status, 404);
-  const ok = await req('POST', '/risiko', { periode_id: periode.id, unit_id: unitA.id, kode: `PA-${sufiks}`, nama: 'Milik A' }, petugasA);
+  const ok = await req('POST', '/risiko', { periode_id: periode.id, unit_kerja_id: unitA.id, kode: `PA-${sufiks}`, nama: 'Milik A' }, petugasA);
   assert.equal(ok.status, 201);
 });
 
@@ -81,7 +81,7 @@ test('terkunci setelah diajukan: tidak bisa ubah/hapus', async () => {
 
 test('mitigasi & KRI ikut tersimpan lewat risiko, sinkron by id', async () => {
   const buat = await req('POST', '/risiko', {
-    periode_id: periode.id, unit_id: unitA.id, kode: `MK-${sufiks}`, nama: 'Risiko dgn mitigasi',
+    periode_id: periode.id, unit_kerja_id: unitA.id, kode: `MK-${sufiks}`, nama: 'Risiko dgn mitigasi',
     mitigasi: [{ uraian: 'Ganti pipa', jenis: 'MITIGASI', anggaran: 1000, target_waktu: '2026-12-31' }, { uraian: 'Asuransi', jenis: 'TRANSFER' }],
     kri: [{ nama: 'Tingkat kebocoran', satuan: '%', ambang_hijau: 10, ambang_kuning: 20, ambang_merah: 30 }],
   });

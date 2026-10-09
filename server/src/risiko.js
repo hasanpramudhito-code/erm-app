@@ -1,15 +1,15 @@
 // API Risk Register. Aturan: handoff bagian 5 (entri per periode/unit), 7 (penguncian setelah persetujuan), 8 (hak akses).
 const express = require('express');
 const prisma = require('./db');
-const { wajibLogin, cakupanUnit } = require('./auth');
+const { wajibLogin, cakupanUnitKerja } = require('./auth');
 const { catat } = require('./audit');
 const { konteksPenilaian, nilaiPenilaian } = require('./skor');
 
 const router = express.Router();
 router.use(wajibLogin);
 
-const PERAN_GLOBAL_TULIS = ['ADMIN_SISTEM', 'DIREKSI', 'PENGELOLA_RISIKO'];
-const PERAN_UNIT_TULIS = ['PIMPINAN_UNIT_PUSAT', 'PETUGAS_RISIKO_PUSAT', 'PIMPINAN_CABANG', 'PETUGAS_RISIKO_CABANG'];
+const PERAN_GLOBAL_TULIS = ['ADMIN', 'DIREKSI', 'PENGELOLA_RISIKO'];
+const PERAN_UNIT_TULIS = ['PIMPINAN', 'PETUGAS'];
 const STATUS_BISA_DIUBAH = ['DRAF', 'DIKEMBALIKAN'];
 
 const ENUM = {
@@ -23,7 +23,7 @@ const ENUM = {
 
 const sertakan = {
   periode: { select: { id: true, nama: true, status: true } },
-  unit: { select: { id: true, kode: true, nama: true, jenis: true, direktorat: { select: { id: true, nama: true, nama_jabatan_direktur: true } } } },
+  unit_kerja: { select: { id: true, kode: true, nama: true, jenis: true, alur_persetujuan: true, direktorat: { select: { id: true, nama: true, nama_jabatan_direktur: true } } } },
   kategori: { select: { id: true, kode: true, nama: true } },
   risiko_utama: { select: { id: true, kode: true, nama: true } },
   penanggung_jawab: { select: { id: true, nama: true } },
@@ -42,11 +42,11 @@ const sertakan = {
 const punya = (pengguna, daftar) => pengguna.peran.some((p) => daftar.includes(p));
 
 // Boleh menulis ke risiko pada unit ini dengan status ini?
-function cekTulis(pengguna, unit_id, status_persetujuan) {
+function cekTulis(pengguna, unit_kerja_id, status_persetujuan) {
   if (pengguna.peran.includes('DIREKSI')) return null; // akses penuh, ditandai di data (handoff bagian 8)
   if (!STATUS_BISA_DIUBAH.includes(status_persetujuan)) return 'Risiko sudah diajukan/final dan terkunci';
   if (punya(pengguna, PERAN_GLOBAL_TULIS)) return null;
-  if (punya(pengguna, PERAN_UNIT_TULIS) && pengguna.unit_id === unit_id) return null;
+  if (punya(pengguna, PERAN_UNIT_TULIS) && pengguna.unit_kerja_id === unit_kerja_id) return null;
   return 'Akses ditolak';
 }
 
@@ -165,30 +165,32 @@ async function bersihkan(b, baru, pengguna, risikoUtamaLama = null, periodeLama 
   }
   if (data.sumber === null || data.status === null) return { error: 'Sumber dan status tidak boleh kosong' };
 
-  for (const k of ['periode_id', 'unit_id', 'kategori_id', 'risiko_utama_id', 'penanggung_jawab_id'])
+  for (const k of ['periode_id', 'unit_kerja_id', 'kategori_id', 'risiko_utama_id', 'penanggung_jawab_id'])
     if (b[k] !== undefined) data[k] = b[k] ? Number(b[k]) : null;
 
   if (baru) {
-    for (const k of ['kode', 'nama', 'periode_id', 'unit_id']) if (!data[k]) return { error: `${k} wajib diisi` };
+    for (const k of ['kode', 'nama', 'periode_id', 'unit_kerja_id']) if (!data[k]) return { error: `${k} wajib diisi` };
   } else if (data.kode === null || data.nama === null) return { error: 'Kode dan nama tidak boleh kosong' };
-  if (data.periode_id === null || data.unit_id === null) return { error: 'Periode dan unit tidak boleh kosong' };
+  if (data.periode_id === null || data.unit_kerja_id === null) return { error: 'Periode dan unit kerja tidak boleh kosong' };
 
   if (data.periode_id) {
     const p = await prisma.periode.findUnique({ where: { id: data.periode_id } });
     if (!p) return { error: 'Periode tidak ditemukan' };
     if (p.status !== 'TERBUKA') return { error: 'Periode sudah ditutup' };
   }
-  if (data.unit_id) {
-    const u = await prisma.unit.findUnique({ where: { id: data.unit_id } });
-    if (!u || !u.aktif) return { error: 'Unit tidak ditemukan atau nonaktif' };
-    if (!punya(pengguna, PERAN_GLOBAL_TULIS) && u.id !== pengguna.unit_id) return { error: 'Hanya boleh mencatat risiko untuk unit sendiri' };
+  if (data.unit_kerja_id) {
+    const u = await prisma.unit_kerja.findUnique({ where: { id: data.unit_kerja_id } });
+    if (!u || !u.aktif) return { error: 'Unit kerja tidak ditemukan atau nonaktif' };
+    if (!u.pemilik_risiko) return { error: 'Unit kerja ini tidak memegang register risiko; pilih bagian induknya' };
+    if (!punya(pengguna, PERAN_GLOBAL_TULIS) && u.id !== pengguna.unit_kerja_id) return { error: 'Hanya boleh mencatat risiko untuk unit kerja sendiri' };
     if (data.risiko_utama_id) {
       const ru = await prisma.risiko_utama.findUnique({ where: { id: data.risiko_utama_id } });
       if (!ru || !ru.aktif) return { error: 'Risiko utama tidak ditemukan' };
       const periodeEntri = data.periode_id ?? periodeLama;
       if (periodeEntri && !(await prisma.periode_risiko_utama.findUnique({ where: { periode_id_risiko_utama_id: { periode_id: periodeEntri, risiko_utama_id: ru.id } } })))
         return { error: 'Risiko utama ini tidak termasuk daftar periode tersebut' };
-      if (ru.berlaku_untuk !== u.jenis) return { error: `Risiko utama ini hanya untuk unit ${ru.berlaku_untuk}` };
+      if (ru.berlaku_untuk !== (['CABANG', 'UNIT'].includes(u.jenis) ? 'CABANG' : 'PUSAT'))
+        return { error: `Risiko utama ini hanya untuk unit kerja ${ru.berlaku_untuk === 'CABANG' ? 'Cabang/Unit' : 'Pusat'}` };
     }
   }
   if (data.kategori_id && !(await prisma.kategori_risiko.findUnique({ where: { id: data.kategori_id } }))) return { error: 'Kategori tidak ditemukan' };
@@ -252,14 +254,14 @@ router.get('/', async (req, res) => {
   const periode_id = Number(req.query.periode_id);
   if (!periode_id) return res.status(400).json({ error: 'periode_id wajib' });
   res.json(await prisma.risiko.findMany({
-    where: { periode_id, ...cakupanUnit(req.pengguna) },
+    where: { periode_id, ...cakupanUnitKerja(req.pengguna) },
     include: sertakan,
     orderBy: { dibuat_pada: 'desc' },
   }));
 });
 
 router.get('/:id', async (req, res) => {
-  const r = await prisma.risiko.findFirst({ where: { id: Number(req.params.id) || -1, ...cakupanUnit(req.pengguna) }, include: sertakan });
+  const r = await prisma.risiko.findFirst({ where: { id: Number(req.params.id) || -1, ...cakupanUnitKerja(req.pengguna) }, include: sertakan });
   if (!r) return res.status(404).json({ error: 'Risiko tidak ditemukan' });
   res.json(r);
 });
@@ -267,7 +269,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   const h = await bersihkan(req.body || {}, true, req.pengguna);
   if (h.error) return res.status(400).json({ error: h.error });
-  const larang = cekTulis(req.pengguna, h.data.unit_id, 'DRAF');
+  const larang = cekTulis(req.pengguna, h.data.unit_kerja_id, 'DRAF');
   if (larang) return res.status(403).json({ error: larang });
 
   const r = await prisma.$transaction(async (tx) => {
@@ -281,15 +283,15 @@ router.post('/', async (req, res) => {
 
 router.patch('/:id', async (req, res) => {
   const id = Number(req.params.id);
-  const lama = await prisma.risiko.findFirst({ where: { id, ...cakupanUnit(req.pengguna) }, include: sertakan });
+  const lama = await prisma.risiko.findFirst({ where: { id, ...cakupanUnitKerja(req.pengguna) }, include: sertakan });
   if (!lama) return res.status(404).json({ error: 'Risiko tidak ditemukan' });
-  const larang = cekTulis(req.pengguna, lama.unit_id, lama.status_persetujuan);
+  const larang = cekTulis(req.pengguna, lama.unit_kerja_id, lama.status_persetujuan);
   if (larang) return res.status(403).json({ error: larang });
 
   const h = await bersihkan(req.body || {}, false, req.pengguna, lama.risiko_utama_id, lama.periode_id);
   if (h.error) return res.status(400).json({ error: h.error });
-  if (h.data.unit_id && h.data.unit_id !== lama.unit_id) {
-    const l2 = cekTulis(req.pengguna, h.data.unit_id, lama.status_persetujuan);
+  if (h.data.unit_kerja_id && h.data.unit_kerja_id !== lama.unit_kerja_id) {
+    const l2 = cekTulis(req.pengguna, h.data.unit_kerja_id, lama.status_persetujuan);
     if (l2) return res.status(403).json({ error: l2 });
   }
   // Perubahan Direksi atas data yang sudah diajukan/final ditandai (handoff bagian 8).
@@ -306,10 +308,10 @@ router.patch('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   const id = Number(req.params.id);
-  const lama = await prisma.risiko.findFirst({ where: { id, ...cakupanUnit(req.pengguna) }, include: sertakan });
+  const lama = await prisma.risiko.findFirst({ where: { id, ...cakupanUnitKerja(req.pengguna) }, include: sertakan });
   if (!lama) return res.status(404).json({ error: 'Risiko tidak ditemukan' });
   if (lama.status_persetujuan !== 'DRAF') return res.status(400).json({ error: 'Hanya risiko berstatus DRAF yang dapat dihapus' });
-  const larang = cekTulis(req.pengguna, lama.unit_id, lama.status_persetujuan);
+  const larang = cekTulis(req.pengguna, lama.unit_kerja_id, lama.status_persetujuan);
   if (larang) return res.status(403).json({ error: larang });
   await prisma.risiko.delete({ where: { id } });
   await catat({ req, nama_tabel: 'risiko', id_data: id, aksi: 'HAPUS', nilai_lama: lama });
@@ -318,7 +320,7 @@ router.delete('/:id', async (req, res) => {
 
 // Riwayat perubahan satu risiko dari jejak audit.
 router.get('/:id/riwayat', async (req, res) => {
-  const r = await prisma.risiko.findFirst({ where: { id: Number(req.params.id) || -1, ...cakupanUnit(req.pengguna) }, select: { id: true } });
+  const r = await prisma.risiko.findFirst({ where: { id: Number(req.params.id) || -1, ...cakupanUnitKerja(req.pengguna) }, select: { id: true } });
   if (!r) return res.status(404).json({ error: 'Risiko tidak ditemukan' });
   res.json(await prisma.jejak_audit.findMany({
     where: { nama_tabel: 'risiko', id_data: String(r.id) },

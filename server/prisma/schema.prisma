@@ -11,9 +11,24 @@ datasource db {
 
 // ============ ENUM ============
 
-enum JenisUnit {
+// BAGIAN/SUB_BAGIAN di Pusat; CABANG dan UNIT (kantor wilayah) diperlakukan sama.
+enum JenisUnitKerja {
+  BAGIAN
+  SUB_BAGIAN
+  CABANG
+  UNIT
+}
+
+// Risiko utama CABANG berlaku untuk unit kerja CABANG dan UNIT; PUSAT untuk BAGIAN.
+enum BerlakuUntuk {
   PUSAT
   CABANG
+}
+
+// SATU_TINGKAT: persetujuan pimpinan langsung FINAL (mis. SPI, karena pengelola risiko adalah bawahannya).
+enum AlurPersetujuan {
+  DUA_TINGKAT
+  SATU_TINGKAT
 }
 
 // PERSIAPAN: daftar risiko utama disusun, belum ada entri; TERBUKA: input berjalan; DITUTUP: terkunci.
@@ -167,35 +182,39 @@ model direktorat {
   kode                  String         @unique @db.VarChar(20)
   nama                  String         @db.VarChar(150)
   nama_jabatan_direktur String         @db.VarChar(150)
-  unit                  unit[]
+  unit_kerja            unit_kerja[]
   risiko_utama          risiko_utama[]
   dibuat_pada           DateTime       @default(now())
   diubah_pada           DateTime       @updatedAt
 }
 
-model unit {
-  id                      Int         @id @default(autoincrement())
-  kode                    String      @unique @db.VarChar(20)
-  nama                    String      @db.VarChar(150)
-  deskripsi               String?     @db.Text
-  jenis                   JenisUnit
+model unit_kerja {
+  id                      Int              @id @default(autoincrement())
+  kode                    String           @unique @db.VarChar(20)
+  nama                    String           @db.VarChar(150)
+  deskripsi               String?          @db.Text
+  jenis                   JenisUnitKerja
   direktorat_id           Int?
-  direktorat              direktorat? @relation(fields: [direktorat_id], references: [id])
-  // Sub-unit (bagian/seksi di bawah unit atau cabang).
-  parent_id               Int?
-  parent                  unit?       @relation("sub_unit", fields: [parent_id], references: [id], onDelete: Restrict)
-  sub_unit                unit[]      @relation("sub_unit")
-  adalah_pengelola_risiko Boolean     @default(false)
-  aktif                   Boolean     @default(true)
+  direktorat              direktorat?      @relation(fields: [direktorat_id], references: [id])
+  // Hierarki Bagian -> Sub-bagian.
+  induk_id                Int?
+  induk                   unit_kerja?      @relation("sub_unit_kerja", fields: [induk_id], references: [id], onDelete: Restrict)
+  sub_unit_kerja          unit_kerja[]     @relation("sub_unit_kerja")
+  // Memegang register risiko sendiri. Pengguna di unit kerja lain memakai pemilik terdekat ke atas.
+  pemilik_risiko          Boolean          @default(true)
+  adalah_pengelola_risiko Boolean          @default(false)
+  // Hanya untuk pemilik risiko.
+  alur_persetujuan        AlurPersetujuan?
+  aktif                   Boolean          @default(true)
   pengguna                pengguna[]
   risiko                  risiko[]
   insiden                 insiden[]
   kontrol                 kontrol[]
-  dibuat_pada             DateTime    @default(now())
-  diubah_pada             DateTime    @updatedAt
+  dibuat_pada             DateTime         @default(now())
+  diubah_pada             DateTime         @updatedAt
 
   @@index([direktorat_id])
-  @@index([parent_id])
+  @@index([induk_id])
 }
 
 model pengguna {
@@ -203,8 +222,8 @@ model pengguna {
   nama                String                @db.VarChar(150)
   email               String                @unique @db.VarChar(191)
   kata_sandi_hash     String                @db.VarChar(255)
-  unit_id             Int?
-  unit                unit?                 @relation(fields: [unit_id], references: [id])
+  unit_kerja_id       Int?
+  unit_kerja          unit_kerja?           @relation(fields: [unit_kerja_id], references: [id])
   jabatan             String?               @db.VarChar(150)
   telepon             String?               @db.VarChar(30)
   aktif               Boolean               @default(true)
@@ -230,7 +249,7 @@ model pengguna {
   dibuat_pada         DateTime              @default(now())
   diubah_pada         DateTime              @updatedAt
 
-  @@index([unit_id])
+  @@index([unit_kerja_id])
 }
 
 model peran {
@@ -364,7 +383,7 @@ model risiko_utama {
   deskripsi             String?                @db.Text
   kategori_id           Int?
   kategori              kategori_risiko?       @relation(fields: [kategori_id], references: [id])
-  berlaku_untuk         JenisUnit
+  berlaku_untuk         BerlakuUntuk
   direktorat_pemilik_id Int?
   direktorat_pemilik    direktorat?            @relation(fields: [direktorat_pemilik_id], references: [id])
   aktif                 Boolean                @default(true)
@@ -423,9 +442,10 @@ model risiko {
   id                    Int                  @id @default(autoincrement())
   periode_id            Int
   periode               periode              @relation(fields: [periode_id], references: [id])
-  unit_id               Int
-  unit                  unit                 @relation(fields: [unit_id], references: [id])
-  // Null = risiko spesifik unit.
+  // Harus unit kerja dengan pemilik_risiko = true.
+  unit_kerja_id         Int
+  unit_kerja            unit_kerja           @relation(fields: [unit_kerja_id], references: [id])
+  // Null = risiko spesifik unit kerja.
   risiko_utama_id       Int?
   risiko_utama          risiko_utama?        @relation(fields: [risiko_utama_id], references: [id])
   kode                  String               @db.VarChar(50)
@@ -460,9 +480,9 @@ model risiko {
   diubah_pada           DateTime             @updatedAt
 
   // MySQL membolehkan banyak NULL pada unique, jadi risiko spesifik tidak terkena.
-  @@unique([periode_id, unit_id, risiko_utama_id])
+  @@unique([periode_id, unit_kerja_id, risiko_utama_id])
   @@unique([periode_id, kode])
-  @@index([unit_id, status_persetujuan])
+  @@index([unit_kerja_id, status_persetujuan])
   @@index([risiko_utama_id, status_persetujuan])
 }
 
@@ -741,8 +761,8 @@ model insiden {
   judul                 String?             @db.VarChar(255)
   risiko_id             Int?
   risiko                risiko?             @relation(fields: [risiko_id], references: [id])
-  unit_id               Int?
-  unit                  unit?               @relation(fields: [unit_id], references: [id])
+  unit_kerja_id         Int?
+  unit_kerja            unit_kerja?         @relation(fields: [unit_kerja_id], references: [id])
   tanggal_kejadian      DateTime
   deskripsi             String              @db.Text
   dampak                String?             @db.Text
@@ -763,7 +783,7 @@ model insiden {
 
   @@index([tanggal_kejadian])
   @@index([risiko_id])
-  @@index([unit_id])
+  @@index([unit_kerja_id])
 }
 
 // ============ H. CONTROL TESTING ============
@@ -778,8 +798,8 @@ model kontrol {
   frekuensi          Frekuensi          @default(TRIWULANAN)
   tujuan             String?            @db.Text
   prosedur_pengujian String?            @db.Text
-  unit_id            Int?
-  unit               unit?              @relation(fields: [unit_id], references: [id])
+  unit_kerja_id      Int?
+  unit_kerja         unit_kerja?        @relation(fields: [unit_kerja_id], references: [id])
   pemilik_id         Int?
   pemilik            pengguna?          @relation(fields: [pemilik_id], references: [id])
   aktif              Boolean            @default(true)
@@ -789,7 +809,7 @@ model kontrol {
   dibuat_pada        DateTime           @default(now())
   diubah_pada        DateTime           @updatedAt
 
-  @@index([unit_id])
+  @@index([unit_kerja_id])
 }
 
 model jadwal_pengujian {

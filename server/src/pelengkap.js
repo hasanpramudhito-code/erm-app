@@ -1,11 +1,11 @@
 // API modul pelengkap: pengujian kontrol, selera risiko, budaya risiko, RACI.
 const express = require('express');
 const prisma = require('./db');
-const { wajibLogin, wajibPeran, cakupanUnit } = require('./auth');
+const { wajibLogin, wajibPeran, cakupanUnitKerja } = require('./auth');
 const { catat } = require('./audit');
 const { crud, teks, angka } = require('./crud');
 
-const PENGELOLA = ['ADMIN_SISTEM', 'PENGELOLA_RISIKO'];
+const PENGELOLA = ['ADMIN', 'PENGELOLA_RISIKO'];
 const rapikan = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 const wajib = (data, kolom, baru) => baru && kolom.find((k) => data[k] === undefined || data[k] === null);
 const tgl = (v) => (v === undefined ? undefined : v ? new Date(v) : null);
@@ -33,12 +33,12 @@ router.use('/kontrol', crud({
   model: 'kontrol',
   penulis: PENGELOLA,
   orderBy: { nama: 'asc' },
-  include: { unit: { select: { id: true, nama: true } }, ...ringkasOrang('pemilik'),
+  include: { unit_kerja: { select: { id: true, nama: true } }, ...ringkasOrang('pemilik'),
     hasil_pengujian: { orderBy: { tanggal_uji: 'desc' }, take: 1, select: { tanggal_uji: true, hasil: true, peringkat_efektivitas: true } } },
   bersihkan: (b, baru) => periksa(rapikan({
     kode: teks(b.kode), nama: teks(b.nama), deskripsi: teks(b.deskripsi), kategori: teks(b.kategori),
     jenis: b.jenis, frekuensi: b.frekuensi, tujuan: teks(b.tujuan), prosedur_pengujian: teks(b.prosedur_pengujian),
-    unit_id: idOpsional(b.unit_id), pemilik_id: idOpsional(b.pemilik_id),
+    unit_kerja_id: idOpsional(b.unit_kerja_id), pemilik_id: idOpsional(b.pemilik_id),
     aktif: b.aktif === undefined ? undefined : Boolean(b.aktif),
   }), baru, ['nama', 'jenis'], { jenis: JENIS_KONTROL, frekuensi: FREKUENSI }),
 }));
@@ -171,8 +171,8 @@ raci.get('/', async (req, res) => {
   const periode_id = Number(req.query.periode_id);
   if (!periode_id) return res.status(400).json({ error: 'periode_id wajib' });
   res.json(await prisma.risiko.findMany({
-    where: { periode_id, ...cakupanUnit(req.pengguna) },
-    select: { id: true, kode: true, nama: true, unit: { select: { id: true, nama: true } },
+    where: { periode_id, ...cakupanUnitKerja(req.pengguna) },
+    select: { id: true, kode: true, nama: true, unit_kerja: { select: { id: true, nama: true } },
       raci: { select: { peran: true, pengguna: { select: { id: true, nama: true } } } } },
     orderBy: { kode: 'asc' },
   }));

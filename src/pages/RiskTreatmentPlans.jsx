@@ -28,12 +28,12 @@ const RiskTreatmentPlans = () => {
     api.get(`/pantauan/mitigasi?periode_id=${periodeId}`).then(setData).catch((e) => setError(e.message)).finally(() => setMemuat(false));
   }, [periodeId]);
 
-  const unitOpsi = useMemo(() => [...new Map(data.map((m) => [m.risiko.unit.id, m.risiko.unit.nama])).entries()], [data]);
+  const unitOpsi = useMemo(() => [...new Map(data.map((m) => [m.risiko.unit_kerja.id, m.risiko.unit_kerja.nama])).entries()], [data]);
   const tersaring = data.filter((m) =>
     (tab === 'SEMUA' || (tab === 'LEWAT' ? m.lewat_target : m.status === tab)) &&
     (!filter.jenis || m.jenis === filter.jenis) &&
     (!filter.prioritas || m.prioritas === filter.prioritas) &&
-    (!filter.unit || m.risiko.unit.id === Number(filter.unit)));
+    (!filter.unit || m.risiko.unit_kerja.id === Number(filter.unit)));
 
   const rata = data.length ? Math.round(data.reduce((t, m) => t + m.progres, 0) / data.length) : 0;
   const kpi = [
@@ -52,7 +52,7 @@ const RiskTreatmentPlans = () => {
         <PilihPeriode daftar={daftarPeriode} value={periodeId} onChange={setPeriodeId} />
         <PilihDari label="Jenis" value={filter.jenis} onChange={(v) => setFilter({ ...filter, jenis: v })} opsi={Object.entries(LABEL_JENIS_MITIGASI)} />
         <PilihDari label="Prioritas" value={filter.prioritas} onChange={(v) => setFilter({ ...filter, prioritas: v })} opsi={Object.entries(LABEL_PRIORITAS_SINGKAT)} />
-        <PilihDari label="Unit" value={filter.unit} onChange={(v) => setFilter({ ...filter, unit: v })} opsi={unitOpsi} minWidth={180} />
+        <PilihDari label="Unit Kerja" value={filter.unit} onChange={(v) => setFilter({ ...filter, unit: v })} opsi={unitOpsi} minWidth={180} />
       </KepalaPantauan>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -85,7 +85,7 @@ const RiskTreatmentPlans = () => {
                 <TableRow key={m.id} hover sx={{ cursor: 'pointer' }} onClick={() => setDetail(m)}>
                   <TableCell sx={{ maxWidth: 220 }}>
                     <strong>{m.risiko.kode}</strong>
-                    <Typography variant="caption" display="block" color="text.secondary">{m.risiko.unit.nama}</Typography>
+                    <Typography variant="caption" display="block" color="text.secondary">{m.risiko.unit_kerja.nama}</Typography>
                     {m.risiko.penilaian[0] && <Penanda warna={m.risiko.penilaian[0].level.warna} teks={m.risiko.penilaian[0].level.nama} />}
                   </TableCell>
                   <TableCell sx={{ maxWidth: 320 }}>{m.uraian}</TableCell>
@@ -115,7 +115,7 @@ const RiskTreatmentPlans = () => {
           {detail && (
             <>
               <Typography variant="body2" gutterBottom>
-                {detail.risiko.kode} · {detail.risiko.deskripsi || detail.risiko.nama} · {detail.risiko.unit.nama}
+                {detail.risiko.kode} · {detail.risiko.deskripsi || detail.risiko.nama} · {detail.risiko.unit_kerja.nama}
               </Typography>
               <Typography variant="subtitle2" sx={{ mt: 2 }}>Riwayat realisasi bulanan</Typography>
               {detail.riwayat.length === 0 ? <Typography variant="body2" color="text.secondary">Belum ada laporan.</Typography> : (

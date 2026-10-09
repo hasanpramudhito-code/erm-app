@@ -141,16 +141,16 @@ const HeatMapFilters = ({
             <InputLabel>
               <Box display="flex" alignItems="center" gap={0.5}>
                 <Building size={16} />
-                <span>Departemen</span>
+                <span>Unit Kerja</span>
               </Box>
             </InputLabel>
             <Select
               value={localFilters.department}
-              label="Departemen"
+              label="Unit Kerja"
               onChange={(e) => handleFilterChange('department', e.target.value)}
             >
               <MenuItem value="all">
-                <em>Semua Departemen</em>
+                <em>Semua Unit Kerja</em>
               </MenuItem>
               {organizationUnits.map((unit) => (
                 <MenuItem key={unit.id} value={unit.id}>

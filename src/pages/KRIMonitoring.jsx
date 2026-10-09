@@ -60,8 +60,8 @@ const KRIMonitoring = () => {
     api.get(`/pantauan/kri?periode_id=${periodeId}`).then(setData).catch((e) => setError(e.message));
   }, [periodeId]);
 
-  const unitOpsi = useMemo(() => [...new Map(data.map((k) => [k.risiko.unit.id, k.risiko.unit.nama])).entries()], [data]);
-  const tersaring = data.filter((k) => (!filter.status || k.status === filter.status) && (!filter.unit || k.risiko.unit.id === Number(filter.unit)));
+  const unitOpsi = useMemo(() => [...new Map(data.map((k) => [k.risiko.unit_kerja.id, k.risiko.unit_kerja.nama])).entries()], [data]);
+  const tersaring = data.filter((k) => (!filter.status || k.status === filter.status) && (!filter.unit || k.risiko.unit_kerja.id === Number(filter.unit)));
   const hitung = (s) => data.filter((k) => k.status === s).length;
 
   return (
@@ -70,7 +70,7 @@ const KRIMonitoring = () => {
         keterangan="Key Risk Indicator seluruh risiko. Definisi diubah di Risk Register; nilai dilaporkan di Pemantauan Bulanan.">
         <PilihPeriode daftar={daftarPeriode} value={periodeId} onChange={setPeriodeId} />
         <PilihDari label="Status" value={filter.status} onChange={(v) => setFilter({ ...filter, status: v })} opsi={Object.entries(LABEL_STATUS_KRI)} />
-        <PilihDari label="Unit" value={filter.unit} onChange={(v) => setFilter({ ...filter, unit: v })} opsi={unitOpsi} minWidth={180} />
+        <PilihDari label="Unit Kerja" value={filter.unit} onChange={(v) => setFilter({ ...filter, unit: v })} opsi={unitOpsi} minWidth={180} />
       </KepalaPantauan>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -103,7 +103,7 @@ const KRIMonitoring = () => {
                 const Tren = IKON_TREN[k.tren] || Minus;
                 return (
                   <TableRow key={k.id} hover sx={{ cursor: 'pointer' }} onClick={() => setDetail(k)}>
-                    <TableCell><strong>{k.risiko.kode}</strong><Typography variant="caption" display="block" color="text.secondary">{k.risiko.unit.nama}</Typography></TableCell>
+                    <TableCell><strong>{k.risiko.kode}</strong><Typography variant="caption" display="block" color="text.secondary">{k.risiko.unit_kerja.nama}</Typography></TableCell>
                     <TableCell sx={{ maxWidth: 260 }}>
                       {k.nama}
                       <Typography variant="caption" display="block" color="text.secondary">
@@ -129,7 +129,7 @@ const KRIMonitoring = () => {
         <DialogContent dividers>
           {detail && (
             <>
-              <Typography variant="body2">{detail.risiko.kode} · {detail.risiko.deskripsi || detail.risiko.nama} · {detail.risiko.unit.nama}</Typography>
+              <Typography variant="body2">{detail.risiko.kode} · {detail.risiko.deskripsi || detail.risiko.nama} · {detail.risiko.unit_kerja.nama}</Typography>
               {detail.deskripsi && <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{detail.deskripsi}</Typography>}
               <GrafikRiwayat kri={detail} />
               {detail.riwayat.length === 0 ? <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>Belum ada pengukuran.</Typography> : (

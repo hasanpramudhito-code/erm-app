@@ -2,7 +2,7 @@
 const express = require('express');
 const ExcelJS = require('exceljs');
 const prisma = require('./db');
-const { wajibLogin, cakupanUnit } = require('./auth');
+const { wajibLogin, cakupanUnitKerja } = require('./auth');
 
 const router = express.Router();
 router.use(wajibLogin);
@@ -22,16 +22,16 @@ const LAPORAN = {
     ],
     async baris(periode_id, p) {
       const data = await prisma.risiko.findMany({
-        where: { periode_id, ...cakupanUnit(p) },
+        where: { periode_id, ...cakupanUnitKerja(p) },
         include: {
-          unit: true, kategori: true, risiko_utama: true, penyebab: true, dampak: true,
+          unit_kerja: true, kategori: true, risiko_utama: true, penyebab: true, dampak: true,
           penilaian: { include: { level: true } }, _count: { select: { mitigasi: true } },
         },
-        orderBy: [{ unit_id: 'asc' }, { kode: 'asc' }],
+        orderBy: [{ unit_kerja_id: 'asc' }, { kode: 'asc' }],
       });
       return data.map((r) => {
         const i = penilaian(r, 'INHEREN'), s = penilaian(r, 'RESIDUAL');
-        return [r.kode, r.unit.nama, r.risiko_utama?.kode || 'Spesifik', r.deskripsi || r.nama, r.kategori?.nama || '', r.sumber,
+        return [r.kode, r.unit_kerja.nama, r.risiko_utama?.kode || 'Spesifik', r.deskripsi || r.nama, r.kategori?.nama || '', r.sumber,
           r.penyebab.map((x) => x.uraian).join('\n'), r.dampak.map((x) => x.uraian).join('\n'),
           i?.kemungkinan, i?.dampak, i?.skor, i?.level.nama, r.kontrol_eksisting || '', r.efektivitas_kontrol || '',
           s?.kemungkinan, s?.dampak, s?.skor, s?.level.nama, r._count.mitigasi, r.status_persetujuan];
@@ -43,11 +43,11 @@ const LAPORAN = {
     kolom: [['Kode Risiko', 14], ['Unit', 22], ['Risiko', 36], ['Rencana Mitigasi', 40], ['Jenis', 12], ['Prioritas', 11], ['PIC', 20], ['Target', 12], ['Anggaran (Rp)', 16], ['Status', 14], ['Progres (%)', 10]],
     async baris(periode_id, p) {
       const data = await prisma.mitigasi.findMany({
-        where: { risiko: { periode_id, ...cakupanUnit(p) } },
-        include: { risiko: { include: { unit: true } }, penanggung_jawab: true },
+        where: { risiko: { periode_id, ...cakupanUnitKerja(p) } },
+        include: { risiko: { include: { unit_kerja: true } }, penanggung_jawab: true },
         orderBy: [{ risiko_id: 'asc' }, { id: 'asc' }],
       });
-      return data.map((m) => [m.risiko.kode, m.risiko.unit.nama, m.risiko.deskripsi || m.risiko.nama, m.uraian, m.jenis, m.prioritas,
+      return data.map((m) => [m.risiko.kode, m.risiko.unit_kerja.nama, m.risiko.deskripsi || m.risiko.nama, m.uraian, m.jenis, m.prioritas,
         m.penanggung_jawab?.nama || '', tgl(m.target_waktu), angka(m.anggaran), m.status, m.progres]);
     },
   },
@@ -56,11 +56,11 @@ const LAPORAN = {
     kolom: [['Kode Risiko', 14], ['Unit', 22], ['Indikator', 36], ['Satuan', 10], ['Arah', 14], ['Ambang Hijau', 12], ['Ambang Kuning', 12], ['Ambang Merah', 12], ['Frekuensi', 12], ['Nilai Terakhir', 12], ['Nilai Sebelumnya', 12], ['Tren', 10], ['Status', 12]],
     async baris(periode_id, p) {
       const data = await prisma.kri.findMany({
-        where: { risiko: { periode_id, ...cakupanUnit(p) } },
-        include: { risiko: { include: { unit: true } } },
+        where: { risiko: { periode_id, ...cakupanUnitKerja(p) } },
+        include: { risiko: { include: { unit_kerja: true } } },
         orderBy: [{ risiko_id: 'asc' }, { id: 'asc' }],
       });
-      return data.map((k) => [k.risiko.kode, k.risiko.unit.nama, k.nama, k.satuan || '', k.arah_target,
+      return data.map((k) => [k.risiko.kode, k.risiko.unit_kerja.nama, k.nama, k.satuan || '', k.arah_target,
         angka(k.ambang_hijau), angka(k.ambang_kuning), angka(k.ambang_merah), k.frekuensi, angka(k.nilai_sekarang), angka(k.nilai_sebelumnya), k.tren, k.status]);
     },
   },
@@ -69,11 +69,11 @@ const LAPORAN = {
     kolom: [['Tanggal', 12], ['Kode Risiko', 14], ['Unit', 22], ['Uraian Kejadian', 44], ['Dampak', 30], ['Kerugian (Rp)', 16], ['Tindakan', 30], ['Laporan Bulan', 12], ['Status Laporan', 16]],
     async baris(periode_id, p) {
       const data = await prisma.insiden.findMany({
-        where: { risiko: { periode_id, ...cakupanUnit(p) } },
-        include: { risiko: true, unit: true, pemantauan_bulanan: true },
+        where: { risiko: { periode_id, ...cakupanUnitKerja(p) } },
+        include: { risiko: true, unit_kerja: true, pemantauan_bulanan: true },
         orderBy: { tanggal_kejadian: 'asc' },
       });
-      return data.map((i) => [tgl(i.tanggal_kejadian), i.risiko?.kode || '', i.unit?.nama || '', i.deskripsi, i.dampak || '', angka(i.kerugian),
+      return data.map((i) => [tgl(i.tanggal_kejadian), i.risiko?.kode || '', i.unit_kerja?.nama || '', i.deskripsi, i.dampak || '', angka(i.kerugian),
         i.tindakan_segera || '', i.pemantauan_bulanan ? `${i.pemantauan_bulanan.tahun}-${String(i.pemantauan_bulanan.bulan).padStart(2, '0')}` : '', i.pemantauan_bulanan?.status_persetujuan || '']);
     },
   },
@@ -81,18 +81,18 @@ const LAPORAN = {
     judul: 'Laporan Pemantauan Bulanan',
     kolom: [['Bulan', 10], ['Kode Risiko', 14], ['Unit', 22], ['Status Laporan', 16], ['Peristiwa Terjadi', 10], ['Catatan Perkembangan', 44], ['Mitigasi (status/progres)', 50], ['KRI (nilai/status)', 40]],
     async baris(periode_id, p, q) {
-      const where = { risiko: { periode_id, ...cakupanUnit(p) } };
+      const where = { risiko: { periode_id, ...cakupanUnitKerja(p) } };
       if (q.tahun && q.bulan) Object.assign(where, { tahun: Number(q.tahun), bulan: Number(q.bulan) });
       const data = await prisma.pemantauan_bulanan.findMany({
         where,
         include: {
-          risiko: { include: { unit: true } },
+          risiko: { include: { unit_kerja: true } },
           realisasi_mitigasi: { include: { mitigasi: true } },
           pengukuran_kri: { include: { kri: true } },
         },
         orderBy: [{ tahun: 'asc' }, { bulan: 'asc' }, { risiko_id: 'asc' }],
       });
-      return data.map((l) => [`${l.tahun}-${String(l.bulan).padStart(2, '0')}`, l.risiko.kode, l.risiko.unit.nama, l.status_persetujuan, l.peristiwa_terjadi ? 'Ya' : 'Tidak', l.catatan || '',
+      return data.map((l) => [`${l.tahun}-${String(l.bulan).padStart(2, '0')}`, l.risiko.kode, l.risiko.unit_kerja.nama, l.status_persetujuan, l.peristiwa_terjadi ? 'Ya' : 'Tidak', l.catatan || '',
         l.realisasi_mitigasi.map((r) => `${r.mitigasi.uraian}: ${r.status} ${r.progres}%${r.keterangan ? ` (${r.keterangan})` : ''}`).join('\n'),
         l.pengukuran_kri.map((k) => `${k.kri.nama}: ${Number(k.nilai)}${k.kri.satuan ? ` ${k.kri.satuan}` : ''} ${k.status}`).join('\n')]);
     },

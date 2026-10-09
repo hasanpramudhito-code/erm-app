@@ -18,19 +18,19 @@ const req = async (method, url, body, cookie = admin) => {
 test.before(async () => {
   await new Promise((r) => { server = app.listen(0, () => { base = `http://127.0.0.1:${server.address().port}`; r(); }); });
   admin = await login(process.env.SEED_ADMIN_EMAIL, process.env.SEED_ADMIN_PASSWORD);
-  unit = await prisma.unit.create({ data: { kode: `PL${sufiks}`, nama: 'Cabang Uji Pelengkap', jenis: 'CABANG' } });
+  unit = await prisma.unit_kerja.create({ data: { kode: `PL${sufiks}`, nama: 'Cabang Uji Pelengkap', jenis: 'CABANG' } });
   const email = `petugas-pl-${sufiks}@erm.local`;
-  petugasId = (await req('POST', '/pengguna', { nama: 'Petugas PL', email, kata_sandi: 'sandi-uji-panjang', peran: ['PETUGAS_RISIKO_CABANG'], unit_id: unit.id })).body.id;
+  petugasId = (await req('POST', '/pengguna', { nama: 'Petugas PL', email, kata_sandi: 'sandi-uji-panjang', peran: ['PETUGAS'], unit_kerja_id: unit.id })).body.id;
   petugas = await login(email, 'sandi-uji-panjang');
 });
 
 test.after(async () => {
   if (kontrolId) await prisma.kontrol.delete({ where: { id: kontrolId } }).catch(() => {});
   if (surveiId) await prisma.survei_budaya.delete({ where: { id: surveiId } }).catch(() => {});
-  await prisma.risiko.deleteMany({ where: { unit_id: unit.id } });
+  await prisma.risiko.deleteMany({ where: { unit_kerja_id: unit.id } });
   await prisma.jejak_audit.deleteMany({ where: { pengguna_id: petugasId } });
   await prisma.pengguna.delete({ where: { id: petugasId } });
-  await prisma.unit.delete({ where: { id: unit.id } });
+  await prisma.unit_kerja.delete({ where: { id: unit.id } });
   server.close();
   await prisma.$disconnect();
 });
@@ -85,12 +85,12 @@ test('survei budaya: hanya terbit yang bisa diisi, skor dihitung server', async 
 
 test('RACI: isi, ganti, kosongkan; petugas tidak boleh menulis', async () => {
   const periode = await prisma.periode.findFirst({ where: { status: 'TERBUKA' } });
-  const risiko = await prisma.risiko.create({ data: { periode_id: periode.id, unit_id: unit.id, kode: `RC-${sufiks}`, nama: 'Risiko RACI' } });
+  const risiko = await prisma.risiko.create({ data: { periode_id: periode.id, unit_kerja_id: unit.id, kode: `RC-${sufiks}`, nama: 'Risiko RACI' } });
   assert.equal((await req('PUT', `/raci/${risiko.id}/R`, { pengguna_id: petugasId }, petugas)).status, 403);
   assert.equal((await req('PUT', `/raci/${risiko.id}/X`, { pengguna_id: petugasId })).status, 400);
   assert.equal((await req('PUT', `/raci/${risiko.id}/R`, { pengguna_id: petugasId })).status, 200);
   const baris = (await req('GET', `/raci?periode_id=${periode.id}`, null, petugas)).body;
-  assert.ok(baris.every((b) => b.unit.id === unit.id)); // cakupan unit petugas
+  assert.ok(baris.every((b) => b.unit_kerja.id === unit.id)); // cakupan unit petugas
   assert.equal(baris.find((b) => b.id === risiko.id).raci[0].pengguna.id, petugasId);
   assert.equal((await req('PUT', `/raci/${risiko.id}/R`, { pengguna_id: null })).status, 204);
   assert.equal(await prisma.raci.count({ where: { risiko_id: risiko.id } }), 0);

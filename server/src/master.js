@@ -1,4 +1,4 @@
-// API data master: organisasi (direktorat, unit) dan parameter penilaian.
+// API data master: organisasi (direktorat, unit kerja) dan parameter penilaian.
 const express = require('express');
 const prisma = require('./db');
 const { wajibLogin, wajibPeran } = require('./auth');
@@ -8,8 +8,8 @@ const { crud, teks, angka } = require('./crud');
 // Dimuat saat dipakai untuk menghindari require melingkar.
 const bentukEntri = (...a) => require('./risiko-utama').bentukEntriCabang(...a);
 
-const ADMIN = ['ADMIN_SISTEM'];
-const PENGELOLA = ['ADMIN_SISTEM', 'PENGELOLA_RISIKO'];
+const ADMIN = ['ADMIN'];
+const PENGELOLA = ['ADMIN', 'PENGELOLA_RISIKO'];
 const WARNA = /^#[0-9a-fA-F]{6}$/;
 const KATEGORI_DAMPAK = ['FINANSIAL', 'OPERASIONAL', 'REPUTASI', 'LEGAL', 'HSE'];
 
@@ -30,11 +30,14 @@ router.use('/direktorat', crud({
   },
 }));
 
-router.use('/unit', crud({
-  model: 'unit',
+// Unit kerja (adendum v2 C, G.1). CABANG & UNIT sama-sama kantor wilayah (WILAYAH).
+const WILAYAH = ['CABANG', 'UNIT'];
+const JENIS_UK = ['BAGIAN', 'SUB_BAGIAN', ...WILAYAH];
+router.use('/unit-kerja', crud({
+  model: 'unit_kerja',
   penulis: ADMIN,
-  // Cabang baru/aktif kembali: bentuk entri risiko utama CABANG di periode terbuka.
-  setelah: (r, lama) => (r.jenis === 'CABANG' && r.aktif && (!lama || !lama.aktif || lama.jenis !== 'CABANG') ? bentukEntri() : null),
+  // Cabang/Unit baru atau aktif kembali: bentuk entri risiko utama CABANG di periode terbuka.
+  setelah: (r, lama) => (WILAYAH.includes(r.jenis) && r.aktif && (!lama || !lama.aktif || !WILAYAH.includes(lama.jenis)) ? bentukEntri() : null),
   orderBy: [{ jenis: 'asc' }, { kode: 'asc' }],
   include: { direktorat: { select: { id: true, kode: true, nama: true } } },
   bersihkan: async (b, baru, lama) => {
@@ -44,17 +47,27 @@ router.use('/unit', crud({
       deskripsi: teks(b.deskripsi),
       jenis: b.jenis,
       direktorat_id: b.direktorat_id === undefined ? undefined : angka(b.direktorat_id) ?? null,
-      parent_id: b.parent_id === undefined ? undefined : angka(b.parent_id) ?? null,
+      induk_id: b.induk_id === undefined ? undefined : angka(b.induk_id) ?? null,
+      pemilik_risiko: b.pemilik_risiko === undefined ? undefined : Boolean(b.pemilik_risiko),
       adalah_pengelola_risiko: b.adalah_pengelola_risiko === undefined ? undefined : Boolean(b.adalah_pengelola_risiko),
+      alur_persetujuan: b.alur_persetujuan === undefined ? undefined : b.alur_persetujuan || null,
       aktif: b.aktif === undefined ? undefined : Boolean(b.aktif),
     });
     const kurang = wajib(data, ['kode', 'nama', 'jenis'], baru);
     if (kurang) return { error: `${kurang} wajib diisi` };
-    if (data.jenis && !['PUSAT', 'CABANG'].includes(data.jenis)) return { error: 'Jenis harus PUSAT atau CABANG' };
+    if (data.jenis && !JENIS_UK.includes(data.jenis)) return { error: `Jenis harus salah satu dari ${JENIS_UK.join(', ')}` };
+    if (data.alur_persetujuan && !['DUA_TINGKAT', 'SATU_TINGKAT'].includes(data.alur_persetujuan)) return { error: 'Alur persetujuan harus DUA_TINGKAT atau SATU_TINGKAT' };
+    // Default (G.3): sub-bagian bukan pemilik risiko; pemilik risiko memakai alur dua tingkat.
+    const jenis = data.jenis ?? lama?.jenis;
+    if (baru && data.pemilik_risiko === undefined) data.pemilik_risiko = jenis !== 'SUB_BAGIAN';
+    const pemilik = data.pemilik_risiko ?? lama?.pemilik_risiko;
+    if (!pemilik) data.alur_persetujuan = null;
+    else if (!(data.alur_persetujuan ?? lama?.alur_persetujuan)) data.alur_persetujuan = 'DUA_TINGKAT';
+    if (jenis === 'SUB_BAGIAN' && !(data.induk_id ?? lama?.induk_id)) return { error: 'Sub-bagian wajib punya induk' };
     // Cegah siklus induk: induk tidak boleh diri sendiri atau turunannya.
-    if (data.parent_id && lama) {
-      for (let id = data.parent_id; id; id = (await prisma.unit.findUnique({ where: { id } }))?.parent_id)
-        if (id === lama.id) return { error: 'Induk unit tidak boleh unit itu sendiri atau sub-unitnya' };
+    if (data.induk_id && lama) {
+      for (let id = data.induk_id; id; id = (await prisma.unit_kerja.findUnique({ where: { id } }))?.induk_id)
+        if (id === lama.id) return { error: 'Induk unit kerja tidak boleh unit kerja itu sendiri atau turunannya' };
     }
     return { data };
   },
@@ -173,7 +186,7 @@ const VALIDASI_PENGATURAN = {
 };
 
 router.get('/pengaturan', wajibLogin, async (req, res) => {
-  const semua = req.pengguna.peran.includes('ADMIN_SISTEM');
+  const semua = req.pengguna.peran.includes('ADMIN');
   const rows = await prisma.pengaturan.findMany(semua ? {} : { where: { kunci: { in: PENGATURAN_PUBLIK } } });
   res.json(Object.fromEntries(rows.map((r) => [r.kunci, r.nilai])));
 });

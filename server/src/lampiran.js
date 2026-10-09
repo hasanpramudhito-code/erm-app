@@ -64,7 +64,7 @@ router.get('/:entitas/:id', async (req, res) => {
 router.delete('/:lampiranId', async (req, res) => {
   const l = await prisma.lampiran.findUnique({ where: { id: Number(req.params.lampiranId) || -1 } });
   if (!l) return res.status(404).json({ error: 'Lampiran tidak ditemukan' });
-  if (l.diunggah_oleh_id !== req.pengguna.id && !req.pengguna.peran.includes('ADMIN_SISTEM'))
+  if (l.diunggah_oleh_id !== req.pengguna.id && !req.pengguna.peran.includes('ADMIN'))
     return res.status(403).json({ error: 'Hanya pengunggah atau admin yang boleh menghapus' });
   await prisma.lampiran.delete({ where: { id: l.id } });
   fs.rm(path.join(DIR, path.basename(l.lokasi_file)), { force: true }, () => {});

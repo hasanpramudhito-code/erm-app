@@ -25,18 +25,18 @@ test('konfigurasi penilaian berisi data seed', async () => {
   assert.equal(body.level.length, 6);
 });
 
-test('unit: buat, cegah siklus induk, kode duplikat 409, hapus', async () => {
+test('unit kerja: buat, cegah siklus induk, kode duplikat 409, hapus', async () => {
   const kode = `T${Date.now() % 100000}`;
-  const a = await req('POST', '/unit', { kode, nama: 'Unit Uji', jenis: 'PUSAT' });
+  const a = await req('POST', '/unit-kerja', { kode, nama: 'Bagian Uji', jenis: 'BAGIAN' });
   assert.equal(a.status, 201);
-  const b = await req('POST', '/unit', { kode: kode + 'S', nama: 'Sub Uji', jenis: 'PUSAT', parent_id: a.body.id });
+  const b = await req('POST', '/unit-kerja', { kode: kode + 'S', nama: 'Sub Uji', jenis: 'SUB_BAGIAN', induk_id: a.body.id });
   assert.equal(b.status, 201);
-  assert.equal((await req('PATCH', `/unit/${a.body.id}`, { parent_id: b.body.id })).status, 400);
-  assert.equal((await req('POST', '/unit', { kode, nama: 'Dobel', jenis: 'PUSAT' })).status, 409);
-  assert.equal((await req('POST', '/unit', { kode: kode + 'X', nama: 'Salah', jenis: 'LAIN' })).status, 400);
-  assert.equal((await req('DELETE', `/unit/${a.body.id}`)).status, 409); // masih punya sub-unit
-  assert.equal((await req('DELETE', `/unit/${b.body.id}`)).status, 204);
-  assert.equal((await req('DELETE', `/unit/${a.body.id}`)).status, 204);
+  assert.equal((await req('PATCH', `/unit-kerja/${a.body.id}`, { induk_id: b.body.id })).status, 400);
+  assert.equal((await req('POST', '/unit-kerja', { kode, nama: 'Dobel', jenis: 'BAGIAN' })).status, 409);
+  assert.equal((await req('POST', '/unit-kerja', { kode: kode + 'X', nama: 'Salah', jenis: 'LAIN' })).status, 400);
+  assert.equal((await req('DELETE', `/unit-kerja/${a.body.id}`)).status, 409); // masih punya sub-unit
+  assert.equal((await req('DELETE', `/unit-kerja/${b.body.id}`)).status, 204);
+  assert.equal((await req('DELETE', `/unit-kerja/${a.body.id}`)).status, 204);
 });
 
 test('level risiko: tolak rentang tumpang tindih & warna salah', async () => {
@@ -54,11 +54,11 @@ test('pengaturan: validasi & hak akses', async () => {
 
 test('non-admin tidak boleh menulis data master', async () => {
   const email = `petugas-${Date.now()}@erm.local`;
-  const p = await req('POST', '/pengguna', { nama: 'Petugas', email, kata_sandi: 'sandi-uji-panjang', peran: ['PETUGAS_RISIKO_CABANG'] });
+  const p = await req('POST', '/pengguna', { nama: 'Petugas', email, kata_sandi: 'sandi-uji-panjang', peran: ['PETUGAS'] });
   const r = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, kata_sandi: 'sandi-uji-panjang' }) });
   const ck = r.headers.get('set-cookie').split(';')[0];
-  assert.equal((await req('GET', '/unit', null, ck)).status, 200);
-  assert.equal((await req('POST', '/unit', { kode: 'X1', nama: 'x', jenis: 'PUSAT' }, ck)).status, 403);
+  assert.equal((await req('GET', '/unit-kerja', null, ck)).status, 200);
+  assert.equal((await req('POST', '/unit-kerja', { kode: 'X1', nama: 'x', jenis: 'BAGIAN' }, ck)).status, 403);
   assert.equal((await req('POST', '/level-risiko', { nama: 'x', skor_min: 90, skor_maks: 91, warna: '#000000' }, ck)).status, 403);
   assert.equal((await req('PUT', '/pengaturan/metode_penilaian', { nilai: 'coordinate' }, ck)).status, 403);
   const peng = (await req('GET', '/pengaturan', null, ck)).body;

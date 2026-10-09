@@ -29,15 +29,15 @@ const RACIChart = () => {
     try { await api.put(`/raci/${r.id}/${peran}`, { pengguna_id: p?.id ?? null }); await muat(); } catch (e) { setError(e.message); }
   };
 
-  const unitOpsi = [...new Map(risiko.map((r) => [r.unit.id, r.unit.nama])).entries()];
-  const tampil = risiko.filter((r) => !unit || r.unit.id === Number(unit));
+  const unitOpsi = [...new Map(risiko.map((r) => [r.unit_kerja.id, r.unit_kerja.nama])).entries()];
+  const tampil = risiko.filter((r) => !unit || r.unit_kerja.id === Number(unit));
 
   return (
     <Box sx={{ p: 3 }}>
       <KepalaPantauan ikon={<UserCheck size={36} color="#1976d2" />} judul="Matriks RACI"
         keterangan={PERAN.map(([k, l, d]) => `${k} = ${l} (${d})`).join(' · ')}>
         <PilihPeriode daftar={daftar} value={periodeId} onChange={setPeriodeId} />
-        <PilihDari label="Unit" value={unit} onChange={setUnit} opsi={unitOpsi} minWidth={180} />
+        <PilihDari label="Unit Kerja" value={unit} onChange={setUnit} opsi={unitOpsi} minWidth={180} />
       </KepalaPantauan>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
@@ -54,7 +54,7 @@ const RACIChart = () => {
               {tampil.length === 0 && <TableRow><TableCell colSpan={5} align="center">Tidak ada risiko pada periode ini.</TableCell></TableRow>}
               {tampil.map((r) => (
                 <TableRow key={r.id}>
-                  <TableCell><strong>{r.kode}</strong> {r.nama}<Typography variant="caption" display="block" color="text.secondary">{r.unit.nama}</Typography></TableCell>
+                  <TableCell><strong>{r.kode}</strong> {r.nama}<Typography variant="caption" display="block" color="text.secondary">{r.unit_kerja.nama}</Typography></TableCell>
                   {PERAN.map(([k, l]) => {
                     const isi = r.raci.find((x) => x.peran === k)?.pengguna || null;
                     return (

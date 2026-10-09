@@ -882,7 +882,7 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
     if (!periodeId) return;
     try {
       setLoading(true);
-      const [risksList, unit, kategori] = await Promise.all([muatRisiko(periodeId), api.get('/unit'), api.get('/kategori-risiko')]);
+      const [risksList, unit, kategori] = await Promise.all([muatRisiko(periodeId), api.get('/unit-kerja'), api.get('/kategori-risiko')]);
       setRisks(risksList);
       setOrganizationUnits(unit.map((u) => ({ id: u.id, name: u.nama })));
       setRiskTypes(kategori.map((k) => ({ id: k.id, name: k.nama })));

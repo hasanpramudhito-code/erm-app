@@ -21,9 +21,9 @@ test.before(async () => {
   const l = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: process.env.SEED_ADMIN_EMAIL, kata_sandi: process.env.SEED_ADMIN_PASSWORD }) });
   admin = l.headers.get('set-cookie').split(';')[0];
   periode = await prisma.periode.findFirst({ where: { status: 'TERBUKA', nama: String(T) } });
-  unit = await prisma.unit.create({ data: { kode: `PM${sufiks}`, nama: 'Cabang Pantau', jenis: 'CABANG' } });
+  unit = await prisma.unit_kerja.create({ data: { kode: `PM${sufiks}`, nama: 'Cabang Pantau', jenis: 'CABANG' } });
   risiko = (await req('POST', '/risiko', {
-    periode_id: periode.id, unit_id: unit.id, kode: `PM-${sufiks}`, nama: 'Risiko dipantau',
+    periode_id: periode.id, unit_kerja_id: unit.id, kode: `PM-${sufiks}`, nama: 'Risiko dipantau',
     inheren: { kemungkinan: 4, dampak: 4 }, residual: { kemungkinan: 2, dampak: 3 },
     mitigasi: [{ uraian: 'Ganti pipa' }],
     kri: [
@@ -34,9 +34,9 @@ test.before(async () => {
 });
 
 test.after(async () => {
-  await prisma.risiko.deleteMany({ where: { unit_id: unit.id } });
-  await prisma.insiden.deleteMany({ where: { unit_id: unit.id } });
-  await prisma.unit.delete({ where: { id: unit.id } });
+  await prisma.risiko.deleteMany({ where: { unit_kerja_id: unit.id } });
+  await prisma.insiden.deleteMany({ where: { unit_kerja_id: unit.id } });
+  await prisma.unit_kerja.delete({ where: { id: unit.id } });
   server.close();
   await prisma.$disconnect();
 });

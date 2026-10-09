@@ -94,7 +94,7 @@ const AntreanVerifikasi = () => {
                 {tab === 1 && <TableCell>Bulan</TableCell>}
                 <TableCell>Kode</TableCell>
                 <TableCell>Risiko</TableCell>
-                <TableCell>Unit</TableCell>
+                <TableCell>Unit Kerja</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Aksi</TableCell>
               </TableRow>
@@ -117,10 +117,10 @@ const AntreanVerifikasi = () => {
                       {r.deskripsi || r.nama}
                       {tab === 1 && d.peristiwa_terjadi && <Chip size="small" color="warning" label="Peristiwa terjadi" sx={{ ml: 1 }} />}
                     </TableCell>
-                    <TableCell>{r.unit?.nama}</TableCell>
+                    <TableCell>{r.unit_kerja?.nama}</TableCell>
                     <TableCell><Chip size="small" label={LABEL_PERSETUJUAN[d.status_persetujuan]} /></TableCell>
                     <TableCell>
-                      <AksiPersetujuan entitas={entitas} id={d.id} status={d.status_persetujuan} unitId={r.unit_id} onSelesai={muat} />
+                      <AksiPersetujuan entitas={entitas} id={d.id} status={d.status_persetujuan} unitId={r.unit_kerja_id} alur={r.unit_kerja?.alur_persetujuan} onSelesai={muat} />
                     </TableCell>
                   </TableRow>
                 );

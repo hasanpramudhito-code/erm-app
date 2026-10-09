@@ -6,9 +6,9 @@ import { api } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { LABEL_PERSETUJUAN } from '../../services/risiko';
 
-const PIMPINAN = ['PIMPINAN_UNIT_PUSAT', 'PIMPINAN_CABANG'];
-const PETUGAS = ['PETUGAS_RISIKO_PUSAT', 'PETUGAS_RISIKO_CABANG'];
-const ADMIN = ['ADMIN_SISTEM', 'DIREKSI'];
+const PIMPINAN = ['PIMPINAN'];
+const PETUGAS = ['PETUGAS'];
+const ADMIN = ['ADMIN', 'DIREKSI'];
 
 const LABEL_AKSI = {
   ajukan: 'Ajukan', setujui: 'Setujui', finalkan: 'Verifikasi Final', kembalikan: 'Kembalikan', buka: 'Buka Kunci',
@@ -17,21 +17,23 @@ const WARNA_AKSI = { ajukan: 'primary', setujui: 'success', finalkan: 'success',
 const BUTUH_CATATAN = ['kembalikan', 'buka'];
 
 // Aksi yang tampil untuk pengguna ini. Server tetap memeriksa ulang; ini hanya untuk tampilan.
-export function aksiTersedia(userData, status, unitId) {
+// alur SATU_TINGKAT: pimpinan menyetujui langsung FINAL dan membuka kunci (adendum v2 E.2).
+export function aksiTersedia(userData, status, unitId, alur) {
   const peran = userData?.peran || [];
   const ada = (d) => peran.some((p) => d.includes(p));
-  const unitSendiri = userData?.unit_id === unitId;
+  const unitSendiri = userData?.unit_kerja_id === unitId;
   const admin = ada(ADMIN);
   const hasil = [];
   if (['DRAF', 'DIKEMBALIKAN'].includes(status) && (admin || ((ada(PETUGAS) || ada(PIMPINAN)) && unitSendiri))) hasil.push('ajukan');
   if (status === 'DIAJUKAN' && (admin || (ada(PIMPINAN) && unitSendiri))) hasil.push('setujui', 'kembalikan');
   if (status === 'DISETUJUI_PIMPINAN' && (admin || ada(['PENGELOLA_RISIKO']))) hasil.push('finalkan', 'kembalikan');
-  if (status === 'FINAL' && (admin || ada(['PENGELOLA_RISIKO']))) hasil.push('buka');
+  const pembuka = alur === 'SATU_TINGKAT' ? ada(PIMPINAN) && unitSendiri : ada(['PENGELOLA_RISIKO']);
+  if (status === 'FINAL' && (admin || pembuka)) hasil.push('buka');
   return hasil;
 }
 
 // Tombol aksi persetujuan + dialog konfirmasi/catatan + riwayat.
-const AksiPersetujuan = ({ entitas, id, status, unitId, onSelesai, tampilRiwayat = true }) => {
+const AksiPersetujuan = ({ entitas, id, status, unitId, alur, onSelesai, tampilRiwayat = true }) => {
   const { userData } = useAuth();
   const [aksi, setAksi] = useState(null);
   const [catatan, setCatatan] = useState('');
@@ -39,7 +41,7 @@ const AksiPersetujuan = ({ entitas, id, status, unitId, onSelesai, tampilRiwayat
   const [proses, setProses] = useState(false);
   const [riwayat, setRiwayat] = useState(null);
 
-  const daftar = aksiTersedia(userData, status, unitId);
+  const daftar = aksiTersedia(userData, status, unitId, alur);
 
   const jalankan = async () => {
     setProses(true);
@@ -63,7 +65,7 @@ const AksiPersetujuan = ({ entitas, id, status, unitId, onSelesai, tampilRiwayat
       {daftar.map((a) => (
         <Button key={a} size="small" variant={a === 'kembalikan' || a === 'buka' ? 'outlined' : 'contained'} color={WARNA_AKSI[a]}
           onClick={() => { setAksi(a); setError(''); }}>
-          {LABEL_AKSI[a]}
+          {a === 'setujui' && alur === 'SATU_TINGKAT' ? 'Setujui (Final)' : LABEL_AKSI[a]}
         </Button>
       ))}
       {tampilRiwayat && <Button size="small" onClick={bukaRiwayat}>Riwayat</Button>}

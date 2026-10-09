@@ -201,15 +201,15 @@ const DashboardKorporat = () => {
       <Grid container spacing={3}>
         <Grid item xs={12} lg={6}>
           <Paper sx={{ p: 2, height: '100%' }}>
-            <Typography variant="h6" gutterBottom>Kelengkapan per Unit · {bulan && `${NAMA_BULAN[bulan.bulan - 1]} ${bulan.tahun}`}</Typography>
+            <Typography variant="h6" gutterBottom>Kelengkapan per Unit Kerja · {bulan && `${NAMA_BULAN[bulan.bulan - 1]} ${bulan.tahun}`}</Typography>
             <Table size="small">
               <TableHead>
-                <TableRow><TableCell>Unit</TableCell><TableCell align="right">Risiko final</TableCell><TableCell align="right">Laporan final</TableCell><TableCell align="right">Menunggu verifikasi</TableCell></TableRow>
+                <TableRow><TableCell>Unit Kerja</TableCell><TableCell align="right">Risiko final</TableCell><TableCell align="right">Laporan final</TableCell><TableCell align="right">Menunggu verifikasi</TableCell></TableRow>
               </TableHead>
               <TableBody>
                 {(bln?.per_unit || []).map((u) => (
-                  <TableRow key={u.unit}>
-                    <TableCell>{u.unit} <Typography component="span" variant="caption" color="text.secondary">({u.jenis})</Typography></TableCell>
+                  <TableRow key={u.unit_kerja}>
+                    <TableCell>{u.unit_kerja} <Typography component="span" variant="caption" color="text.secondary">({u.jenis})</Typography></TableCell>
                     <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>{u.risiko_final} / {u.risiko}</TableCell>
                     <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>{u.laporan_final} / {u.risiko}</TableCell>
                     <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>{u.laporan_diajukan}</TableCell>
@@ -228,7 +228,7 @@ const DashboardKorporat = () => {
                 <TableBody>
                   {bln.kri_merah.map((k, i) => (
                     <TableRow key={i}>
-                      <TableCell>{k.kri}<Typography variant="caption" color="text.secondary" display="block">{k.risiko} · {k.unit}</Typography></TableCell>
+                      <TableCell>{k.kri}<Typography variant="caption" color="text.secondary" display="block">{k.risiko} · {k.unit_kerja}</Typography></TableCell>
                       <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>{k.nilai} {k.satuan}</TableCell>
                     </TableRow>
                   ))}
@@ -244,7 +244,7 @@ const DashboardKorporat = () => {
                   {bln.peristiwa.map((p, i) => (
                     <TableRow key={i}>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>{new Date(p.tanggal).toLocaleDateString('id-ID')}</TableCell>
-                      <TableCell>{p.deskripsi}<Typography variant="caption" color="text.secondary" display="block">{p.risiko} · {p.unit}</Typography></TableCell>
+                      <TableCell>{p.deskripsi}<Typography variant="caption" color="text.secondary" display="block">{p.risiko} · {p.unit_kerja}</Typography></TableCell>
                       <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{p.kerugian ? rupiah(p.kerugian) : '-'}</TableCell>
                     </TableRow>
                   ))}

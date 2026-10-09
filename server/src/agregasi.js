@@ -5,7 +5,7 @@ const { wajibLogin, wajibPeran } = require('./auth');
 const { hitungSkor } = require('./skor');
 
 const router = express.Router();
-router.use(wajibLogin, wajibPeran('ADMIN_SISTEM', 'DIREKSI', 'PENGELOLA_RISIKO', 'KEPATUHAN'));
+router.use(wajibLogin, wajibPeran('ADMIN', 'DIREKSI', 'PENGELOLA_RISIKO', 'AUDITOR'));
 
 // Penanda (handoff 6.3): unit dengan level lebih tinggi dari level nilai utama (keputusan pengguna 2026-10-09).
 const SELISIH_LEVEL_PENANDA = 1;
@@ -82,14 +82,14 @@ router.get('/', async (req, res) => {
           where: { periode_id },
           select: {
             status_persetujuan: true,
-            unit: { select: { id: true, nama: true } },
+            unit_kerja: { select: { id: true, nama: true } },
             penilaian: { where: { jenis }, select: { kemungkinan: true, dampak: true } },
           },
         },
       },
       orderBy: [{ berlaku_untuk: 'asc' }, { kode: 'asc' }],
     }),
-    prisma.unit.count({ where: { jenis: 'CABANG', aktif: true } }),
+    prisma.unit_kerja.count({ where: { jenis: { in: ['CABANG', 'UNIT'] }, pemilik_risiko: true, aktif: true } }),
   ]);
 
   res.json({
@@ -101,10 +101,10 @@ router.get('/', async (req, res) => {
       return {
         id: ru.id, kode: ru.kode, nama: ru.nama, berlaku_untuk: ru.berlaku_untuk,
         pemilik: ru.berlaku_untuk === 'CABANG' ? 'Direktorat Utama' : ru.direktorat_pemilik?.nama || null,
-        // Cabang: seluruh cabang aktif wajib; Pusat: unit yang memilihnya.
+        // Cabang: seluruh Cabang/Unit aktif wajib; Pusat: bagian yang memilihnya.
         jumlah_seharusnya: ru.berlaku_untuk === 'CABANG' ? jumlahCabang : ru.risiko.length,
         jumlah_final: final.length,
-        hasil: agregasi(final.map((r) => ({ unit: r.unit.nama, ...r.penilaian[0] })), ctx),
+        hasil: agregasi(final.map((r) => ({ unit: r.unit_kerja.nama, ...r.penilaian[0] })), ctx),
       };
     }),
   });
@@ -121,17 +121,17 @@ router.get('/bulanan', async (req, res) => {
       where: { periode_id },
       select: {
         status_persetujuan: true,
-        unit: { select: { id: true, nama: true, jenis: true } },
+        unit_kerja: { select: { id: true, nama: true, jenis: true } },
         pemantauan_bulanan: { where: { tahun, bulan }, select: { status_persetujuan: true } },
       },
     }),
     prisma.pengukuran_kri.findMany({
       where: { status: 'MERAH', pemantauan_bulanan: { tahun, bulan, status_persetujuan: 'FINAL', risiko: { periode_id } } },
-      select: { nilai: true, kri: { select: { nama: true, satuan: true } }, pemantauan_bulanan: { select: { risiko: { select: { kode: true, unit: { select: { nama: true } } } } } } },
+      select: { nilai: true, kri: { select: { nama: true, satuan: true } }, pemantauan_bulanan: { select: { risiko: { select: { kode: true, unit_kerja: { select: { nama: true } } } } } } },
     }),
     prisma.insiden.findMany({
       where: { pemantauan_bulanan: { tahun, bulan, status_persetujuan: 'FINAL', risiko: { periode_id } } },
-      select: { tanggal_kejadian: true, deskripsi: true, kerugian: true, risiko: { select: { kode: true } }, unit: { select: { nama: true } } },
+      select: { tanggal_kejadian: true, deskripsi: true, kerugian: true, risiko: { select: { kode: true } }, unit_kerja: { select: { nama: true } } },
       orderBy: { tanggal_kejadian: 'asc' },
     }),
     prisma.mitigasi.count({
@@ -141,13 +141,13 @@ router.get('/bulanan', async (req, res) => {
 
   const perUnit = new Map();
   for (const r of risiko) {
-    const u = perUnit.get(r.unit.id) || { unit: r.unit.nama, jenis: r.unit.jenis, risiko: 0, risiko_final: 0, laporan_final: 0, laporan_diajukan: 0 };
+    const u = perUnit.get(r.unit_kerja.id) || { unit_kerja: r.unit_kerja.nama, jenis: r.unit_kerja.jenis, risiko: 0, risiko_final: 0, laporan_final: 0, laporan_diajukan: 0 };
     u.risiko++;
     if (r.status_persetujuan === 'FINAL') u.risiko_final++;
     const lap = r.pemantauan_bulanan[0];
     if (lap?.status_persetujuan === 'FINAL') u.laporan_final++;
     else if (lap && lap.status_persetujuan !== 'DRAF') u.laporan_diajukan++;
-    perUnit.set(r.unit.id, u);
+    perUnit.set(r.unit_kerja.id, u);
   }
 
   res.json({
@@ -160,9 +160,9 @@ router.get('/bulanan', async (req, res) => {
       kerugian: peristiwa.reduce((t, p) => t + Number(p.kerugian || 0), 0),
       mitigasi_terlambat: mitigasiTerlambat,
     },
-    per_unit: [...perUnit.values()].sort((a, b) => a.jenis.localeCompare(b.jenis) || a.unit.localeCompare(b.unit)),
-    kri_merah: kriMerah.map((k) => ({ kri: k.kri.nama, nilai: Number(k.nilai), satuan: k.kri.satuan, risiko: k.pemantauan_bulanan.risiko.kode, unit: k.pemantauan_bulanan.risiko.unit.nama })),
-    peristiwa: peristiwa.map((p) => ({ tanggal: p.tanggal_kejadian, deskripsi: p.deskripsi, kerugian: p.kerugian && Number(p.kerugian), risiko: p.risiko?.kode, unit: p.unit?.nama })),
+    per_unit: [...perUnit.values()].sort((a, b) => a.jenis.localeCompare(b.jenis) || a.unit_kerja.localeCompare(b.unit_kerja)),
+    kri_merah: kriMerah.map((k) => ({ kri: k.kri.nama, nilai: Number(k.nilai), satuan: k.kri.satuan, risiko: k.pemantauan_bulanan.risiko.kode, unit_kerja: k.pemantauan_bulanan.risiko.unit_kerja.nama })),
+    peristiwa: peristiwa.map((p) => ({ tanggal: p.tanggal_kejadian, deskripsi: p.deskripsi, kerugian: p.kerugian && Number(p.kerugian), risiko: p.risiko?.kode, unit_kerja: p.unit_kerja?.nama })),
   });
 });
 

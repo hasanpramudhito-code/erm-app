@@ -24,18 +24,18 @@ test.before(async () => {
 test.after(async () => {
   const ruUji = (await prisma.risiko_utama.findMany({ where: { kode: { contains: String(sufiks) } }, select: { id: true } })).map((r) => r.id);
   const semuaRu = [...new Set([...dibuat.ru, ...ruUji])];
-  await prisma.risiko.deleteMany({ where: { OR: [{ unit_id: { in: dibuat.unit } }, { risiko_utama_id: { in: semuaRu } }] } });
+  await prisma.risiko.deleteMany({ where: { OR: [{ unit_kerja_id: { in: dibuat.unit } }, { risiko_utama_id: { in: semuaRu } }] } });
   await prisma.pustaka_penyebab.deleteMany({ where: { risiko_utama_id: { in: semuaRu } } });
   await prisma.pustaka_dampak.deleteMany({ where: { risiko_utama_id: { in: semuaRu } } });
   await prisma.risiko_utama.deleteMany({ where: { id: { in: semuaRu } } });
-  await prisma.unit.deleteMany({ where: { id: { in: dibuat.unit } } });
+  await prisma.unit_kerja.deleteMany({ where: { id: { in: dibuat.unit } } });
   await prisma.periode.delete({ where: { id: periodeBaru.id } });
   server.close();
   await prisma.$disconnect();
 });
 
 test('risiko utama masuk daftar periode -> entri draf tiap cabang; cabang baru ikut; idempoten', async () => {
-  const c1 = (await req('POST', '/unit', { kode: `C1${sufiks}`, nama: 'Cabang Satu', jenis: 'CABANG' })).body;
+  const c1 = (await req('POST', '/unit-kerja', { kode: `C1${sufiks}`, nama: 'Cabang Satu', jenis: 'CABANG' })).body;
   dibuat.unit.push(c1.id);
   const ru = await req('POST', '/risiko-utama', {
     kode: `RU${sufiks}`, nama: 'Kehilangan air (NRW) tinggi', berlaku_untuk: 'CABANG', periode_id: periode.id,
@@ -44,15 +44,15 @@ test('risiko utama masuk daftar periode -> entri draf tiap cabang; cabang baru i
   assert.equal(ru.status, 201, JSON.stringify(ru.body));
   dibuat.ru.push(ru.body.id);
   assert.ok(ru.body.entri_dibuat >= 1);
-  assert.ok(await prisma.risiko.findFirst({ where: { unit_id: c1.id, risiko_utama_id: ru.body.id, periode_id: periode.id, status_persetujuan: 'DRAF' } }));
+  assert.ok(await prisma.risiko.findFirst({ where: { unit_kerja_id: c1.id, risiko_utama_id: ru.body.id, periode_id: periode.id, status_persetujuan: 'DRAF' } }));
 
-  const c2 = (await req('POST', '/unit', { kode: `C2${sufiks}`, nama: 'Cabang Dua', jenis: 'CABANG' })).body;
+  const c2 = (await req('POST', '/unit-kerja', { kode: `C2${sufiks}`, nama: 'Cabang Dua', jenis: 'CABANG' })).body;
   dibuat.unit.push(c2.id);
-  assert.ok(await prisma.risiko.findFirst({ where: { unit_id: c2.id, risiko_utama_id: ru.body.id } }));
+  assert.ok(await prisma.risiko.findFirst({ where: { unit_kerja_id: c2.id, risiko_utama_id: ru.body.id } }));
 
   await req('POST', '/risiko-utama/bentuk-entri', {});
-  assert.equal(await prisma.risiko.count({ where: { unit_id: c1.id, risiko_utama_id: ru.body.id } }), 1);
-  assert.equal((await req('POST', '/risiko', { periode_id: periode.id, unit_id: c1.id, risiko_utama_id: ru.body.id, kode: `DBL${sufiks}`, nama: 'dobel' })).status, 409);
+  assert.equal(await prisma.risiko.count({ where: { unit_kerja_id: c1.id, risiko_utama_id: ru.body.id } }), 1);
+  assert.equal((await req('POST', '/risiko', { periode_id: periode.id, unit_kerja_id: c1.id, risiko_utama_id: ru.body.id, kode: `DBL${sufiks}`, nama: 'dobel' })).status, 409);
 });
 
 test('risiko utama tanpa periode tidak membentuk entri; tidak bisa dipakai di periode yang tidak memuatnya', async () => {
@@ -60,7 +60,7 @@ test('risiko utama tanpa periode tidak membentuk entri; tidak bisa dipakai di pe
   dibuat.ru.push(ru.id);
   assert.equal(ru.entri_dibuat, 0);
   assert.equal(await prisma.risiko.count({ where: { risiko_utama_id: ru.id } }), 0);
-  assert.equal((await req('POST', '/risiko', { periode_id: periode.id, unit_id: dibuat.unit[0], risiko_utama_id: ru.id, kode: `NP-${sufiks}`, nama: 'x' })).status, 400);
+  assert.equal((await req('POST', '/risiko', { periode_id: periode.id, unit_kerja_id: dibuat.unit[0], risiko_utama_id: ru.id, kode: `NP-${sufiks}`, nama: 'x' })).status, 400);
 });
 
 test('periode baru: salin daftar (PERSIAPAN tanpa entri), ubah daftar, buka -> entri terbentuk', async () => {
@@ -84,7 +84,7 @@ test('periode baru: salin daftar (PERSIAPAN tanpa entri), ubah daftar, buka -> e
 
 test('pustaka: pilih dari pustaka & tolak pustaka risiko utama lain; item terpakai dinonaktifkan', async () => {
   const ru = await prisma.risiko_utama.findUnique({ where: { id: dibuat.ru[0] }, include: { pustaka_penyebab: true } });
-  const entri = await prisma.risiko.findFirst({ where: { risiko_utama_id: ru.id, unit_id: dibuat.unit[0] } });
+  const entri = await prisma.risiko.findFirst({ where: { risiko_utama_id: ru.id, unit_kerja_id: dibuat.unit[0] } });
   const pp = ru.pustaka_penyebab[0];
   const ok = await req('PATCH', `/risiko/${entri.id}`, { penyebab: [{ uraian: pp.uraian, pustaka_penyebab_id: pp.id }, { uraian: 'Khas cabang' }] });
   assert.equal(ok.status, 200, JSON.stringify(ok.body));

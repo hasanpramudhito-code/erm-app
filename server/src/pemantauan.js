@@ -1,14 +1,14 @@
 // API laporan pemantauan bulanan per risiko: realisasi mitigasi, nilai KRI, catatan, peristiwa risiko.
 const express = require('express');
 const prisma = require('./db');
-const { wajibLogin, cakupanUnit } = require('./auth');
+const { wajibLogin, cakupanUnitKerja } = require('./auth');
 const { catat } = require('./audit');
 
 const router = express.Router();
 router.use(wajibLogin);
 
-const PERAN_GLOBAL_TULIS = ['ADMIN_SISTEM', 'DIREKSI', 'PENGELOLA_RISIKO'];
-const PERAN_UNIT_TULIS = ['PIMPINAN_UNIT_PUSAT', 'PETUGAS_RISIKO_PUSAT', 'PIMPINAN_CABANG', 'PETUGAS_RISIKO_CABANG'];
+const PERAN_GLOBAL_TULIS = ['ADMIN', 'DIREKSI', 'PENGELOLA_RISIKO'];
+const PERAN_UNIT_TULIS = ['PIMPINAN', 'PETUGAS'];
 const STATUS_BISA_DIUBAH = ['DRAF', 'DIKEMBALIKAN'];
 const STATUS_MITIGASI = ['DIRENCANAKAN', 'BERJALAN', 'SELESAI', 'TERLAMBAT', 'DIBATALKAN'];
 const TENGGAT_DEFAULT = 10;
@@ -39,9 +39,10 @@ const sertakanLaporan = {
 
 async function ambilRisiko(req, id) {
   const r = await prisma.risiko.findFirst({
-    where: { id, ...cakupanUnit(req.pengguna) },
+    where: { id, ...cakupanUnitKerja(req.pengguna) },
     include: {
       periode: true,
+      unit_kerja: { select: { alur_persetujuan: true } },
       mitigasi: { orderBy: { id: 'asc' }, include: { penanggung_jawab: { select: { id: true, nama: true } } } },
       kri: { where: { aktif: true }, orderBy: { id: 'asc' } },
     },
@@ -83,7 +84,7 @@ router.put('/risiko/:risikoId/:tahun/:bulan', async (req, res) => {
   cekBulan(tahun, bulan, risiko.periode);
   if (risiko.periode.status !== 'TERBUKA') throw galat(400, 'Periode sudah ditutup');
   const boleh = req.pengguna.peran.includes('DIREKSI') || punya(req.pengguna, PERAN_GLOBAL_TULIS) ||
-    (punya(req.pengguna, PERAN_UNIT_TULIS) && req.pengguna.unit_id === risiko.unit_id);
+    (punya(req.pengguna, PERAN_UNIT_TULIS) && req.pengguna.unit_kerja_id === risiko.unit_kerja_id);
   if (!boleh) throw galat(403, 'Akses ditolak');
 
   const lama = await prisma.pemantauan_bulanan.findUnique({ where: { risiko_id_tahun_bulan: { risiko_id, tahun, bulan } }, include: sertakanLaporan });
@@ -139,7 +140,7 @@ router.put('/risiko/:risikoId/:tahun/:bulan', async (req, res) => {
     await tx.insiden.deleteMany({ where: { pemantauan_bulanan_id: lap.id } });
     await tx.insiden.createMany({
       data: peristiwa.map((p) => ({
-        ...p, pemantauan_bulanan_id: lap.id, risiko_id, unit_id: risiko.unit_id, pelapor_id: req.pengguna.id,
+        ...p, pemantauan_bulanan_id: lap.id, risiko_id, unit_kerja_id: risiko.unit_kerja_id, pelapor_id: req.pengguna.id,
         judul: `Peristiwa ${risiko.kode}`, sumber: 'PEMANTAUAN',
       })),
     });
@@ -179,17 +180,17 @@ router.get('/ringkasan', async (req, res) => {
   if (!periode_id || !tahun || !bulan) throw galat(400, 'periode_id, tahun, bulan wajib');
   const [risiko, tgl] = await Promise.all([
     prisma.risiko.findMany({
-      where: { periode_id, ...cakupanUnit(req.pengguna) },
+      where: { periode_id, ...cakupanUnitKerja(req.pengguna) },
       select: {
         id: true, kode: true, nama: true, deskripsi: true,
-        unit: { select: { id: true, nama: true } },
+        unit_kerja: { select: { id: true, nama: true, alur_persetujuan: true } },
         _count: { select: { mitigasi: true, kri: true } },
         pemantauan_bulanan: {
           where: { tahun, bulan },
           select: { id: true, status_persetujuan: true, diajukan_pada: true, peristiwa_terjadi: true, diubah_pada: true },
         },
       },
-      orderBy: [{ unit_id: 'asc' }, { kode: 'asc' }],
+      orderBy: [{ unit_kerja_id: 'asc' }, { kode: 'asc' }],
     }),
     tanggalTenggat(),
   ]);

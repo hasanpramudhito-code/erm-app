@@ -31,13 +31,16 @@ import {
 import { Plus, Edit2, Trash2, Network } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { LABEL_JENIS_UK } from '../services/risiko';
 
 const EMPTY_UNIT = {
   nama: '',
   kode: '',
   jenis: 'CABANG',
   direktorat_id: '',
-  parent_id: '',
+  induk_id: '',
+  pemilik_risiko: true,
+  alur_persetujuan: 'DUA_TINGKAT',
   adalah_pengelola_risiko: false,
   aktif: true,
   deskripsi: ''
@@ -57,12 +60,12 @@ const OrganizationStructure = () => {
   const [error, setError] = useState('');
   const { userData } = useAuth();
 
-  const isAdmin = userData?.peran?.includes('ADMIN_SISTEM');
+  const isAdmin = userData?.peran?.includes('ADMIN');
 
   // Load organization units
   const loadOrganization = async () => {
     try {
-      const [u, d] = await Promise.all([api.get('/unit'), api.get('/direktorat')]);
+      const [u, d] = await Promise.all([api.get('/unit-kerja'), api.get('/direktorat')]);
       setUnits(u);
       setDirektorat(d);
     } catch (err) {
@@ -80,13 +83,14 @@ const OrganizationStructure = () => {
     const body = {
       ...formData,
       direktorat_id: formData.direktorat_id || null,
-      parent_id: formData.parent_id || null
+      induk_id: formData.induk_id || null,
+      alur_persetujuan: formData.pemilik_risiko ? formData.alur_persetujuan : null
     };
     try {
       if (editingUnit) {
-        await api.patch(`/unit/${editingUnit.id}`, body);
+        await api.patch(`/unit-kerja/${editingUnit.id}`, body);
       } else {
-        await api.post('/unit', body);
+        await api.post('/unit-kerja', body);
       }
       setOpenDialog(false);
       setEditingUnit(null);
@@ -98,9 +102,9 @@ const OrganizationStructure = () => {
   };
 
   const handleDelete = async (unit) => {
-    if (!window.confirm(`Hapus unit ${unit.nama}? Unit yang sudah dipakai data lain tidak dapat dihapus; nonaktifkan saja.`)) return;
+    if (!window.confirm(`Hapus unit kerja ${unit.nama}? Unit kerja yang sudah dipakai data lain tidak dapat dihapus; nonaktifkan saja.`)) return;
     try {
-      await api.delete(`/unit/${unit.id}`);
+      await api.delete(`/unit-kerja/${unit.id}`);
       loadOrganization();
     } catch (err) {
       setError(err.message);
@@ -114,7 +118,9 @@ const OrganizationStructure = () => {
       kode: unit.kode || '',
       jenis: unit.jenis || 'CABANG',
       direktorat_id: unit.direktorat_id || '',
-      parent_id: unit.parent_id || '',
+      induk_id: unit.induk_id || '',
+      pemilik_risiko: unit.pemilik_risiko,
+      alur_persetujuan: unit.alur_persetujuan || 'DUA_TINGKAT',
       adalah_pengelola_risiko: unit.adalah_pengelola_risiko,
       aktif: unit.aktif,
       deskripsi: unit.deskripsi || ''
@@ -148,7 +154,7 @@ const OrganizationStructure = () => {
   };
 
   // Get units by parent (null = root)
-  const getUnitsByParent = (parentId = null) => units.filter(unit => (unit.parent_id ?? null) === parentId);
+  const getUnitsByParent = (parentId = null) => units.filter(unit => (unit.induk_id ?? null) === parentId);
 
   const renderUnitCard = (unit, level = 0) => {
     const children = getUnitsByParent(unit.id);
@@ -161,7 +167,8 @@ const OrganizationStructure = () => {
               <Box>
                 <Typography variant="h6">
                   {unit.nama}{' '}
-                  <Chip size="small" label={unit.jenis} color={unit.jenis === 'PUSAT' ? 'primary' : 'default'} />
+                  <Chip size="small" label={LABEL_JENIS_UK[unit.jenis]} color={unit.jenis === 'BAGIAN' ? 'primary' : 'default'} />
+                  {unit.pemilik_risiko && <Chip size="small" variant="outlined" label={unit.alur_persetujuan === 'SATU_TINGKAT' ? 'Pemilik risiko · satu tingkat' : 'Pemilik risiko'} sx={{ ml: 1 }} />}
                   {unit.adalah_pengelola_risiko && <Chip size="small" color="warning" label="Pengelola Risiko" sx={{ ml: 1 }} />}
                   {!unit.aktif && <Chip size="small" label="Nonaktif" sx={{ ml: 1 }} />}
                 </Typography>
@@ -203,7 +210,7 @@ const OrganizationStructure = () => {
           <Box>
             <Typography variant="h4">Struktur Organisasi</Typography>
             <Typography variant="subtitle1" color="textSecondary">
-              Kelola direktorat, unit Pusat, kantor Cabang, dan sub-unit
+              Kelola direktorat, bagian & sub-bagian Pusat, Cabang, dan Unit
             </Typography>
           </Box>
         </Box>
@@ -213,7 +220,7 @@ const OrganizationStructure = () => {
             startIcon={<Plus size={18} />}
             onClick={() => (tab === 0 ? setOpenDialog(true) : setDirDialog(true))}
           >
-            {tab === 0 ? 'Tambah Unit' : 'Tambah Direktorat'}
+            {tab === 0 ? 'Tambah Unit Kerja' : 'Tambah Direktorat'}
           </Button>
         )}
       </Box>
@@ -221,7 +228,7 @@ const OrganizationStructure = () => {
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
       <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Unit & Cabang" />
+        <Tab label="Unit Kerja" />
         <Tab label="Direktorat" />
       </Tabs>
 
@@ -233,7 +240,7 @@ const OrganizationStructure = () => {
 
           {getUnitsByParent().length === 0 ? (
             <Typography color="textSecondary" textAlign="center" py={4}>
-              Belum ada unit organisasi. Klik "Tambah Unit" untuk memulai.
+              Belum ada unit kerja. Klik "Tambah Unit Kerja" untuk memulai.
             </Typography>
           ) : (
             getUnitsByParent().map(unit => renderUnitCard(unit))
@@ -249,7 +256,7 @@ const OrganizationStructure = () => {
                 <TableCell>Kode</TableCell>
                 <TableCell>Nama</TableCell>
                 <TableCell>Jabatan Direktur</TableCell>
-                <TableCell>Jumlah Unit</TableCell>
+                <TableCell>Jumlah Unit Kerja</TableCell>
                 {isAdmin && <TableCell>Aksi</TableCell>}
               </TableRow>
             </TableHead>
@@ -280,13 +287,13 @@ const OrganizationStructure = () => {
       {/* Add/Edit Unit Dialog */}
       <Dialog open={openDialog} onClose={() => { setOpenDialog(false); setEditingUnit(null); setFormData(EMPTY_UNIT); }} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {editingUnit ? 'Edit Unit Organisasi' : 'Tambah Unit Organisasi'}
+          {editingUnit ? 'Ubah Unit Kerja' : 'Tambah Unit Kerja'}
         </DialogTitle>
         <DialogContent>
           <form onSubmit={handleSubmit}>
             <TextField
               fullWidth
-              label="Nama Unit"
+              label="Nama Unit Kerja"
               value={formData.nama}
               onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
               margin="normal"
@@ -294,7 +301,7 @@ const OrganizationStructure = () => {
             />
             <TextField
               fullWidth
-              label="Kode Unit"
+              label="Kode"
               value={formData.kode}
               onChange={(e) => setFormData({ ...formData, kode: e.target.value })}
               margin="normal"
@@ -307,11 +314,10 @@ const OrganizationStructure = () => {
                   <Select
                     value={formData.jenis}
                     label="Jenis"
-                    onChange={(e) => setFormData({ ...formData, jenis: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, jenis: e.target.value, pemilik_risiko: e.target.value !== 'SUB_BAGIAN' })}
                     required
                   >
-                    <MenuItem value="PUSAT">Unit Pusat</MenuItem>
-                    <MenuItem value="CABANG">Kantor Cabang</MenuItem>
+                    {Object.entries(LABEL_JENIS_UK).map(([k, l]) => <MenuItem key={k} value={k}>{l}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -331,13 +337,13 @@ const OrganizationStructure = () => {
             </Grid>
 
             <FormControl fullWidth margin="normal">
-              <InputLabel>Unit Induk (untuk sub-unit)</InputLabel>
+              <InputLabel>Induk (untuk sub-bagian)</InputLabel>
               <Select
-                value={formData.parent_id}
-                label="Unit Induk (untuk sub-unit)"
-                onChange={(e) => setFormData({ ...formData, parent_id: e.target.value })}
+                value={formData.induk_id}
+                label="Induk (untuk sub-bagian)"
+                onChange={(e) => setFormData({ ...formData, induk_id: e.target.value })}
               >
-                <MenuItem value="">Tidak Ada (Root)</MenuItem>
+                <MenuItem value="">Tidak ada</MenuItem>
                 {units
                   .filter(unit => unit.id !== editingUnit?.id)
                   .map(unit => (
@@ -359,8 +365,21 @@ const OrganizationStructure = () => {
               rows={3}
             />
             <FormControlLabel
+              control={<Checkbox checked={formData.pemilik_risiko} onChange={(e) => setFormData({ ...formData, pemilik_risiko: e.target.checked })} />}
+              label="Pemilik risiko (memegang register sendiri)"
+            />
+            {formData.pemilik_risiko && (
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Alur persetujuan</InputLabel>
+                <Select value={formData.alur_persetujuan} label="Alur persetujuan" onChange={(e) => setFormData({ ...formData, alur_persetujuan: e.target.value })}>
+                  <MenuItem value="DUA_TINGKAT">Dua tingkat: pimpinan, lalu verifikasi Pengelola Risiko</MenuItem>
+                  <MenuItem value="SATU_TINGKAT">Satu tingkat: persetujuan pimpinan langsung final</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+            <FormControlLabel
               control={<Checkbox checked={formData.adalah_pengelola_risiko} onChange={(e) => setFormData({ ...formData, adalah_pengelola_risiko: e.target.checked })} />}
-              label="Unit pengelola risiko Pusat (verifikator)"
+              label="Pengelola risiko Pusat (verifikator)"
             />
             <FormControlLabel
               control={<Checkbox checked={formData.aktif} onChange={(e) => setFormData({ ...formData, aktif: e.target.checked })} />}

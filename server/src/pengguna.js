@@ -8,8 +8,8 @@ const MIN_SANDI = 10;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const pilih = {
-  id: true, nama: true, email: true, jabatan: true, telepon: true, aktif: true, login_terakhir: true, unit_id: true,
-  unit: { select: { id: true, kode: true, nama: true, jenis: true } },
+  id: true, nama: true, email: true, jabatan: true, telepon: true, aktif: true, login_terakhir: true, unit_kerja_id: true,
+  unit_kerja: { select: { id: true, kode: true, nama: true, jenis: true } },
   peran: { select: { peran: { select: { kode: true } } } },
   dibuat_pada: true, diubah_pada: true,
 };
@@ -32,9 +32,9 @@ async function validasi(body, baru) {
   }
   for (const k of ['jabatan', 'telepon']) if (body[k] !== undefined) data[k] = String(body[k] || '').trim() || null;
   if (body.aktif !== undefined) data.aktif = Boolean(body.aktif);
-  if (body.unit_id !== undefined) {
-    data.unit_id = body.unit_id ? Number(body.unit_id) : null;
-    if (data.unit_id && !(await prisma.unit.findUnique({ where: { id: data.unit_id } }))) return { error: 'Unit tidak ditemukan' };
+  if (body.unit_kerja_id !== undefined) {
+    data.unit_kerja_id = body.unit_kerja_id ? Number(body.unit_kerja_id) : null;
+    if (data.unit_kerja_id && !(await prisma.unit_kerja.findUnique({ where: { id: data.unit_kerja_id } }))) return { error: 'Unit tidak ditemukan' };
   }
   let peranId;
   if (baru || body.peran !== undefined) {
@@ -55,18 +55,18 @@ router.get('/peran', wajibLogin, async (req, res) => {
 router.get('/ringkas', wajibLogin, async (req, res) => {
   res.json(await prisma.pengguna.findMany({
     where: { aktif: true },
-    select: { id: true, nama: true, email: true, unit_id: true },
+    select: { id: true, nama: true, email: true, unit_kerja_id: true },
     orderBy: { nama: 'asc' },
   }));
 });
 
-router.use(wajibPeran('ADMIN_SISTEM', 'DIREKSI'));
+router.use(wajibPeran('ADMIN', 'DIREKSI'));
 
 router.get('/', async (req, res) => {
   res.json((await prisma.pengguna.findMany({ select: pilih, orderBy: { nama: 'asc' } })).map(bentuk));
 });
 
-router.use(wajibPeran('ADMIN_SISTEM'));
+router.use(wajibPeran('ADMIN'));
 
 router.post('/', async (req, res) => {
   const { data, peranId, error } = await validasi(req.body || {}, true);
@@ -90,7 +90,7 @@ router.patch('/:id', async (req, res) => {
   if (id === req.pengguna.id) {
     if (data.aktif === false) return res.status(400).json({ error: 'Tidak dapat menonaktifkan akun sendiri' });
     const peranBaru = req.body.peran;
-    if (peranBaru && !peranBaru.includes('ADMIN_SISTEM')) return res.status(400).json({ error: 'Tidak dapat mencabut peran Administrator dari akun sendiri' });
+    if (peranBaru && !peranBaru.includes('ADMIN')) return res.status(400).json({ error: 'Tidak dapat mencabut peran Administrator dari akun sendiri' });
   }
 
   const p = await prisma.$transaction(async (tx) => {

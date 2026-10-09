@@ -120,7 +120,7 @@ const ExecutiveDashboard = () => {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Kode</TableCell><TableCell>Risiko</TableCell><TableCell>Unit</TableCell>
+                    <TableCell>Kode</TableCell><TableCell>Risiko</TableCell><TableCell>Unit Kerja</TableCell>
                     <TableCell>Inheren</TableCell><TableCell>Residual</TableCell><TableCell>Status</TableCell>
                   </TableRow>
                 </TableHead>
@@ -130,7 +130,7 @@ const ExecutiveDashboard = () => {
                     <TableRow key={r.id}>
                       <TableCell><strong>{r.kode}</strong></TableCell>
                       <TableCell sx={{ maxWidth: 360 }}>{r.nama}</TableCell>
-                      <TableCell>{r.unit}</TableCell>
+                      <TableCell>{r.unit_kerja}</TableCell>
                       <TableCell>{r.inheren ? <Penanda warna={r.inheren.level.warna} teks={`${r.inheren.level.nama} · ${r.inheren.skor}`} /> : '-'}</TableCell>
                       <TableCell>{r.residual ? <Penanda warna={r.residual.level.warna} teks={`${r.residual.level.nama} · ${r.residual.skor}`} /> : '-'}</TableCell>
                       <TableCell>{LABEL_PERSETUJUAN[r.status]}</TableCell>

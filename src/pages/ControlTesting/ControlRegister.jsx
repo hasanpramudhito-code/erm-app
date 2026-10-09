@@ -10,7 +10,7 @@ const WARNA_HASIL = { EFEKTIF: 'success', SEBAGIAN_EFEKTIF: 'warning', TIDAK_EFE
 const ControlRegister = () => {
   const { pengguna } = usePilihan();
   const [unit, setUnit] = useState([]);
-  useEffect(() => { api.get('/unit').then((d) => setUnit(d.map((u) => [u.id, u.nama]))).catch(() => {}); }, []);
+  useEffect(() => { api.get('/unit-kerja').then((d) => setUnit(d.map((u) => [u.id, u.nama]))).catch(() => {}); }, []);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -28,7 +28,7 @@ const ControlRegister = () => {
           { k: 'jenis', label: 'Jenis', jenis: 'pilih', opsi: opsi('PREVENTIF', 'DETEKTIF', 'KOREKTIF'), wajib: true },
           { k: 'frekuensi', label: 'Frekuensi', jenis: 'pilih', opsi: opsi('HARIAN', 'MINGGUAN', 'BULANAN', 'TRIWULANAN', 'SEMESTERAN', 'TAHUNAN') },
           { k: 'kategori', label: 'Kategori' },
-          { k: 'unit_id', label: 'Unit', jenis: 'pilih', opsi: unit },
+          { k: 'unit_kerja_id', label: 'Unit kerja', jenis: 'pilih', opsi: unit },
           { k: 'pemilik_id', label: 'Pemilik kontrol', jenis: 'pilih', opsi: pengguna },
           { k: 'aktif', label: 'Status', jenis: 'pilih', opsi: [['true', 'Aktif'], ['false', 'Nonaktif']] },
           { k: 'deskripsi', label: 'Deskripsi', jenis: 'panjang' },
@@ -39,7 +39,7 @@ const ControlRegister = () => {
           { label: 'Kontrol', isi: (k) => <><strong>{k.nama}</strong><Typography variant="caption" display="block" color="text.secondary">{[k.kode, k.kategori].filter(Boolean).join(' · ')}</Typography></> },
           { label: 'Jenis', isi: (k) => LABEL[k.jenis] },
           { label: 'Frekuensi', isi: (k) => LABEL[k.frekuensi] },
-          { label: 'Unit / pemilik', isi: (k) => <>{k.unit?.nama || '-'}<Typography variant="caption" display="block" color="text.secondary">{k.pemilik?.nama || ''}</Typography></> },
+          { label: 'Unit kerja / pemilik', isi: (k) => <>{k.unit_kerja?.nama || '-'}<Typography variant="caption" display="block" color="text.secondary">{k.pemilik?.nama || ''}</Typography></> },
           { label: 'Uji terakhir', isi: (k) => {
             const h = k.hasil_pengujian[0];
             if (!h) return 'Belum diuji';

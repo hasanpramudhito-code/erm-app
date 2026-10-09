@@ -1,48 +1,52 @@
-// Alur persetujuan tetap (handoff bagian 7), dipakai untuk risiko dan laporan pemantauan bulanan:
-//   DRAF/DIKEMBALIKAN --ajukan(petugas unit)--> DIAJUKAN --setujui(pimpinan unit)--> DISETUJUI_PIMPINAN
-//   --finalkan(pengelola risiko)--> FINAL. Kembalikan (dengan catatan) dari DIAJUKAN/DISETUJUI_PIMPINAN;
-//   buka kunci FINAL -> DIKEMBALIKAN oleh pengelola risiko.
+// Alur persetujuan (adendum v2 E), dipakai untuk risiko dan laporan pemantauan bulanan:
+//   DUA_TINGKAT: DRAF/DIKEMBALIKAN --ajukan(petugas)--> DIAJUKAN --setujui(pimpinan)--> DISETUJUI_PIMPINAN
+//     --finalkan(pengelola risiko)--> FINAL; buka kunci oleh pengelola risiko.
+//   SATU_TINGKAT (mis. SPI): setujui(pimpinan) langsung FINAL; buka kunci oleh pimpinan unit kerja itu.
+//   Kembalikan (dengan catatan) dari DIAJUKAN/DISETUJUI_PIMPINAN.
 const express = require('express');
 const prisma = require('./db');
-const { wajibLogin, cakupanUnit } = require('./auth');
+const { wajibLogin, cakupanUnitKerja } = require('./auth');
 const { catat } = require('./audit');
 
 const router = express.Router();
 router.use(wajibLogin);
 
-const PIMPINAN = ['PIMPINAN_UNIT_PUSAT', 'PIMPINAN_CABANG'];
-const PETUGAS = ['PETUGAS_RISIKO_PUSAT', 'PETUGAS_RISIKO_CABANG'];
+const PIMPINAN = ['PIMPINAN'];
+const PETUGAS = ['PETUGAS'];
 const PENGELOLA = ['PENGELOLA_RISIKO'];
-const ADMIN = ['ADMIN_SISTEM', 'DIREKSI'];
+const ADMIN = ['ADMIN', 'DIREKSI'];
 
 const galat = (status, message) => Object.assign(new Error(message), { status, expose: true });
 const punya = (p, daftar) => p.peran.some((x) => daftar.includes(x));
-const diUnit = (p, unit_id) => p.unit_id === unit_id;
+// e = entitas: { unit_kerja_id, alur, status_persetujuan }.
+const diUnit = (p, e) => p.unit_kerja_id === e.unit_kerja_id;
+const satuTingkat = (e) => e.alur === 'SATU_TINGKAT';
 
 // Aksi -> status asal yang sah, status tujuan, dan siapa yang boleh.
 const AKSI = {
   ajukan: {
     dari: ['DRAF', 'DIKEMBALIKAN'], ke: 'DIAJUKAN',
-    boleh: (p, unit_id) => punya(p, ADMIN) || ((punya(p, PETUGAS) || punya(p, PIMPINAN)) && diUnit(p, unit_id)),
+    boleh: (p, e) => punya(p, ADMIN) || ((punya(p, PETUGAS) || punya(p, PIMPINAN)) && diUnit(p, e)),
   },
   setujui: {
-    dari: ['DIAJUKAN'], ke: 'DISETUJUI_PIMPINAN',
-    boleh: (p, unit_id) => punya(p, ADMIN) || (punya(p, PIMPINAN) && diUnit(p, unit_id)),
+    dari: ['DIAJUKAN'], ke: (e) => (satuTingkat(e) ? 'FINAL' : 'DISETUJUI_PIMPINAN'),
+    boleh: (p, e) => punya(p, ADMIN) || (punya(p, PIMPINAN) && diUnit(p, e)),
   },
   finalkan: {
     dari: ['DISETUJUI_PIMPINAN'], ke: 'FINAL',
-    boleh: (p) => punya(p, ADMIN) || punya(p, PENGELOLA),
+    boleh: (p, e) => punya(p, ADMIN) || (punya(p, PENGELOLA) && !satuTingkat(e)),
   },
   kembalikan: {
     dari: ['DIAJUKAN', 'DISETUJUI_PIMPINAN'], ke: 'DIKEMBALIKAN', wajibCatatan: true,
     // Pimpinan mengembalikan yang baru diajukan; pengelola mengembalikan yang sudah disetujui pimpinan.
-    boleh: (p, unit_id, status) => punya(p, ADMIN) ||
-      (status === 'DIAJUKAN' && punya(p, PIMPINAN) && diUnit(p, unit_id)) ||
-      (status === 'DISETUJUI_PIMPINAN' && punya(p, PENGELOLA)),
+    boleh: (p, e) => punya(p, ADMIN) ||
+      (e.status_persetujuan === 'DIAJUKAN' && punya(p, PIMPINAN) && diUnit(p, e)) ||
+      (e.status_persetujuan === 'DISETUJUI_PIMPINAN' && punya(p, PENGELOLA)),
   },
   buka: {
     dari: ['FINAL'], ke: 'DIKEMBALIKAN', wajibCatatan: true,
-    boleh: (p) => punya(p, ADMIN) || punya(p, PENGELOLA),
+    // Satu tingkat: pengelola risiko adalah bawahan pimpinan unit kerja ini, jadi pimpinan yang membuka.
+    boleh: (p, e) => punya(p, ADMIN) || (satuTingkat(e) ? punya(p, PIMPINAN) && diUnit(p, e) : punya(p, PENGELOLA)),
   },
 };
 
@@ -50,7 +54,10 @@ const AKSI = {
 const ENTITAS = {
   risiko: {
     jenis: 'RISIKO', tabel: 'risiko',
-    ambil: (id, p) => prisma.risiko.findFirst({ where: { id, ...cakupanUnit(p) }, select: { id: true, kode: true, unit_id: true, status_persetujuan: true } }),
+    ambil: async (id, p) => {
+      const e = await prisma.risiko.findFirst({ where: { id, ...cakupanUnitKerja(p) }, select: { id: true, kode: true, unit_kerja_id: true, status_persetujuan: true, unit_kerja: { select: { alur_persetujuan: true } } } });
+      return e && { ...e, alur: e.unit_kerja.alur_persetujuan };
+    },
     label: (e) => `Risiko ${e.kode}`,
     tautan: () => '/risk-register',
   },
@@ -58,20 +65,21 @@ const ENTITAS = {
     jenis: 'PEMANTAUAN', tabel: 'pemantauan_bulanan',
     ambil: async (id, p) => {
       const e = await prisma.pemantauan_bulanan.findFirst({
-        where: { id, risiko: cakupanUnit(p) },
-        select: { id: true, tahun: true, bulan: true, status_persetujuan: true, risiko: { select: { kode: true, unit_id: true, status_persetujuan: true } } },
+        where: { id, risiko: cakupanUnitKerja(p) },
+        select: { id: true, tahun: true, bulan: true, status_persetujuan: true, risiko: { select: { kode: true, unit_kerja_id: true, status_persetujuan: true, unit_kerja: { select: { alur_persetujuan: true } } } } },
       });
-      return e && { ...e, unit_id: e.risiko.unit_id, kode: e.risiko.kode, status_risiko: e.risiko.status_persetujuan };
+      return e && { ...e, unit_kerja_id: e.risiko.unit_kerja_id, alur: e.risiko.unit_kerja.alur_persetujuan, kode: e.risiko.kode, status_risiko: e.risiko.status_persetujuan };
     },
     label: (e) => `Laporan ${e.bulan}/${e.tahun} risiko ${e.kode}`,
     tautan: () => '/pemantauan-bulanan',
   },
 };
 
-// Penerima notifikasi untuk status baru.
-async function penerima(status, unit_id) {
+// Penerima notifikasi untuk status baru. Pengguna sub-bagian ikut unit kerja induknya.
+// ponytail: hanya satu tingkat sub-bagian; perluas bila hierarki lebih dalam dipakai.
+async function penerima(status, unit_kerja_id) {
   const peran = status === 'DIAJUKAN' ? PIMPINAN : status === 'DISETUJUI_PIMPINAN' ? PENGELOLA : [...PETUGAS, ...PIMPINAN];
-  const lingkupUnit = status === 'DISETUJUI_PIMPINAN' ? {} : { unit_id };
+  const lingkupUnit = status === 'DISETUJUI_PIMPINAN' ? {} : { OR: [{ unit_kerja_id }, { unit_kerja: { induk_id: unit_kerja_id } }] };
   return prisma.pengguna.findMany({
     where: { aktif: true, ...lingkupUnit, peran: { some: { peran: { kode: { in: peran } } } } },
     select: { id: true },
@@ -84,7 +92,8 @@ async function jalankan(req, jenisEntitas, id, aksi, catatan) {
   const e = await E.ambil(id, req.pengguna);
   if (!e) throw galat(404, 'Data tidak ditemukan');
   if (!A.dari.includes(e.status_persetujuan)) throw galat(400, `Tidak dapat ${aksi} dari status ${e.status_persetujuan}`);
-  if (!A.boleh(req.pengguna, e.unit_id, e.status_persetujuan)) throw galat(403, 'Anda tidak berwenang untuk aksi ini');
+  if (!A.boleh(req.pengguna, e)) throw galat(403, 'Anda tidak berwenang untuk aksi ini');
+  const ke = typeof A.ke === 'function' ? A.ke(e) : A.ke;
   if (A.wajibCatatan && !catatan) throw galat(400, 'Catatan wajib diisi');
   // Laporan bulanan hanya bisa diajukan setelah risikonya FINAL, agar yang dipantau adalah register yang sah.
   if (jenisEntitas === 'pemantauan' && aksi === 'ajukan' && e.status_risiko !== 'FINAL')
@@ -93,22 +102,22 @@ async function jalankan(req, jenisEntitas, id, aksi, catatan) {
   const sekarang = new Date();
   await prisma.$transaction(async (tx) => {
     // updateMany dengan syarat status lama: mencegah dua orang memproses data yang sama bersamaan.
-    const data = { status_persetujuan: A.ke, ...(jenisEntitas === 'pemantauan' && aksi === 'ajukan' ? { diajukan_pada: sekarang } : {}) };
+    const data = { status_persetujuan: ke, ...(jenisEntitas === 'pemantauan' && aksi === 'ajukan' ? { diajukan_pada: sekarang } : {}) };
     const n = await tx[E.tabel].updateMany({ where: { id, status_persetujuan: e.status_persetujuan }, data });
     if (n.count !== 1) throw galat(409, 'Data sudah diproses orang lain, muat ulang halaman');
     await tx.riwayat_persetujuan.create({
-      data: { entitas: E.jenis, entitas_id: id, dari_status: e.status_persetujuan, ke_status: A.ke, pengguna_id: req.pengguna.id, catatan },
+      data: { entitas: E.jenis, entitas_id: id, dari_status: e.status_persetujuan, ke_status: ke, pengguna_id: req.pengguna.id, catatan },
     });
-    const ke = (await penerima(A.ke, e.unit_id)).filter((p) => p.id !== req.pengguna.id);
+    const tujuan = (await penerima(ke, e.unit_kerja_id)).filter((p) => p.id !== req.pengguna.id);
     await tx.notifikasi.createMany({
-      data: ke.map((p) => ({
+      data: tujuan.map((p) => ({
         penerima_id: p.id, jenis: 'PERSETUJUAN', tautan: E.tautan(e),
-        pesan: `${E.label(e)}: ${e.status_persetujuan} -> ${A.ke}${catatan ? ` (${catatan})` : ''}`,
+        pesan: `${E.label(e)}: ${e.status_persetujuan} -> ${ke}${catatan ? ` (${catatan})` : ''}`,
       })),
     });
   });
-  await catat({ req, nama_tabel: E.tabel, id_data: id, aksi: `PERSETUJUAN_${aksi.toUpperCase()}`, nilai_lama: { status: e.status_persetujuan }, nilai_baru: { status: A.ke, catatan } });
-  return { id, status_persetujuan: A.ke };
+  await catat({ req, nama_tabel: E.tabel, id_data: id, aksi: `PERSETUJUAN_${aksi.toUpperCase()}`, nilai_lama: { status: e.status_persetujuan }, nilai_baru: { status: ke, catatan } });
+  return { id, status_persetujuan: ke };
 }
 
 router.post('/:entitas/:id/:aksi', async (req, res) => {
@@ -153,19 +162,19 @@ router.get('/antrean', async (req, res) => {
   if (punya(p, [...PENGELOLA, ...ADMIN])) status.push('DISETUJUI_PIMPINAN');
   if (!status.length) return res.json({ risiko: [], pemantauan: [] });
   // Pimpinan hanya untuk unitnya; pengelola/admin semua unit.
-  const unitFilter = (s) => (s === 'DIAJUKAN' && !punya(p, [...ADMIN])) ? { unit_id: p.unit_id ?? -1 } : {};
+  const unitFilter = (s) => (s === 'DIAJUKAN' && !punya(p, [...ADMIN])) ? { unit_kerja_id: p.unit_kerja_id ?? -1 } : {};
   const or = status.map((s) => ({ status_persetujuan: s, ...unitFilter(s) }));
   const [risiko, pemantauan] = await Promise.all([
     prisma.risiko.findMany({
       where: { OR: or },
-      select: { id: true, kode: true, nama: true, deskripsi: true, status_persetujuan: true, diubah_pada: true, unit_id: true, unit: { select: { nama: true } }, periode: { select: { nama: true } } },
+      select: { id: true, kode: true, nama: true, deskripsi: true, status_persetujuan: true, diubah_pada: true, unit_kerja_id: true, unit_kerja: { select: { nama: true, alur_persetujuan: true } }, periode: { select: { nama: true } } },
       orderBy: { diubah_pada: 'asc' },
     }),
     prisma.pemantauan_bulanan.findMany({
-      where: { OR: or.map(({ unit_id, ...s }) => ({ ...s, ...(unit_id !== undefined ? { risiko: { unit_id } } : {}) })) },
+      where: { OR: or.map(({ unit_kerja_id, ...s }) => ({ ...s, ...(unit_kerja_id !== undefined ? { risiko: { unit_kerja_id } } : {}) })) },
       select: {
         id: true, tahun: true, bulan: true, status_persetujuan: true, diajukan_pada: true, peristiwa_terjadi: true,
-        risiko: { select: { id: true, kode: true, nama: true, deskripsi: true, unit_id: true, unit: { select: { nama: true } } } },
+        risiko: { select: { id: true, kode: true, nama: true, deskripsi: true, unit_kerja_id: true, unit_kerja: { select: { nama: true, alur_persetujuan: true } } } },
       },
       orderBy: [{ tahun: 'asc' }, { bulan: 'asc' }],
     }),

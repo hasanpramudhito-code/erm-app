@@ -1,23 +1,32 @@
-// Seed data dasar: peran, direktorat, parameter penilaian (diambil dari aplikasi eksisting), admin awal.
+// Seed data dasar: peran, direktorat, unit kerja Pusat (adendum v2 G.3), parameter penilaian, admin awal.
 // Idempoten: aman dijalankan ulang. Wajib set SEED_ADMIN_EMAIL dan SEED_ADMIN_PASSWORD.
 const bcrypt = require('bcryptjs');
 const prisma = require('../src/db');
 
 const PERAN = [
-  ['ADMIN_SISTEM', 'Administrator Sistem'],
+  ['ADMIN', 'Administrator Sistem'],
   ['DIREKSI', 'Direksi'],
   ['PENGELOLA_RISIKO', 'Pengelola Risiko Pusat'],
-  ['PIMPINAN_UNIT_PUSAT', 'Pimpinan Unit Pusat'],
-  ['PETUGAS_RISIKO_PUSAT', 'Petugas Risiko Unit Pusat'],
-  ['PIMPINAN_CABANG', 'Pimpinan Cabang'],
-  ['PETUGAS_RISIKO_CABANG', 'Petugas Risiko Cabang'],
-  ['KEPATUHAN', 'Kepatuhan (lihat seluruh data)'],
+  ['AUDITOR', 'Auditor Internal (hanya baca)'],
+  ['PIMPINAN', 'Pimpinan Unit Kerja'],
+  ['PETUGAS', 'Petugas Risiko'],
 ];
 
+// [kode, nama, jabatan direktur, kode lama sebelum adendum v2]
 const DIREKTORAT = [
-  ['DIRUT', 'Direktorat Utama', 'Direktur Utama'],
-  ['DIRUM', 'Direktorat Umum', 'Direktur Umum'],
-  ['DIRTEK', 'Direktorat Teknik', 'Direktur Teknik'],
+  ['DIR-UT', 'Direktorat Utama', 'Direktur Utama', 'DIRUT'],
+  ['DIR-UM', 'Direktorat Umum', 'Direktur Umum', 'DIRUM'],
+  ['DIR-TK', 'Direktorat Teknik', 'Direktur Teknik', 'DIRTEK'],
+];
+
+// Struktur Pusat menurut Perbup Kutim 53/2021. Bagian: [kode, nama, direktorat, alur, [sub-bagian: [kode, nama, pengelola?]]].
+// Cabang/Unit belum diputuskan klien (adendum v2 J.5): ditambah lewat menu Organisasi.
+const BAGIAN = [
+  ['SPI', 'Satuan Pengawas Intern', 'DIR-UT', 'SATU_TINGKAT', [['SPI-MR', 'Manajemen Risiko', true], ['SPI-AUD', 'Auditor']]],
+  ['UMM', 'Bagian Umum', 'DIR-UM', 'DUA_TINGKAT', [['UMM-UM', 'Umum'], ['UMM-HL', 'Hubungan Langganan'], ['UMM-KPG', 'Kepegawaian'], ['UMM-HMS', 'Humas dan Protokol'], ['UMM-HKM', 'Hukum dan Keamanan']]],
+  ['KEU', 'Bagian Keuangan', 'DIR-UM', 'DUA_TINGKAT', [['KEU-ANG', 'Perencanaan Anggaran'], ['KEU-BUK', 'Pembukuan'], ['KEU-KAS', 'Kas dan Penagihan']]],
+  ['TEK', 'Bagian Teknik', 'DIR-TK', 'DUA_TINGKAT', [['TEK-REN', 'Perencanaan dan Pengawasan'], ['TEK-TD', 'Transmisi dan Distribusi'], ['TEK-SIM', 'Pengembangan Sistem Informasi Manajemen']]],
+  ['PRD', 'Bagian Produksi', 'DIR-TK', 'DUA_TINGKAT', [['PRD-PRD', 'Produksi'], ['PRD-RWT', 'Perawatan Teknik'], ['PRD-LAB', 'Laboratorium']]],
 ];
 
 const KEMUNGKINAN = [
@@ -120,8 +129,23 @@ async function main() {
   for (const [kode, nama] of PERAN)
     await prisma.peran.upsert({ where: { kode }, update: { nama }, create: { kode, nama } });
 
-  for (const [kode, nama, nama_jabatan_direktur] of DIREKTORAT)
-    await prisma.direktorat.upsert({ where: { kode }, update: {}, create: { kode, nama, nama_jabatan_direktur } });
+  const dir = {};
+  for (const [kode, nama, nama_jabatan_direktur, lama] of DIREKTORAT) {
+    await prisma.direktorat.updateMany({ where: { kode: lama }, data: { kode } });
+    dir[kode] = (await prisma.direktorat.upsert({ where: { kode }, update: {}, create: { kode, nama, nama_jabatan_direktur } })).id;
+  }
+
+  for (const [kode, nama, d, alur_persetujuan, sub] of BAGIAN) {
+    const induk = await prisma.unit_kerja.upsert({
+      where: { kode }, update: {},
+      create: { kode, nama, jenis: 'BAGIAN', direktorat_id: dir[d], pemilik_risiko: true, alur_persetujuan },
+    });
+    for (const [k, n, pengelola = false] of sub)
+      await prisma.unit_kerja.upsert({
+        where: { kode: k }, update: {},
+        create: { kode: k, nama: n, jenis: 'SUB_BAGIAN', induk_id: induk.id, direktorat_id: dir[d], pemilik_risiko: false, adalah_pengelola_risiko: pengelola },
+      });
+  }
 
   for (const [nilai, label, deskripsi, probabilitas] of KEMUNGKINAN)
     await prisma.skala_kemungkinan.upsert({ where: { nilai }, update: {}, create: { nilai, label, deskripsi, probabilitas } });
@@ -152,7 +176,7 @@ async function main() {
   if (!(await prisma.periode.findFirst({ where: { nama: String(tahun) } })))
     await prisma.periode.create({ data: { nama: String(tahun), tanggal_mulai: new Date(`${tahun}-01-01`), tanggal_selesai: new Date(`${tahun}-12-31`) } });
 
-  const adminPeran = await prisma.peran.findUnique({ where: { kode: 'ADMIN_SISTEM' } });
+  const adminPeran = await prisma.peran.findUnique({ where: { kode: 'ADMIN' } });
   await prisma.pengguna.upsert({
     where: { email },
     update: {},

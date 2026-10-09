@@ -73,17 +73,17 @@ test('endpoint: hanya FINAL dihitung, kelengkapan X dari Y cabang', async () => 
     const req = async (m, u, b) => (await fetch(`${base}/api${u}`, { method: m, headers: { 'content-type': 'application/json', cookie }, body: b && JSON.stringify(b) })).json();
     // Periode khusus tes agar tidak bergantung/tidak menulis ke periode berjalan.
     periode = await prisma.periode.create({ data: { nama: `AG ${sufiks}`, tanggal_mulai: new Date('2098-01-01'), tanggal_selesai: new Date('2098-12-31'), status: 'TERBUKA' } });
-    for (const i of [1, 2, 3]) unit.push(await req('POST', '/unit', { kode: `AG${i}${sufiks}`, nama: `Cabang AG${i}`, jenis: 'CABANG' }));
+    for (const i of [1, 2, 3]) unit.push(await req('POST', '/unit-kerja', { kode: `AG${i}${sufiks}`, nama: `Cabang AG${i}`, jenis: 'CABANG' }));
     ru = await req('POST', '/risiko-utama', { kode: `AG${sufiks}`, nama: 'Agregasi uji', berlaku_untuk: 'CABANG', periode_id: periode.id });
-    const entri = await prisma.risiko.findMany({ where: { risiko_utama_id: ru.id }, orderBy: { unit_id: 'asc' } });
+    const entri = await prisma.risiko.findMany({ where: { risiko_utama_id: ru.id }, orderBy: { unit_kerja_id: 'asc' } });
     // Dua cabang FINAL dengan (3,3), satu DRAF dengan (5,5) -> tidak dihitung.
-    for (const [i, r] of entri.filter((x) => unit.some((u) => u.id === x.unit_id)).entries()) {
+    for (const [i, r] of entri.filter((x) => unit.some((u) => u.id === x.unit_kerja_id)).entries()) {
       await req('PATCH', `/risiko/${r.id}`, { inheren: i < 2 ? { kemungkinan: 3, dampak: 3 } : { kemungkinan: 5, dampak: 5 } });
       if (i < 2) await prisma.risiko.update({ where: { id: r.id }, data: { status_persetujuan: 'FINAL' } });
     }
     const h = (await req('GET', `/agregasi?periode_id=${periode.id}&jenis=INHEREN`)).risiko_utama.find((x) => x.id === ru.id);
     assert.equal(h.jumlah_final, 2);
-    assert.equal(h.jumlah_seharusnya, await prisma.unit.count({ where: { jenis: 'CABANG', aktif: true } }));
+    assert.equal(h.jumlah_seharusnya, await prisma.unit_kerja.count({ where: { jenis: { in: ['CABANG', 'UNIT'] }, pemilik_risiko: true, aktif: true } }));
     assert.deepEqual([h.hasil.nilai_utama.kemungkinan, h.hasil.nilai_utama.dampak], [3, 3]);
     assert.equal(h.hasil.tertinggi.unit.length, 2);
   } finally {
@@ -91,7 +91,7 @@ test('endpoint: hanya FINAL dihitung, kelengkapan X dari Y cabang', async () => 
       await prisma.risiko.deleteMany({ where: { risiko_utama_id: ru.id } });
       await prisma.risiko_utama.delete({ where: { id: ru.id } });
     }
-    await prisma.unit.deleteMany({ where: { id: { in: unit.map((u) => u.id).filter(Boolean) } } });
+    await prisma.unit_kerja.deleteMany({ where: { id: { in: unit.map((u) => u.id).filter(Boolean) } } });
     if (periode) await prisma.periode.delete({ where: { id: periode.id } });
     server.close();
     await prisma.$disconnect();
