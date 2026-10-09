@@ -1,604 +1,154 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Box,
-  Grid,
-  Card,
-  CardContent,
-  Typography,
-  Button,
-  Chip,
-  LinearProgress,
-  CircularProgress,
-  Alert,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  FormLabel,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
-  Stepper,
-  Step,
-  StepLabel,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow
+  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, FormLabel, LinearProgress,
+  MenuItem, Paper, Radio, RadioGroup, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography
 } from '@mui/material';
-import {
-  Plus,
-  ShieldCheck,
-  Users,
-  TrendingUp,
-  CheckCircle2,
-  AlertTriangle,
-  BarChart3,
-  BrainCircuit
-} from 'lucide-react';
-import RiskCultureService from '../services/riskCultureService';
+import { Brain } from 'lucide-react';
+import { api } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import { bisaKelola } from '../components/TabelKelola';
+import { KepalaPantauan, tanggal } from '../components/pantauan/Kerangka';
+
+const SKALA = ['Sangat rendah', 'Rendah', 'Sedang', 'Tinggi', 'Sangat tinggi'].map((label, i) => ({ nilai: i + 1, label }));
+const PERTANYAAN_BAKU = [
+  ['q1', 'Kepemimpinan & Tata Kelola', 'Sejauh mana manajemen puncak mendemonstrasikan komitmen terhadap manajemen risiko?'],
+  ['q2', 'Kesadaran Risiko', 'Seberapa baik pegawai memahami risiko yang terkait dengan peran dan tanggung jawabnya?'],
+  ['q3', 'Komunikasi', 'Seberapa efektif komunikasi mengenai risiko berjalan di organisasi?'],
+  ['q4', 'Pengambilan Keputusan', 'Sejauh mana pertimbangan risiko diintegrasikan dalam pengambilan keputusan?'],
+  ['q5', 'Pelatihan & Kompetensi', 'Seberapa memadai pelatihan dan pengembangan kompetensi manajemen risiko?'],
+  ['q6', 'Akuntabilitas', 'Sejauh mana akuntabilitas manajemen risiko telah ditetapkan dengan jelas?'],
+].map(([id, kategori, pertanyaan]) => ({ id, kategori, pertanyaan, opsi: SKALA }));
+
+const STATUS = { DRAF: ['Draf', 'default'], TERBIT: ['Dibuka', 'success'], DITUTUP: ['Ditutup', 'default'] };
+const kematangan = (s) => (s >= 80 ? 'Maju' : s >= 60 ? 'Proaktif' : s >= 40 ? 'Berkembang' : 'Awal');
 
 const RiskCulture = () => {
-  const [surveys, setSurveys] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [openSurvey, setOpenSurvey] = useState(false);
-  const [openResults, setOpenResults] = useState(false);
-  const [currentSurvey, setCurrentSurvey] = useState(null);
-  const [surveyResponses, setSurveyResponses] = useState([]);
-  const [categoryScores, setCategoryScores] = useState({});
-  const [activeStep, setActiveStep] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [questions, setQuestions] = useState([]);
+  const { userData } = useAuth();
+  const kelola = bisaKelola(userData);
+  const lihatHasil = kelola || userData?.peran?.includes('DIREKSI');
+  const [survei, setSurvei] = useState([]);
+  const [error, setError] = useState('');
+  const [baru, setBaru] = useState(null);
+  const [isi, setIsi] = useState(null); // {survei, jawaban}
+  const [hasil, setHasil] = useState(null);
 
-  // ✅ HELPER: Format date safely
-  const formatDate = (dateField) => {
-    if (!dateField) return 'N/A';
-    if (dateField.toDate && typeof dateField.toDate === 'function') {
-      return dateField.toDate().toLocaleDateString();
-    }
-    if (dateField instanceof Date) {
-      return dateField.toLocaleDateString();
-    }
-    if (dateField.seconds) {
-      return new Date(dateField.seconds * 1000).toLocaleDateString();
-    }
-    return 'Invalid Date';
-  };
+  const muat = () => api.get('/survei-budaya').then(setSurvei).catch((e) => setError(e.message));
+  useEffect(() => { muat(); }, []);
+  const coba = (f) => f().catch((e) => setError(e.message));
 
-  // Load surveys
-  const loadSurveys = async () => {
-    try {
-      setLoading(true);
-      const surveysData = await RiskCultureService.getAllSurveys();
-      setSurveys(surveysData);
-    } catch (error) {
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadSurveys();
-  }, []);
-
-  // Start new survey
-  const handleStartSurvey = () => {
-    const defaultQuestions = RiskCultureService.getDefaultQuestions(); // ✅ AMBIL QUESTIONS DARI SERVICE
-    setQuestions(defaultQuestions); // ✅ SET QUESTIONS TERPISAH
-    setCurrentSurvey({
-      title: 'Risk Culture Assessment - ' + new Date().toLocaleDateString(),
-      description: 'Survey untuk mengukur maturity budaya risiko organisasi',
-      status: 'draft'
-    });
-    setOpenSurvey(true);
-    setAnswers({});
-    setActiveStep(0);
-  };
-
-  // Handle answer change
-  const handleAnswerChange = (questionId, value) => {
-    setAnswers(prev => ({
-      ...prev,
-      [questionId]: value
-    }));
-  };
-
-  // Handle next step
-  const handleNext = () => {
-    setActiveStep(prev => prev + 1);
-  };
-
-  // Handle back step
-  const handleBack = () => {
-    setActiveStep(prev => prev - 1);
-  };
-
-  // Submit survey
-  const handleSubmitSurvey = async () => {
-    try {
-      const surveyData = {
-        title: currentSurvey.title,
-        description: currentSurvey.description,
-        questions: questions, // ✅ GUNAKAN QUESTIONS DARI STATE
-        organization_id: 'default',
-        status: 'published'
-      };
-
-      const newSurvey = await RiskCultureService.createSurvey(surveyData);
-
-      const responseData = {
-        respondent_name: 'Anonymous',
-        respondent_role: 'Employee',
-        answers: answers,
-        submitted_at: new Date()
-      };
-
-      await RiskCultureService.submitSurveyResponse(newSurvey.id, responseData);
-
-      setOpenSurvey(false);
-      setCurrentSurvey(null); // ✅ RESET CURRENT SURVEY
-      setQuestions([]); // ✅ RESET QUESTIONS
-      loadSurveys();
-
-      // Show results
-      await handleViewResults(newSurvey.id);
-    } catch (error) {
-    }
-  };
-
-  // View survey results
-  const handleViewResults = async (surveyId) => {
-    try {
-      const survey = await RiskCultureService.getSurveyById(surveyId);
-      const responses = await RiskCultureService.getSurveyResponses(surveyId);
-      const categories = RiskCultureService.calculateCategoryScores(responses);
-
-      setCurrentSurvey(survey);
-      setSurveyResponses(responses);
-      setCategoryScores(categories);
-      setOpenResults(true);
-    } catch (error) {
-    }
-  };
-
-  // Get maturity level
-  const getMaturityInfo = (score) => {
-    return RiskCultureService.getMaturityLevel(score);
-  };
-
-  if (loading) {
-    return (
-      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <CircularProgress />
-        <Typography variant="h6" sx={{ ml: 2 }}>Loading Risk Culture Assessment...</Typography>
-      </Box>
-    );
-  }
+  const buat = () => coba(async () => {
+    await api.post('/survei-budaya', { judul: baru.judul, deskripsi: baru.deskripsi, pertanyaan: PERTANYAAN_BAKU });
+    setBaru(null); muat();
+  });
+  const ubahStatus = (s, status) => coba(async () => { await api.patch(`/survei-budaya/${s.id}`, { status }); muat(); });
+  const kirim = () => coba(async () => {
+    await api.post(`/survei-budaya/${isi.survei.id}/respons`, { jawaban: isi.jawaban });
+    setIsi(null); muat();
+  });
+  const bukaHasil = (s) => coba(async () => setHasil(await api.get(`/survei-budaya/${s.id}/hasil`)));
+  const lengkap = isi && isi.survei.pertanyaan.every((q) => isi.jawaban[q.id]);
 
   return (
-    <Box sx={{ p: 3, backgroundColor: 'grey.50', minHeight: '100vh' }}>
-      {/* Header */}
-      <Card sx={{ mb: 3, boxShadow: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-        <CardContent>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box>
-              <Typography variant="h3" fontWeight="bold" gutterBottom>
-                🧠 Risk Culture Assessment
-              </Typography>
-              <Typography variant="h6" sx={{ opacity: 0.9 }}>
-                Measure and Improve Your Organizational Risk Culture
-              </Typography>
-              <Typography variant="body2" sx={{ opacity: 0.8, mt: 1 }}>
-                SK-7 Compliance - Budaya Risiko dan Governance
-              </Typography>
-            </Box>
-            <Box sx={{
-              p: 2,
-              backgroundColor: 'rgba(255,255,255,0.1)',
-              borderRadius: 2,
-              textAlign: 'center'
-            }}>
-              <BrainCircuit size={48} color="#1976d2" style={{ marginBottom: 8 }} />
-              <Typography variant="h6">Maturity Assessment</Typography>
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
+    <Box sx={{ p: 3 }}>
+      <KepalaPantauan ikon={<Brain size={36} color="#1976d2" />} judul="Budaya Risiko"
+        keterangan="Survei tingkat kematangan budaya risiko. Skor 0-100 dari rata-rata jawaban skala 1-5.">
+        {kelola && <Button variant="contained" onClick={() => setBaru({ judul: `Survei Budaya Risiko ${new Date().getFullYear()}`, deskripsi: '' })}>Buat survei</Button>}
+      </KepalaPantauan>
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-      {/* Quick Stats */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ height: '100%', boxShadow: 2 }}>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <ShieldCheck size={40} />
-              <Typography variant="h3" fontWeight="bold" color="primary.main">
-                {surveys.length}
-              </Typography>
-              <Typography variant="h6" color="textSecondary">
-                Total Surveys
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+      <Paper>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Survei</TableCell>
+                <TableCell>Dibuat</TableCell>
+                <TableCell align="right">Respons</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell align="right">Aksi</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {survei.length === 0 && <TableRow><TableCell colSpan={5} align="center">Belum ada survei.</TableCell></TableRow>}
+              {survei.map((s) => (
+                <TableRow key={s.id} hover>
+                  <TableCell><strong>{s.judul}</strong><Typography variant="caption" display="block" color="text.secondary">{s.deskripsi}</Typography></TableCell>
+                  <TableCell>{tanggal(s.dibuat_pada)}</TableCell>
+                  <TableCell align="right">{s._count.respons}</TableCell>
+                  <TableCell>
+                    {kelola ? (
+                      <TextField select size="small" value={s.status} onChange={(e) => ubahStatus(s, e.target.value)} inputProps={{ 'aria-label': 'Status survei' }}>
+                        {Object.entries(STATUS).map(([k, [l]]) => <MenuItem key={k} value={k}>{l}</MenuItem>)}
+                      </TextField>
+                    ) : <Chip size="small" label={STATUS[s.status][0]} color={STATUS[s.status][1]} />}
+                  </TableCell>
+                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                    {s.status === 'TERBIT' && <Button size="small" onClick={() => setIsi({ survei: s, jawaban: {} })}>Isi</Button>}
+                    {lihatHasil && <Button size="small" onClick={() => bukaHasil(s)}>Hasil</Button>}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ height: '100%', boxShadow: 2 }}>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Users size={40} />
-              <Typography variant="h3" fontWeight="bold" color="info.main">
-                {surveys.reduce((sum, s) => sum + (s.total_responses || 0), 0)}
-              </Typography>
-              <Typography variant="h6" color="textSecondary">
-                Total Responses
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ height: '100%', boxShadow: 2 }}>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <TrendingUp size={40} />
-              <Typography variant="h3" fontWeight="bold" color="success.main">
-                {surveys.length > 0 ? Math.round(surveys.reduce((sum, s) => sum + (s.average_score || 0), 0) / surveys.length) : 0}%
-              </Typography>
-              <Typography variant="h6" color="textSecondary">
-                Avg. Score
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ height: '100%', boxShadow: 2 }}>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <BarChart3 size={40} />
-              <Typography variant="h4" fontWeight="bold" color="warning.main">
-                {surveys.length > 0 ? getMaturityInfo(Math.round(surveys.reduce((sum, s) => sum + (s.average_score || 0), 0) / surveys.length)).level : 'N/A'}
-              </Typography>
-              <Typography variant="h6" color="textSecondary">
-                Maturity Level
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Action Button */}
-      <Box sx={{ mb: 4, textAlign: 'center' }}>
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={<Plus size={18} />}
-          onClick={handleStartSurvey}
-          sx={{
-            px: 4,
-            py: 1.5,
-            fontSize: '1.1rem',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-          }}
-        >
-          Start New Risk Culture Assessment
-        </Button>
-        <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-          Measure your organization's risk culture maturity according to SK-7 standards
-        </Typography>
-      </Box>
-
-      {/* Surveys List */}
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <Card sx={{ boxShadow: 3 }}>
-            <CardContent>
-              <Typography variant="h5" fontWeight="bold" gutterBottom>
-                Risk Culture Survey History
-              </Typography>
-
-              {surveys.length === 0 ? (
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  No risk culture surveys conducted yet. Start your first assessment to measure organizational risk culture maturity.
-                </Alert>
-              ) : (
-                <TableContainer component={Paper} variant="outlined">
-                  <Table>
-                    <TableHead>
-                      <TableRow sx={{ backgroundColor: 'grey.100' }}>
-                        <TableCell>Survey Title</TableCell>
-                        <TableCell align="center">Date</TableCell>
-                        <TableCell align="center">Responses</TableCell>
-                        <TableCell align="center">Avg. Score</TableCell>
-                        <TableCell align="center">Maturity Level</TableCell>
-                        <TableCell align="center">Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {surveys.map((survey) => {
-                        const maturity = getMaturityInfo(survey.average_score || 0);
-
-                        return (
-                          <TableRow key={survey.id} hover>
-                            <TableCell>
-                              <Typography variant="subtitle2" fontWeight="bold">
-                                {survey.title}
-                              </Typography>
-                              <Typography variant="body2" color="textSecondary">
-                                {survey.description}
-                              </Typography>
-                            </TableCell>
-                            <TableCell align="center">
-                              <Typography variant="body2">
-                                {formatDate(survey.created_at)}
-                              </Typography>
-                            </TableCell>
-                            <TableCell align="center">
-                              <Typography variant="h6" fontWeight="bold">
-                                {survey.total_responses || 0}
-                              </Typography>
-                            </TableCell>
-                            <TableCell align="center">
-                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-                                <Typography variant="h6" fontWeight="bold" color={maturity.color}>
-                                  {survey.average_score || 0}%
-                                </Typography>
-                                <LinearProgress
-                                  variant="determinate"
-                                  value={survey.average_score || 0}
-                                  color={maturity.color}
-                                  sx={{ width: 60, height: 8, borderRadius: 4 }}
-                                />
-                              </Box>
-                            </TableCell>
-                            <TableCell align="center">
-                              <Chip
-                                label={maturity.level}
-                                color={maturity.color}
-                                size="small"
-                              />
-                            </TableCell>
-                            <TableCell align="center">
-                              <Button
-                                variant="outlined"
-                                size="small"
-                                onClick={() => handleViewResults(survey.id)}
-                              >
-                                View Results
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Survey Dialog */}
-      <Dialog
-        open={openSurvey}
-        onClose={() => {
-          setOpenSurvey(false);
-          setCurrentSurvey(null);
-          setQuestions([]);
-        }}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Typography variant="h5" fontWeight="bold">
-            Risk Culture Assessment
+      <Dialog open={!!baru} onClose={() => setBaru(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Buat survei</DialogTitle>
+        <DialogContent dividers>
+          <TextField fullWidth label="Judul" value={baru?.judul || ''} onChange={(e) => setBaru({ ...baru, judul: e.target.value })} sx={{ mb: 2 }} />
+          <TextField fullWidth multiline minRows={2} label="Deskripsi" value={baru?.deskripsi || ''} onChange={(e) => setBaru({ ...baru, deskripsi: e.target.value })} />
+          <Typography variant="caption" color="text.secondary" display="block" mt={2}>
+            Survei memakai {PERTANYAAN_BAKU.length} pertanyaan baku dan dibuat sebagai draf. Ubah status ke "Dibuka" agar pegawai bisa mengisi.
           </Typography>
-          <Typography variant="body2" color="textSecondary">
-            Please rate each statement based on your experience in the organization
-          </Typography>
-        </DialogTitle>
-        <DialogContent>
-          {/* ✅ PERBAIKI: GUNAKAN questions DARI STATE, BUKAN currentSurvey.questions */}
-          {questions.length > 0 && (
-            <Box sx={{ mt: 2 }}>
-              <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
-                {questions.map((question, index) => (
-                  <Step key={question.id}>
-                    <StepLabel>{`Q${index + 1}`}</StepLabel>
-                  </Step>
-                ))}
-              </Stepper>
-
-              {activeStep < questions.length && (
-                <FormControl component="fieldset" fullWidth>
-                  <FormLabel component="legend" sx={{ mb: 2 }}>
-                    <Typography variant="h6" fontWeight="bold">
-                      {questions[activeStep].category}
-                    </Typography>
-                    <Typography variant="body1" sx={{ mt: 1 }}>
-                      {questions[activeStep].question}
-                    </Typography>
-                    <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-                      {questions[activeStep].description}
-                    </Typography>
-                  </FormLabel>
-
-                  <RadioGroup
-                    value={answers[questions[activeStep].id] || ''}
-                    onChange={(e) => handleAnswerChange(questions[activeStep].id, e.target.value)}
-                    sx={{ mt: 2 }}
-                  >
-                    {questions[activeStep].options.map((option) => (
-                      <FormControlLabel
-                        key={option.value}
-                        value={option.value.toString()}
-                        control={<Radio />}
-                        label={`${option.value} - ${option.label}`}
-                        sx={{
-                          mb: 1,
-                          padding: 1,
-                          borderRadius: 1,
-                          '&:hover': { backgroundColor: 'grey.50' }
-                        }}
-                      />
-                    ))}
-                  </RadioGroup>
-                </FormControl>
-              )}
-            </Box>
-          )}
         </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
-          <Button
-            onClick={handleBack}
-            disabled={activeStep === 0}
-          >
-            Back
-          </Button>
-          <Box flex={1} />
-          {activeStep < questions.length - 1 ? (
-            <Button
-              variant="contained"
-              onClick={handleNext}
-              disabled={!answers[questions[activeStep]?.id]}
-            >
-              Next Question
-            </Button>
-          ) : (
-            <Button
-              variant="contained"
-              onClick={handleSubmitSurvey}
-              disabled={!answers[questions[activeStep]?.id]}
-            >
-              Submit Assessment
-            </Button>
-          )}
+        <DialogActions>
+          <Button onClick={() => setBaru(null)}>Batal</Button>
+          <Button variant="contained" disabled={!baru?.judul?.trim()} onClick={buat}>Buat</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Results Dialog */}
-      <Dialog
-        open={openResults}
-        onClose={() => setOpenResults(false)}
-        maxWidth="lg"
-        fullWidth
-      >
-        <DialogTitle>
-          <Typography variant="h5" fontWeight="bold">
-            Risk Culture Assessment Results
-          </Typography>
-          {currentSurvey && (
-            <Typography variant="body2" color="textSecondary">
-              {currentSurvey.title} - {formatDate(currentSurvey.created_at)}
-            </Typography>
-          )}
-        </DialogTitle>
-        <DialogContent>
-          {currentSurvey && (
-            <Grid container spacing={3} sx={{ mt: 1 }}>
-              {/* Overall Score */}
-              <Grid item xs={12}>
-                <Card sx={{ p: 3, textAlign: 'center', background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
-                  <Typography variant="h4" fontWeight="bold" gutterBottom>
-                    Overall Risk Culture Score
-                  </Typography>
-                  <Typography variant="h1" fontWeight="bold">
-                    {currentSurvey.average_score || 0}%
-                  </Typography>
-                  <Chip
-                    label={getMaturityInfo(currentSurvey.average_score || 0).level}
-                    color={getMaturityInfo(currentSurvey.average_score || 0).color}
-                    sx={{
-                      mt: 2,
-                      color: 'white',
-                      fontSize: '1.1rem',
-                      padding: 1
-                    }}
-                  />
-                  <Typography variant="body1" sx={{ mt: 1, opacity: 0.9 }}>
-                    {getMaturityInfo(currentSurvey.average_score || 0).description}
-                  </Typography>
-                </Card>
-              </Grid>
-
-              {/* Category Scores */}
-              <Grid item xs={12}>
-                <Typography variant="h6" fontWeight="bold" gutterBottom>
-                  Category Breakdown
-                </Typography>
-                <Grid container spacing={2}>
-                  {Object.entries(categoryScores).map(([category, score]) => (
-                    <Grid item xs={12} md={6} key={category}>
-                      <Card variant="outlined">
-                        <CardContent>
-                          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                            {category}
-                          </Typography>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <LinearProgress
-                              variant="determinate"
-                              value={score}
-                              color={getMaturityInfo(score).color}
-                              sx={{ flex: 1, height: 8, borderRadius: 4 }}
-                            />
-                            <Typography variant="h6" fontWeight="bold" color={getMaturityInfo(score).color}>
-                              {score}%
-                            </Typography>
-                          </Box>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Grid>
-
-              {/* Response Summary */}
-              <Grid item xs={12}>
-                <Card variant="outlined">
-                  <CardContent>
-                    <Typography variant="h6" fontWeight="bold" gutterBottom>
-                      Response Summary
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 3 }}>
-                      <Box sx={{ textAlign: 'center' }}>
-                        <People sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
-                        <Typography variant="h4" fontWeight="bold">
-                          {currentSurvey.total_responses || 0}
-                        </Typography>
-                        <Typography variant="body2" color="textSecondary">
-                          Total Responses
-                        </Typography>
-                      </Box>
-                      <Box sx={{ textAlign: 'center' }}>
-                        <TrendingUp sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />
-                        <Typography variant="h4" fontWeight="bold" color="success.main">
-                          {currentSurvey.average_score || 0}%
-                        </Typography>
-                        <Typography variant="body2" color="textSecondary">
-                          Average Score
-                        </Typography>
-                      </Box>
-                      <Box sx={{ textAlign: 'center' }}>
-                        <CheckCircle2 size={40} color="#0288d1" />
-                        <Typography variant="h4" fontWeight="bold">
-                          {currentSurvey.completion_rate || 0}%
-                        </Typography>
-                        <Typography variant="body2" color="textSecondary">
-                          Completion Rate
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          )}
+      <Dialog open={!!isi} onClose={() => setIsi(null)} maxWidth="md" fullWidth>
+        <DialogTitle>{isi?.survei.judul}</DialogTitle>
+        <DialogContent dividers>
+          {isi?.survei.pertanyaan.map((q, i) => (
+            <Box key={q.id} mb={3}>
+              <FormLabel id={`lbl-${q.id}`}>
+                <Typography variant="caption" color="text.secondary" display="block">{q.kategori}</Typography>
+                {i + 1}. {q.pertanyaan}
+              </FormLabel>
+              <RadioGroup row aria-labelledby={`lbl-${q.id}`} value={isi.jawaban[q.id] || ''}
+                onChange={(e) => setIsi({ ...isi, jawaban: { ...isi.jawaban, [q.id]: Number(e.target.value) } })}>
+                {q.opsi.map((o) => <FormControlLabel key={o.nilai} value={o.nilai} control={<Radio size="small" />} label={o.label} />)}
+              </RadioGroup>
+            </Box>
+          ))}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenResults(false)}>Close</Button>
+          <Button onClick={() => setIsi(null)}>Batal</Button>
+          <Button variant="contained" disabled={!lengkap} onClick={kirim}>Kirim</Button>
         </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!hasil} onClose={() => setHasil(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Hasil: {hasil?.survei.judul}</DialogTitle>
+        <DialogContent dividers>
+          {hasil && (hasil.jumlah_respons === 0 ? <Typography>Belum ada respons.</Typography> : (
+            <>
+              <Typography variant="h3" fontWeight={600}>{hasil.skor_rata}</Typography>
+              <Typography variant="body2" color="text.secondary" mb={3}>
+                Tingkat kematangan: <strong>{kematangan(hasil.skor_rata)}</strong> · {hasil.jumlah_respons} responden
+              </Typography>
+              {Object.entries(hasil.kategori).map(([k, v]) => (
+                <Box key={k} mb={1.5}>
+                  <Box display="flex" justifyContent="space-between"><Typography variant="body2">{k}</Typography><Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>{v}</Typography></Box>
+                  <LinearProgress variant="determinate" value={v} sx={{ height: 8, borderRadius: 4 }} aria-label={k} />
+                </Box>
+              ))}
+            </>
+          ))}
+        </DialogContent>
+        <DialogActions><Button onClick={() => setHasil(null)}>Tutup</Button></DialogActions>
       </Dialog>
     </Box>
   );

@@ -27,8 +27,6 @@ import {
   Clock,
   BarChart3,
   Brain,
-  Database,
-  Webhook,
   UserCheck,
   Shield,
   Zap
@@ -197,20 +195,6 @@ const Dashboard = () => {
       icon: <Brain size={24} />,
       path: '/risk-culture',
       color: 'secondary.main'
-    },
-    {
-      title: 'Database Management',
-      description: 'Backup, restore, and migrate database',
-      icon: <Database size={24} />,
-      path: '/database-management',
-      color: 'text.secondary'
-    },
-    {
-      title: 'API Integration',
-      description: 'Connect with external systems',
-      icon: <Webhook size={24} />,
-      path: '/api-integration',
-      color: 'secondary.light'
     },
     {
       title: 'RACI Chart',

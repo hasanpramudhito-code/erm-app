@@ -1,118 +1,79 @@
-// src/pages/RiskAppetite/RiskAppetiteDashboard.js
-import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Grid,
-  Card,
-  CardContent,
-  Typography,
-  LinearProgress,
-  Chip
-} from '@mui/material';
-import { riskAppetiteService } from '../../services/riskAppetiteService';
+import React, { useEffect, useState } from 'react';
+import { Alert, Box, Card, CardContent, Grid, LinearProgress, Typography } from '@mui/material';
+import { Target } from 'lucide-react';
+import { api } from '../../services/api';
+import { usePeriode } from '../../services/risiko';
+import { KepalaPantauan, PilihPeriode } from '../../components/pantauan/Kerangka';
+import { teksBatas } from './RiskToleranceSettings';
+
+// Posisi skor residual terhadap batas: dalam selera (≤ maks rendah), mendekati (≤ maks sedang), melampaui.
+const posisi = (skor, b) => (skor <= b.rendah.maks ? 'dalam' : skor <= b.sedang.maks ? 'mendekati' : 'melampaui');
+const POSISI = [['dalam', 'Dalam selera', 'success'], ['mendekati', 'Mendekati batas', 'warning'], ['melampaui', 'Melampaui', 'error']];
 
 const RiskAppetiteDashboard = () => {
-  const [appetiteStatements, setAppetiteStatements] = useState([]);
-  const [compliance, setCompliance] = useState({});
+  const { daftar, periodeId, setPeriodeId } = usePeriode();
+  const [pernyataan, setPernyataan] = useState([]);
+  const [risiko, setRisiko] = useState([]);
+  const [error, setError] = useState('');
 
+  useEffect(() => { api.get('/pernyataan-selera-risiko').then((d) => setPernyataan(d.filter((p) => p.aktif))).catch((e) => setError(e.message)); }, []);
   useEffect(() => {
-    loadAppetiteData();
-  }, []);
+    if (periodeId) api.get(`/risiko?periode_id=${periodeId}`).then(setRisiko).catch((e) => setError(e.message));
+  }, [periodeId]);
 
-  const loadAppetiteData = async () => {
-    try {
-      const statements = await riskAppetiteService.getAppetiteStatements('org-001');
-      setAppetiteStatements(statements);
-    } catch (error) {
-    }
-  };
-
-  const getComplianceColor = (level) => {
-    const colors = {
-      within_appetite: 'success',
-      approaching_limit: 'warning',
-      exceeded_appetite: 'error'
-    };
-    return colors[level] || 'default';
-  };
+  // Pernyataan tanpa kategori berlaku untuk risiko yang kategorinya tidak punya pernyataan sendiri.
+  const kategoriKhusus = new Set(pernyataan.map((p) => p.kategori_id).filter(Boolean));
+  const kartu = pernyataan.map((p) => {
+    const cocok = risiko.filter((r) => (p.kategori_id ? r.kategori_id === p.kategori_id : !kategoriKhusus.has(r.kategori_id)));
+    const skor = cocok.map((r) => r.penilaian.find((x) => x.jenis === 'RESIDUAL')?.skor).filter((s) => s != null);
+    const hitung = Object.fromEntries(POSISI.map(([k]) => [k, skor.filter((s) => posisi(s, p.batas_toleransi) === k).length]));
+    return { p, hitung, total: skor.length, tanpaSkor: cocok.length - skor.length };
+  });
+  const total = kartu.reduce((t, k) => t + k.total, 0);
+  const dalam = kartu.reduce((t, k) => t + k.hitung.dalam, 0);
+  const persen = total ? Math.round((dalam / total) * 100) : 0;
 
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
-        Risk Appetite Framework
-      </Typography>
+    <Box sx={{ p: 3 }}>
+      <KepalaPantauan ikon={<Target size={36} color="#1976d2" />} judul="Selera Risiko"
+        keterangan="Posisi skor residual risiko terhadap batas toleransi tiap kategori.">
+        <PilihPeriode daftar={daftar} value={periodeId} onChange={setPeriodeId} />
+      </KepalaPantauan>
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+      {pernyataan.length === 0 && <Alert severity="info">Belum ada pernyataan selera risiko. Tambahkan di halaman Toleransi Risiko.</Alert>}
+
+      {total > 0 && (
+        <Card variant="outlined" sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>Kepatuhan keseluruhan</Typography>
+            <LinearProgress variant="determinate" value={persen} color="success" sx={{ height: 10, borderRadius: 5 }} aria-label="Persentase risiko dalam selera" />
+            <Typography variant="body2" mt={1}>{persen}% risiko ({dalam} dari {total}) dalam selera risiko</Typography>
+          </CardContent>
+        </Card>
+      )}
 
       <Grid container spacing={3}>
-        {appetiteStatements.map((statement) => (
-          <Grid item xs={12} md={6} key={statement.id}>
-            <Card>
+        {kartu.map(({ p, hitung, total: n, tanpaSkor }) => (
+          <Grid item xs={12} md={6} key={p.id}>
+            <Card variant="outlined" sx={{ height: '100%' }}>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  {statement.riskCategory}
-                </Typography>
-                
-                <Typography variant="body2" color="textSecondary" paragraph>
-                  {statement.statement}
-                </Typography>
-
-                {/* Tolerance Levels */}
-                <Box mb={2}>
-                  <Typography variant="body2" gutterBottom>
-                    Tolerance Levels:
-                  </Typography>
-                  <Box display="flex" gap={1} flexWrap="wrap">
-                    <Chip 
-                      label={`Low: ${statement.toleranceLevels?.low}`} 
-                      size="small" 
-                      variant="outlined" 
-                    />
-                    <Chip 
-                      label={`Medium: ${statement.toleranceLevels?.medium}`} 
-                      size="small" 
-                      variant="outlined" 
-                    />
-                    <Chip 
-                      label={`High: ${statement.toleranceLevels?.high}`} 
-                      size="small" 
-                      variant="outlined" 
-                    />
+                <Typography variant="h6">{p.kategori?.nama || 'Kategori lainnya'}</Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>{p.pernyataan}</Typography>
+                <Typography variant="caption" color="text.secondary" display="block" mb={1}>Batas skor: {teksBatas(p.batas_toleransi)}</Typography>
+                {POSISI.map(([k, label, warna]) => (
+                  <Box key={k} display="flex" alignItems="center" gap={1} mb={0.5}>
+                    <Typography variant="body2" sx={{ width: 130 }}>{label}</Typography>
+                    <LinearProgress variant="determinate" color={warna} value={n ? (hitung[k] / n) * 100 : 0} sx={{ flex: 1, height: 8, borderRadius: 4 }} aria-label={label} />
+                    <Typography variant="body2" sx={{ width: 32, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{hitung[k]}</Typography>
                   </Box>
-                </Box>
-
-                {/* Compliance Status */}
-                <Box>
-                  <Typography variant="body2" gutterBottom>
-                    Current Compliance:
-                  </Typography>
-                  <Chip 
-                    label={statement.compliance?.toUpperCase()} 
-                    color={getComplianceColor(statement.compliance)}
-                  />
-                </Box>
+                ))}
+                {tanpaSkor > 0 && <Typography variant="caption" color="text.secondary">{tanpaSkor} risiko belum punya skor residual</Typography>}
+                {p.proses_eskalasi && <Typography variant="body2" mt={1}><strong>Eskalasi:</strong> {p.proses_eskalasi}</Typography>}
               </CardContent>
             </Card>
           </Grid>
         ))}
       </Grid>
-
-      {/* Overall Appetite Compliance */}
-      <Card sx={{ mt: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Overall Risk Appetite Compliance
-          </Typography>
-          <LinearProgress 
-            variant="determinate" 
-            value={75} 
-            color="success"
-            sx={{ height: 10, borderRadius: 5 }}
-          />
-          <Box display="flex" justifyContent="space-between" mt={1}>
-            <Typography variant="body2">75% Within Appetite</Typography>
-            <Typography variant="body2">25% Requires Attention</Typography>
-          </Box>
-        </CardContent>
-      </Card>
     </Box>
   );
 };

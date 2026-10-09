@@ -26,8 +26,6 @@ const RiskTreatmentPlans = lazy(() => import('./pages/RiskTreatmentPlans'));
 const RiskCulture = lazy(() => import('./pages/RiskCulture'));
 const IncidentReporting = lazy(() => import('./pages/IncidentReporting'));
 const Reporting = lazy(() => import('./pages/Reporting'));
-const DatabaseManagement = lazy(() => import('./pages/DatabaseManagement'));
-const APIIntegration = lazy(() => import('./pages/APIIntegration'));
 
 const RiskParameterSettings = lazy(() => import('./pages/RiskParameterSettings'));
 const RiskAppetiteDashboard = lazy(() => import('./pages/RiskAppetite/RiskAppetiteDashboard'));
@@ -91,17 +89,6 @@ export default function AuthenticatedApp() {
                 <Route path="/risk-culture" element={<RiskCulture />} />
                 <Route path="/incident-reporting" element={<IncidentReporting />} />
                 <Route path="/reporting" element={<Reporting />} />
-
-                <Route path="/database-management" element={
-                  <RoleProtectedRoute allowedRoles={ADMIN_PAGE_ROLES}>
-                    <DatabaseManagement />
-                  </RoleProtectedRoute>
-                } />
-                <Route path="/api-integration" element={
-                  <RoleProtectedRoute allowedRoles={ADMIN_PAGE_ROLES}>
-                    <APIIntegration />
-                  </RoleProtectedRoute>
-                } />
 
 
                 <Route path="/risk-parameters" element={<RiskParameterSettings />} />

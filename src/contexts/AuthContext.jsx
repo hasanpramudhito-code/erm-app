@@ -10,7 +10,7 @@ export const useAuth = () => {
 };
 
 // ponytail: peta peran baru -> kode role lama, agar halaman yang belum dipindahkan tetap jalan.
-// Hapus setelah semua pengecekan role (roles.js, usePermissions, EnhancedNavigation) memakai `peran`.
+// Hapus setelah semua pengecekan role (roles.js, EnhancedNavigation) memakai `peran`.
 const ROLE_LAMA = [
   ['ADMIN_SISTEM', 'ADMIN'],
   ['DIREKSI', 'DIRECTOR'],
