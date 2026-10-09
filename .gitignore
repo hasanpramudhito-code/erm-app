@@ -21,10 +21,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Security
-serviceAccountKey.json
-functions/serviceAccountKey.json
-setAdmin.js
 # Backend
 /server/unggahan
 .env
