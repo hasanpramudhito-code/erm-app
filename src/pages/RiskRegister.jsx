@@ -1328,7 +1328,7 @@ const RiskRegister = () => {
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
-                    label="Kode Risiko *"
+                    label="Kode Risiko"
                     value={formData.riskCode}
                     onChange={(e) => setFormData({ ...formData, riskCode: e.target.value })}
                     placeholder="Contoh: RISK-001, OP-2024-01, FIN-001"
@@ -1416,7 +1416,7 @@ const RiskRegister = () => {
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="Deskripsi Risiko *"
+                    label="Deskripsi Risiko"
                     required
                     multiline
                     rows={3}

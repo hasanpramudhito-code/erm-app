@@ -15,7 +15,7 @@ const UraianPustakaEditor = ({ label, value = [], onChange, pustaka = [] }) => {
       {value.map((v, i) => (
         <Box key={i} display="flex" gap={1} alignItems="flex-start" mb={1}>
           <TextField
-            fullWidth size="small" multiline value={v.uraian}
+            fullWidth size="small" multiline value={v.uraian} inputProps={{ 'aria-label': `${label} ${i + 1}` }}
             onChange={(e) => ubah(i, e.target.value)}
             InputProps={v.pustaka_id ? { startAdornment: <Chip size="small" icon={<BookOpen size={14} />} label="Pustaka" sx={{ mr: 1 }} /> } : undefined}
             helperText={v.pustaka_id ? 'Dari pustaka; boleh disesuaikan dengan kondisi unit' : ''}
