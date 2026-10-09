@@ -183,7 +183,7 @@ const Dashboard = () => {
       color: 'warning.main'
     },
     {
-      title: 'Risk Assessment',
+      title: 'Penilaian Risiko',
       description: 'Analisis dan heatmap risiko',
       icon: <BarChart3 size={24} />,
       path: '/risk-assessment',

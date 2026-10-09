@@ -85,7 +85,7 @@ const ExecutiveDashboard = () => {
   const k = data?.kpi;
   return (
     <Box sx={{ p: 3 }}>
-      <KepalaPantauan ikon={<BarChart3 size={36} color="#1976d2" />} judul="Executive Dashboard"
+      <KepalaPantauan ikon={<BarChart3 size={36} color="#1976d2" />} judul="Dashboard Eksekutif"
         keterangan="Profil risiko, efektivitas mitigasi, dan indikator risiko pada periode terpilih">
         <PilihPeriode daftar={daftarPeriode} value={periodeId} onChange={setPeriodeId} />
       </KepalaPantauan>

@@ -938,7 +938,7 @@ Filter: ${JSON.stringify(heatmapFilters, null, 2)}
               </Box>
               <Box>
                 <Typography variant="h4" fontWeight="bold">
-                  Risk Assessment Dashboard
+                  Penilaian Risiko
                 </Typography>
                 <Typography variant="caption" color="textSecondary">
                   Metode: {config.assessmentMethod === 'coordinate' ? 'Koordinat' : 'Perkalian'}{' '}

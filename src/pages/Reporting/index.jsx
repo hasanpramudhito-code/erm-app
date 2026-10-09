@@ -12,7 +12,7 @@ const NAMA_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Jul
 
 // Laporan Excel dibuat server dari data yang sama dengan aplikasi; PDF dibuat di peramban.
 const LAPORAN = [
-  { kode: 'register', judul: 'Risk Register', ket: 'Seluruh entri risiko: identifikasi, penilaian inheren & residual, status persetujuan.', pdf: 'register' },
+  { kode: 'register', judul: 'Register Risiko', ket: 'Seluruh entri risiko: identifikasi, penilaian inheren & residual, status persetujuan.', pdf: 'register' },
   { kode: 'mitigasi', judul: 'Rencana & Progres Mitigasi', ket: 'Semua rencana mitigasi beserta PIC, target, anggaran, status, dan progres terkini.' },
   { kode: 'kri', judul: 'Key Risk Indicator', ket: 'Definisi KRI, ambang, nilai terakhir, tren, dan status.' },
   { kode: 'peristiwa', judul: 'Register Peristiwa Risiko', ket: 'Peristiwa risiko dari laporan bulanan beserta kerugian.' },

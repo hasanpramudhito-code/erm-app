@@ -4,13 +4,22 @@ import { muatIdentitas } from '../services/identitas';
 
 const JUDUL_HALAMAN = {
   '/dashboard': 'Dashboard',
-  '/risk-register': 'Risk Register',
-  '/risk-assessment': 'Risk Assessment',
+  '/dashboard-korporat': 'Dashboard Korporat',
+  '/executive-dashboard': 'Dashboard Eksekutif',
+  '/risk-register': 'Register Risiko',
+  '/risiko-utama': 'Risiko Utama & Pustaka',
+  '/risk-assessment': 'Penilaian Risiko',
   '/pemantauan': 'Pemantauan',
   '/approval': 'Antrean Verifikasi',
-  '/user-management': 'Manajemen User',
-  '/organization-structure': 'Struktur Organisasi',
+  '/treatment-plans': 'Rencana Mitigasi',
+  '/kri-monitoring': 'Indikator Risiko',
+  '/incident-reporting': 'Peristiwa Risiko',
   '/reporting': 'Laporan',
+  '/control-testing': 'Pengujian Kontrol',
+  '/risk-appetite': 'Selera Risiko',
+  '/risk-culture': 'Budaya Risiko',
+  '/raci-chart': 'Matriks RACI',
+  '/organization': 'Organisasi',
 };
 
 // Judul tab browser: "Halaman - Nama Perusahaan".
