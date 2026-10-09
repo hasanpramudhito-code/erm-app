@@ -69,8 +69,8 @@ const OrganizationStructure = () => {
   const loadOrganization = async () => {
     try {
       const [u, d] = await Promise.all([api.get('/unit-kerja'), api.get('/direktorat')]);
-      setUnits(u);
-      setDirektorat(d);
+      setUnits(u || []);
+      setDirektorat(d || []);
     } catch (err) {
       setError(err.message);
     }

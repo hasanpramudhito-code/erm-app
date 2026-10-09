@@ -15,8 +15,10 @@ async function request(method, url, body) {
     body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
   });
   if (res.status === 204) return null;
-  const data = await res.json().catch(() => null);
+  const data = await res.json().catch(() => undefined);
   if (!res.ok) throw new ApiError(res.status, data?.error || `Permintaan gagal (${res.status})`);
+  // Respons 200 yang bukan JSON (mis. server sedang restart di balik proxy) jangan diteruskan sebagai null.
+  if (data === undefined) throw new ApiError(res.status, 'Server tidak dapat dihubungi. Muat ulang halaman sebentar lagi.');
   return data;
 }
 
