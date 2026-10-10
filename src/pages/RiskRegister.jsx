@@ -148,7 +148,7 @@ const RiskRegister = () => {
 
   // State untuk filter
   const [filters, setFilters] = useState({
-    status: [],
+    approval: [],
     riskSources: [],
     departments: [],
     riskOwners: [],
@@ -239,17 +239,6 @@ const RiskRegister = () => {
     'Monitor - Pantau Saja'
   ];
 
-
-
-  const statusOptions = [
-    'Open - Baru Teridentifikasi',
-    'In Assessment - Dalam Penilaian',
-    'Assessed - Telah Dinilai',
-    'In Treatment - Dalam Penanganan',
-    'Monitored - Dalam Pemantauan',
-    'Closed - Ditutup',
-    'Rejected - Ditolak'
-  ];
 
   // Helper untuk mendapatkan nama dari ID
   const getRiskTypeName = (id) => riskTypes.find((r) => r.id === id)?.name || '-';
@@ -360,7 +349,7 @@ const RiskRegister = () => {
       }
 
       // Filter lainnya
-      if (filters.status.length > 0 && !filters.status.includes(risk.status)) {
+      if (filters.approval.length > 0 && !filters.approval.includes(LABEL_PERSETUJUAN[risk.approvalStatus])) {
         return false;
       }
 
@@ -431,7 +420,7 @@ const RiskRegister = () => {
         (risk.riskSource || '').toLowerCase().includes(sTerm) ||
         (risk.riskOwner || '').toLowerCase().includes(sTerm) ||
         deptName.toLowerCase().includes(sTerm) ||
-        (risk.status || '').toLowerCase().includes(sTerm)
+        (LABEL_PERSETUJUAN[risk.approvalStatus] || '').toLowerCase().includes(sTerm)
       )) {
         return false;
       }
@@ -482,7 +471,7 @@ const RiskRegister = () => {
   // Reset filter
   const resetFilters = () => {
     setFilters({
-      status: [],
+      approval: [],
       riskSources: [],
       departments: [],
       riskOwners: [],
@@ -661,7 +650,7 @@ const RiskRegister = () => {
   const countActiveFilters = () => {
     let count = 0;
 
-    count += filters.status.length;
+    count += filters.approval.length;
     count += filters.riskSources.length;
     count += filters.departments.length;
     count += filters.riskOwners.length;
@@ -729,7 +718,7 @@ const RiskRegister = () => {
                   Identifikasi dan kelola seluruh risiko organisasi
                 </Typography>
                 <Typography variant="caption" color="primary">
-                  Total {risks.length} risiko • {risks.filter(r => r.status === 'Assessed - Telah Dinilai').length} telah dinilai •
+                  Total {risks.length} risiko • {risks.filter((r) => r.residualScore != null).length} sudah dinilai residual •
                   Skor dihitung dengan {assessmentConfig?.assessmentMethod === 'coordinate' ? 'matriks koordinat' : 'perkalian kemungkinan × dampak'}
                 </Typography>
               </Box>
@@ -837,7 +826,7 @@ const RiskRegister = () => {
 
             <Grid container spacing={2}>
               {[
-                ['status', 'Status', statusOptions],
+                ['approval', 'Status', Object.values(LABEL_PERSETUJUAN)],
                 ['riskSources', 'Sumber Risiko', riskSources],
                 ['departments', 'Unit Kerja', uniqueDepartmentNames],
                 ['riskOwners', 'Pemilik Risiko', uniqueRiskOwners],
@@ -947,13 +936,6 @@ const RiskRegister = () => {
                   <TableBody>
                     {paginatedRisks.map((risk) => {
                       const isExpanded = expandedRows[risk.id];
-                      const statusChipColor = getValidChipColor(
-                        risk.status?.includes('Critical') || risk.status?.includes('Extreme') ? 'error' :
-                          risk.status?.includes('High') ? 'warning' :
-                            risk.status?.includes('Assessed') ? 'info' :
-                              risk.status?.includes('Closed') ? 'success' : 'default',
-                        'default'
-                      );
                       const treatmentPriorityColor = getValidChipColor(
                         risk.treatmentPriority?.includes('Critical') ? 'error' :
                           risk.treatmentPriority?.includes('High') ? 'warning' :
@@ -1038,15 +1020,9 @@ const RiskRegister = () => {
                             </TableCell>
                             <TableCell>
                               <Chip
-                                label={risk.status || 'Open'}
-                                size="small"
-                                color={statusChipColor}
-                              />
-                              <Chip
                                 label={LABEL_PERSETUJUAN[risk.approvalStatus] || risk.approvalStatus}
                                 size="small"
                                 variant="outlined"
-                                sx={{ mt: 0.5 }}
                                 color={risk.approvalStatus === 'FINAL' ? 'success' : risk.approvalStatus === 'DIKEMBALIKAN' ? 'warning' : 'default'}
                               />
                               {risk.modifiedByDirectors && <Chip label="Diubah Direksi" size="small" color="error" sx={{ mt: 0.5 }} />}
@@ -1394,24 +1370,6 @@ const RiskRegister = () => {
                     onChange={(v) => setFormData((f) => ({ ...f, department: v }))} />
                 </Grid>
 
-                {/* Status */}
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Status</InputLabel>
-                    <Select
-                      value={formData.status}
-                      label="Status"
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    >
-                      {statusOptions.map((status) => (
-                        <MenuItem key={status} value={status}>
-                          {status}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-
                 {/* Deskripsi Risiko */}
                 <Grid item xs={12}>
                   <TextField
@@ -1527,7 +1485,7 @@ const RiskRegister = () => {
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="Kuantifikasi Risiko Inherent"
+                    label="Kuantifikasi Risiko Inheren"
                     type="number"
                     value={formData.inherentRiskQuantification}
                     onChange={(e) => setFormData({ ...formData, inherentRiskQuantification: e.target.value })}
@@ -1548,7 +1506,7 @@ const RiskRegister = () => {
                       {(() => {
                         const score = calculateScore(Number(formData.initialProbability), Number(formData.initialImpact));
                         const level = calculateRiskLevel(score);
-                        return <>Risk Score: {score} • Level: {level.level}</>;
+                        return <>Skor risiko: {score} • Level: {level.level}</>;
                       })()}
                     </Alert>
                   </Grid>
@@ -1654,7 +1612,7 @@ const RiskRegister = () => {
                       {(() => {
                         const score = calculateScore(Number(formData.residualProbability), Number(formData.residualImpact));
                         const level = calculateRiskLevel(score);
-                        return <>Risk Score: {score} • Level: {level.level}</>;
+                        return <>Skor risiko: {score} • Level: {level.level}</>;
                       })()}
                     </Alert>
                   </Grid>
@@ -1753,17 +1711,7 @@ const RiskRegister = () => {
                     </Grid>
                     <Grid item xs={12} sm={3}>
                       <Typography variant="subtitle2">Status</Typography>
-                      <Chip
-                        label={selectedRisk.status || 'Open'}
-                        color={getValidChipColor(
-                          selectedRisk.status?.includes('Critical') || selectedRisk.status?.includes('Extreme') ? 'error' :
-                            selectedRisk.status?.includes('High') ? 'warning' :
-                              selectedRisk.status?.includes('Assessed') ? 'info' :
-                                selectedRisk.status?.includes('Closed') ? 'success' : 'default',
-                          'default'
-                        )}
-                        sx={{ background: 'white' }}
-                      />
+                      <Chip label={LABEL_PERSETUJUAN[selectedRisk.approvalStatus] || selectedRisk.approvalStatus} sx={{ background: 'white' }} />
                     </Grid>
                   </Grid>
                 </CardContent>
@@ -1880,7 +1828,7 @@ const RiskRegister = () => {
                           <Typography variant="body1">{selectedRisk.initialImpact || '-'}</Typography>
                         </Grid>
                         <Grid item xs={12}>
-                          <Typography variant="subtitle2" fontWeight="bold">Kuantifikasi Risiko Inherent</Typography>
+                          <Typography variant="subtitle2" fontWeight="bold">Kuantifikasi Risiko Inheren</Typography>
                           <Typography variant="body1">{selectedRisk.inherentRiskQuantification || '-'}</Typography>
                         </Grid>
                         {selectedRisk.initialProbability && selectedRisk.initialImpact && (
@@ -1890,7 +1838,7 @@ const RiskRegister = () => {
                                 const inherentInfo = getInherentRiskLevelInfo(selectedRisk);
                                 return (
                                   <Box>
-                                    <strong>Risk Score: {inherentInfo.score}</strong> -
+                                    <strong>Skor risiko: {inherentInfo.score}</strong> -
                                     Level: {inherentInfo.level}
                                     {selectedRisk.scoreMethod && (
                                       <Typography variant="caption" display="block">
@@ -1934,7 +1882,7 @@ const RiskRegister = () => {
                                 const residualInfo = getResidualRiskLevelInfo(selectedRisk);
                                 return (
                                   <Box>
-                                    <strong>Risk Score: {residualInfo.score}</strong> -
+                                    <strong>Skor risiko: {residualInfo.score}</strong> -
                                     Level: {residualInfo.level}
                                     {selectedRisk.scoreMethod && (
                                       <Typography variant="caption" display="block">
@@ -1951,43 +1899,25 @@ const RiskRegister = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Assessment Data */}
+                  {/* Prioritas & catatan penilaian */}
                   <Card sx={{ mb: 3 }}>
                     <CardContent>
                       <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <BarChart size={18} />
-                        Assessment Data
+                        Prioritas & Catatan
                       </Typography>
                       <Grid container spacing={2}>
                         <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2" fontWeight="bold">Likelihood</Typography>
-                          <Typography variant="body1">{selectedRisk.likelihood || '-'}</Typography>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2" fontWeight="bold">Impact</Typography>
-                          <Typography variant="body1">{selectedRisk.impact || '-'}</Typography>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2" fontWeight="bold">Inherent Score</Typography>
-                          <Typography variant="body1">{selectedRisk.inherentScore || '-'}</Typography>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2" fontWeight="bold">Residual Score</Typography>
-                          <Typography variant="body1">{selectedRisk.residualScore || '-'}</Typography>
-                        </Grid>
-                        <Grid item xs={12}>
-                          <Typography variant="subtitle2" fontWeight="bold">Treatment Priority</Typography>
+                          <Typography variant="subtitle2" fontWeight="bold">Prioritas penanganan</Typography>
                           <Typography variant="body1">{selectedRisk.treatmentPriority || '-'}</Typography>
                         </Grid>
-                        <Grid item xs={12}>
-                          <Typography variant="subtitle2" fontWeight="bold">Assessment Notes</Typography>
-                          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-                            {selectedRisk.assessmentNotes || '-'}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={6}>
+                        <Grid item xs={12} sm={6}>
                           <Typography variant="subtitle2" fontWeight="bold">Laporan pemantauan terakhir</Typography>
-                          <Typography variant="body1">{selectedRisk.lastReport || "-"}</Typography>
+                          <Typography variant="body1">{selectedRisk.lastReport || '-'}</Typography>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Typography variant="subtitle2" fontWeight="bold">Catatan penilaian</Typography>
+                          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{selectedRisk.assessmentNotes || '-'}</Typography>
                         </Grid>
                       </Grid>
                     </CardContent>
